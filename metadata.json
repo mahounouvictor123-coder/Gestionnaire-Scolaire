@@ -1,0 +1,7 @@
+{
+  "name": "GESTIONNAIRE SCOLAIRE",
+  "description": "Système de gestion scolaire complet et intelligent pour écoles, collèges, lycées et universités avec IA Gemini",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

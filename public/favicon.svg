@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047" />
+      <stop offset="50%" stop-color="#EAB308" />
+      <stop offset="100%" stop-color="#FEF08A" />
+    </linearGradient>
+
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E40AF" />
+      <stop offset="60%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#0369A1" />
+    </linearGradient>
+
+    <linearGradient id="blueArcGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+
+    <linearGradient id="greenArcGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ADE80" />
+      <stop offset="100%" stop-color="#15803D" />
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="120" fill="url(#bgGrad)" />
+
+  <g transform="translate(0, -10)">
+    <path d="M 120 280 C 80 160 180 60 330 65 C 380 67 400 80 370 95 C 230 90 130 180 155 285 Z" fill="url(#blueArcGrad)" />
+    <path d="M 390 220 C 430 330 340 430 180 430 C 130 430 110 415 140 400 C 270 405 380 320 355 215 Z" fill="url(#greenArcGrad)" />
+
+    <path d="M 256 75 C 330 100 375 110 380 180 C 380 290 320 370 256 415 C 192 370 132 290 132 180 C 137 110 182 100 256 75 Z" fill="url(#goldGrad)" />
+    <path d="M 256 92 C 318 114 358 122 362 182 C 362 278 310 350 256 392 C 202 350 150 278 150 182 C 154 122 194 114 256 92 Z" fill="url(#shieldGrad)" />
+
+    <!-- MORTARBOARD -->
+    <polygon points="256,120 325,145 256,170 187,145" fill="#0284C7" stroke="#FFFFFF" stroke-width="3" />
+    <path d="M 215 158 L 215 180 C 215 192 297 192 297 180 L 297 158 Z" fill="#0F172A" />
+    <circle cx="256" cy="145" r="4" fill="#FDE047" />
+    <path d="M 256 145 C 285 150 305 165 308 185" fill="none" stroke="#FDE047" stroke-width="4" stroke-linecap="round" />
+
+    <!-- OPEN BOOK -->
+    <path d="M 256 265 C 220 240 180 245 165 255 L 165 200 C 185 190 225 188 256 210 Z" fill="#FFFFFF" />
+    <path d="M 256 265 C 292 240 332 245 347 255 L 347 200 C 327 190 287 188 256 210 Z" fill="#F8FAFC" />
+
+    <!-- AVATARS -->
+    <circle cx="256" cy="292" r="16" fill="#38BDF8" stroke="#FFFFFF" stroke-width="2" />
+    <path d="M 230 342 C 230 315 282 315 282 342 Z" fill="#0284C7" stroke="#FFFFFF" stroke-width="2" />
+  </g>
+</svg>

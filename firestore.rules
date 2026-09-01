@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Authentication and Role Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function hasUserRecord() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function getUserRole() {
+      return hasUserRecord() ? getUserData().role : 'ELEVE';
+    }
+
+    function isStaffOrAdmin() {
+      return isSignedIn() && (
+        !hasUserRecord() || 
+        getUserRole() in ['SUPER_ADMIN', 'DIRECTEUR', 'SECRETAIRE', 'COMPTABLE', 'ENSEIGNANT']
+      );
+    }
+
+    // Global Catch-all Security Net: DENY ALL BY DEFAULT
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users Collection: users/{userId}
+    match /users/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isStaffOrAdmin());
+      allow list: if isSignedIn() && isStaffOrAdmin();
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && isOwner(userId);
+      allow delete: if isSignedIn() && isStaffOrAdmin();
+    }
+
+    // Users By Email Index: users_by_email/{emailDocId}
+    match /users_by_email/{emailDocId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    // School Data & Cloud Backups: schools/{schoolId}/data/{dataType}
+    match /schools/{schoolId}/data/{dataType} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isStaffOrAdmin();
+    }
+
+    // System Registry & Global School Catalog
+    match /system/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isStaffOrAdmin();
+    }
+
+    // Students Data
+    match /students/{studentId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isStaffOrAdmin();
+    }
+
+    // Bulletins & Official Report Cards
+    match /bulletins/{bulletinId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isStaffOrAdmin();
+    }
+
+    // Academic Grades & Evaluations
+    match /grades/{gradeId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isStaffOrAdmin();
+    }
+
+    // Teachers & Faculty
+    match /teachers/{teacherId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isStaffOrAdmin();
+    }
+
+    // Payments & Financial Records
+    match /payments/{paymentId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isStaffOrAdmin();
+    }
+  }
+}

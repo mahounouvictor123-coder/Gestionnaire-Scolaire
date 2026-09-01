@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Authenticated user profile and role mapping",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN", "DIRECTEUR", "SECRETAIRE", "COMPTABLE", "ENSEIGNANT", "PARENT", "ELEVE"] },
+        "schoolId": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "SchoolData": {
+      "title": "SchoolData",
+      "description": "Scoped school data payload backup",
+      "type": "object",
+      "properties": {
+        "payload": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["payload"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student record with demographic and class information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "className": { "type": "string" }
+      },
+      "required": ["id", "firstName", "lastName"]
+    },
+    "Bulletin": {
+      "title": "Bulletin",
+      "description": "Official student report cards and academic grades",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "trimester": { "type": "string" },
+        "average": { "type": "number" }
+      },
+      "required": ["id", "studentId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile collection and role mapping"
+    },
+    "/schools/{schoolId}/data/{dataType}": {
+      "schema": { "$ref": "#/entities/SchoolData" },
+      "description": "Cloud storage and backups for school records"
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Student roster documents"
+    },
+    "/bulletins/{bulletinId}": {
+      "schema": { "$ref": "#/entities/Bulletin" },
+      "description": "Student official report cards and evaluations"
+    }
+  }
+}

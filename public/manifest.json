@@ -1,0 +1,21 @@
+{
+  "short_name": "GestionScolaire",
+  "name": "Gestionnaire Scolaire - Plateforme Éducative",
+  "description": "Application de gestion scolaire intégrée pour la direction, le secrétariat, les enseignants et les parents.",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512 any",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#0284c7",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "lang": "fr-FR",
+  "categories": ["education", "productivity"]
+}
