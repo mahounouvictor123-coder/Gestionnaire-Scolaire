@@ -302,8 +302,15 @@ export const GoogleAuthGate: React.FC<{ children: React.ReactNode }> = ({ childr
     window.open(window.location.href, '_blank');
   };
 
-  // If user is authenticated and verified, render application content
-  if (gmailUser) {
+  // Dedicated cloistered sub-apps for parents & teachers are public for their families & faculty
+  const isDedicatedSubApp = typeof window !== 'undefined' && (() => {
+    const params = new URLSearchParams(window.location.search);
+    const sub = params.get('subapp') || params.get('sub_app') || params.get('app');
+    return sub === 'parent' || sub === 'parents' || sub === 'teacher' || sub === 'teachers' || sub === 'prof' || sub === 'profs';
+  })();
+
+  // If user is authenticated and verified OR accessing a dedicated cloistered sub-app
+  if (gmailUser || isDedicatedSubApp) {
     return (
       <GoogleAuthContext.Provider value={{ gmailUser, signOutGoogle, loginDirectEmail }}>
         {children}

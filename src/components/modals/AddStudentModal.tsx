@@ -411,6 +411,15 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
     setParsedStudents(prev => prev.filter(p => p.id !== id));
   };
 
+  // Delete all selected rows
+  const handleDeleteSelectedRows = () => {
+    const count = parsedStudents.filter(p => p.selected).length;
+    if (count === 0) return;
+    if (confirm(`Supprimer les ${count} élève(s) coché(s) de la liste ?`)) {
+      setParsedStudents(prev => prev.filter(p => !p.selected));
+    }
+  };
+
   // Update row field
   const handleUpdateRow = (id: string, field: keyof ParsedRow, value: any) => {
     setParsedStudents(prev => prev.map(p => {
@@ -951,6 +960,20 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                       >
                         {parsedStudents.every(p => p.selected) ? 'Tout décocher' : 'Tout cocher'}
                       </button>
+                      {parsedStudents.some(p => p.selected) && (
+                        <>
+                          <span className="text-slate-300">|</span>
+                          <button
+                            type="button"
+                            onClick={handleDeleteSelectedRows}
+                            className="text-[11px] font-bold text-rose-600 hover:text-rose-800 flex items-center space-x-1 cursor-pointer bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-lg border border-rose-200 dark:border-rose-800"
+                            title="Supprimer les élèves cochés de la liste"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            <span>Supprimer cochés ({parsedStudents.filter(p => p.selected).length})</span>
+                          </button>
+                        </>
+                      )}
                       <span className="text-slate-300">|</span>
                       <button
                         type="button"

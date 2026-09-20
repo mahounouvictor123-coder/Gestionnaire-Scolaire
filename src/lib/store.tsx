@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   User,
   School,
@@ -21,22 +21,35 @@ import {
   AdministrativeDocument,
   TransportRoute,
   CommunicationMessage,
+  ParentComplaintMessage,
   ExamPaper,
   SubscriptionPlan,
   SchoolSubscription,
   SubscriptionInvoice,
   PromoterNotification,
   ArchivedReportCard,
-  RegistrationCampaign
+  RegistrationCampaign,
+  OfficialAnnouncement,
+  ParentActivationRecord,
+  DirectorParentActivationNotification
 } from '../types';
 import { initialSchools } from '../data/initialSchools';
 import { generateValidPassword } from './passwordUtils';
+import {
+  initialParentActivations,
+  matchPhone,
+  generateReceiptCode,
+  getCurrentMonthKey,
+  cleanDigits
+} from '../data/initialParentActivations';
 import {
   syncToCloud,
   loadFromCloud,
   subscribeToCloud,
   syncSchoolsRegistryToCloud,
   subscribeToSchoolsRegistry,
+  syncDeletedSchoolsToCloud,
+  subscribeToDeletedSchools,
   getUserDataByEmailFromFirestore,
   saveUserDataByEmailToFirestore
 } from './firebase';
@@ -61,6 +74,7 @@ import {
   initialAdministrativeDocuments,
   initialTransportRoutes,
   initialCommunications,
+  initialParentComplaints,
   initialExamPapers,
   initialArchivedReportCards,
   initialSubscriptionPlans,
@@ -69,7 +83,8 @@ import {
   initialRegistrationCampaigns,
   defaultStaffRolePermissions,
   OFFICIAL_PRIMARY_SUBJECTS,
-  OFFICIAL_MATERNELLE_SUBJECTS
+  OFFICIAL_MATERNELLE_SUBJECTS,
+  initialOfficialAnnouncements
 } from '../data/initialData';
 
 interface AppContextType {
@@ -118,12 +133,16 @@ interface AppContextType {
       pwd?: string;
     }
   ) => void;
-  toggleSchoolBlockStatus: (schoolId: string, shouldBlock: boolean) => void;
+  toggleSchoolBlockStatus: (schoolId: string, shouldBlock: boolean, customReason?: string) => void;
   promoterNotifications: PromoterNotification[];
   markPromoterNotificationAsRead: (notifId: string) => void;
   clearPromoterNotifications: () => void;
   updateSchool: (schoolId: string, updatedData: Partial<School>) => void;
   deleteSchool: (schoolId: string) => void;
+  deletedSchoolIds: string[];
+  isSchoolDeleted: (schoolIdOrCode: string) => boolean;
+  isSchoolBlocked: (schoolIdOrCode: string) => boolean;
+  isPermanentlyRevokedSchool: (schoolOrIdOrName: School | string | undefined | null) => boolean;
 
   currentUser: User;
   setCurrentUser: (user: User) => void;
@@ -145,9 +164,10 @@ interface AppContextType {
   addBulkStudents: (stds: Omit<Student, 'id' | 'registrationNumber'>[]) => Student[];
   updateStudent: (id: string, std: Partial<Student>) => void;
   deleteStudent: (id: string) => void;
+  deleteMultipleStudents: (ids: string[]) => void;
 
   teachers: Teacher[];
-  addTeacher: (tch: Omit<Teacher, 'id'>) => void;
+  addTeacher: (tch: Omit<Teacher, 'id'>) => Teacher;
   updateTeacher: (id: string, tch: Partial<Teacher>) => void;
   deleteTeacher: (id: string) => void;
 
@@ -225,6 +245,19 @@ interface AppContextType {
   communications: CommunicationMessage[];
   addCommunication: (msg: Omit<CommunicationMessage, 'id' | 'sentAt' | 'deliveryCount' | 'status'>) => void;
 
+  parentComplaints: ParentComplaintMessage[];
+  addParentComplaint: (complaint: Omit<ParentComplaintMessage, 'id' | 'createdAt' | 'status' | 'isReadBySchool'>) => ParentComplaintMessage;
+  updateParentComplaint: (id: string, updates: Partial<ParentComplaintMessage>) => void;
+  deleteParentComplaint: (id: string) => void;
+  replyToParentComplaint: (id: string, reply: string, replierName: string) => void;
+  markParentComplaintAsRead: (id: string) => void;
+
+  officialAnnouncements: OfficialAnnouncement[];
+  addOfficialAnnouncement: (announcement: Omit<OfficialAnnouncement, 'id' | 'createdAt'>) => OfficialAnnouncement;
+  updateOfficialAnnouncement: (id: string, updates: Partial<OfficialAnnouncement>) => void;
+  deleteOfficialAnnouncement: (id: string) => void;
+  markAnnouncementAsReadByParent: (announcementId: string, parentPhoneOrStudentId: string) => void;
+
   subscriptionPlans: SubscriptionPlan[];
   schoolSubscription: SchoolSubscription;
   subscriptionInvoices: SubscriptionInvoice[];
@@ -266,6 +299,39 @@ interface AppContextType {
   approveSchoolByPromoter: (schoolId: string, options?: { grantPlanId?: string; promoterNotes?: string }) => void;
   rejectSchoolByPromoter: (schoolId: string, reason?: string) => void;
 
+  // Super-Promoteur Remote Parent Activation & Control Box
+  parentActivations: ParentActivationRecord[];
+  directorNotifications: DirectorParentActivationNotification[];
+  markDirectorNotificationAsRead: (id: string) => void;
+  clearDirectorNotifications: () => void;
+  lookupParentByPhone: (phone: string) => {
+    found: boolean;
+    records: Array<{
+      student: Student;
+      school: School;
+      className: string;
+      currentActivation?: ParentActivationRecord;
+    }>;
+  };
+  activateParentRemotely: (phone: string, durationDays?: number, customFee?: number) => {
+    success: boolean;
+    receiptCode?: string;
+    fin_abonnement?: string;
+    schoolName?: string;
+    parentName?: string;
+    studentName?: string;
+    className?: string;
+    message: string;
+    activation?: ParentActivationRecord;
+  };
+  verifyAndClaimReceiptCode: (receiptCode: string, phone?: string) => {
+    success: boolean;
+    message: string;
+    activation?: ParentActivationRecord;
+  };
+  toggleSchoolPayout: (schoolId: string, monthKey: string, isPaid: boolean) => void;
+  getSchoolMonthlyActivatedParentsCount: (schoolId: string, monthKey?: string) => number;
+
   resetToDefaultData: () => void;
 }
 
@@ -283,15 +349,22 @@ const cleanMotto = (motto: string): string => {
   return motto.trim();
 };
 
+// Helper to identify permanently revoked / blacklisted schools (Père Aupiais)
+export const isPermanentlyRevokedSchool = (schoolOrIdOrName: School | string | undefined | null): boolean => {
+  if (!schoolOrIdOrName) return false;
+  const str = typeof schoolOrIdOrName === 'string'
+    ? schoolOrIdOrName.toLowerCase()
+    : `${schoolOrIdOrName.id || ''} ${schoolOrIdOrName.name || ''} ${(schoolOrIdOrName as any).email || ''}`.toLowerCase();
+  return str.includes('aupiais');
+};
+
 // Helper to check if a school is explicitly blocked (e.g. Bon Berger, Père Aupiais)
 export const isExplicitlyBlockedSchool = (school: School | undefined | null): boolean => {
   if (!school) return false;
+  if (isPermanentlyRevokedSchool(school)) return true;
   const lowerName = (school.name || '').toLowerCase();
   const lowerId = (school.id || '').toLowerCase();
   if (lowerName.includes('bon berger') || lowerId.includes('bonberger') || lowerId.includes('bon-berger')) {
-    return true;
-  }
-  if (lowerName.includes('aupiais') || lowerName.includes('pere aupiais') || lowerName.includes('père aupiais') || lowerId.includes('aupiais')) {
     return true;
   }
   return false;
@@ -300,16 +373,35 @@ export const isExplicitlyBlockedSchool = (school: School | undefined | null): bo
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Multi-School Registry State
   const [schools, setSchools] = useState<School[]>(() => {
+    // Purge any local storage traces of aupiais
+    if (typeof window !== 'undefined') {
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && (k.toLowerCase().includes('aupiais') || k.includes('sch-aupiais'))) {
+            localStorage.removeItem(k);
+          }
+        }
+      } catch (e) {}
+    }
+
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_SCHOOLS_REGISTRY`);
     const raw: School[] = saved ? JSON.parse(saved) : initialSchools;
-    // Merge initialSchools in case new preset blocked schools (Bon Berger, Père Aupiais) were added
+    // Merge initialSchools in case new preset blocked schools were added
     const map = new Map<string, School>();
-    initialSchools.forEach(s => map.set(s.id, s));
-    raw.forEach(s => {
-      const existing = map.get(s.id);
-      map.set(s.id, existing ? { ...existing, ...s } : s);
+    initialSchools.forEach(s => {
+      if (!isPermanentlyRevokedSchool(s)) {
+        map.set(s.id, s);
+      }
     });
-    return Array.from(map.values()).map(s => {
+    raw.forEach(s => {
+      if (!isPermanentlyRevokedSchool(s)) {
+        const existing = map.get(s.id);
+        map.set(s.id, existing ? { ...existing, ...s } : s);
+      }
+    });
+
+    const cleanedList = Array.from(map.values()).filter(s => !isPermanentlyRevokedSchool(s)).map(s => {
       const isTargetBlocked = isExplicitlyBlockedSchool(s);
       return {
         ...s,
@@ -320,29 +412,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         blockReason: isTargetBlocked ? "🔒 Accès bloqué par le Promoteur Général. Abonnement requis pour débloquer votre établissement." : s.blockReason
       };
     });
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_SCHOOLS_REGISTRY`, JSON.stringify(cleanedList));
+      syncSchoolsRegistryToCloud(cleanedList);
+    }
+    return cleanedList;
   });
 
   const [currentSchoolId, setCurrentSchoolId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const urlSchoolParam = params.get('school') || params.get('school_id') || params.get('schoolId') || params.get('validate_school_id') || params.get('etablissement');
-      if (urlSchoolParam) {
+      if (urlSchoolParam && !isPermanentlyRevokedSchool(urlSchoolParam)) {
         return urlSchoolParam;
       }
       const codeParam = params.get('code') || params.get('pin');
       if (codeParam) {
-        const found = schools.find(s => s.officialCode === codeParam || (s as any).code === codeParam);
+        const found = schools.find(s => !isPermanentlyRevokedSchool(s) && (s.officialCode === codeParam || (s as any).code === codeParam));
         if (found) return found.id;
       }
     }
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_CURRENT_SCHOOL_ID`);
-    if (saved && schools.some(s => s.id === saved)) return saved;
-    const userCustom = schools.find(s => !s.isDemo && s.id !== 'sch-temple' && !isExplicitlyBlockedSchool(s));
+    if (saved && !isPermanentlyRevokedSchool(saved) && schools.some(s => s.id === saved)) return saved;
+    const userCustom = schools.find(s => !s.isDemo && s.id !== 'sch-temple' && !isExplicitlyBlockedSchool(s) && !isPermanentlyRevokedSchool(s));
     if (userCustom) return userCustom.id;
     return initialSchools[0]?.id || 'sch-temple';
   });
 
   const currentSchool = schools.find(s => s.id === currentSchoolId) || schools[0] || initialSchools[0];
+
+  // Persistent Deleted / Revoked School IDs (Tombstones synced with Cloud)
+  const [deletedSchoolIds, setDeletedSchoolIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DELETED_SCHOOL_IDS`);
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DELETED_SCHOOL_IDS`, JSON.stringify(deletedSchoolIds));
+      syncDeletedSchoolsToCloud(deletedSchoolIds);
+    }
+  }, [deletedSchoolIds]);
+
+  const isSchoolDeleted = (schoolIdOrCode: string): boolean => {
+    if (!schoolIdOrCode) return false;
+    const clean = schoolIdOrCode.trim().toLowerCase();
+    return deletedSchoolIds.some(id => id.trim().toLowerCase() === clean);
+  };
+
+  const isSchoolBlocked = (schoolIdOrCode: string): boolean => {
+    if (!schoolIdOrCode) return false;
+    if (isSchoolDeleted(schoolIdOrCode)) return true;
+    const target = schools.find(s => s.id === schoolIdOrCode || (s as any).officialCode === schoolIdOrCode);
+    if (!target) return true;
+    return target.isBlocked === true || target.isValidatedByPromoter === false || isExplicitlyBlockedSchool(target);
+  };
 
   // Unlocked Schools Session state
   const [unlockedSchoolIds, setUnlockedSchoolIds] = useState<string[]>(() => {
@@ -358,10 +490,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [unlockedSchoolIds]);
 
   const unlockSchool = (schoolId: string, passwordAttempt: string): boolean => {
-    const target = schools.find(s => s.id === schoolId);
+    if (!schoolId || isSchoolDeleted(schoolId)) {
+      return false;
+    }
+    const target = schools.find(s => s.id === schoolId || (s as any).officialCode === schoolId);
     if (!target) {
-      setUnlockedSchoolIds(prev => prev.includes(schoolId) ? prev : [...prev, schoolId]);
-      return true;
+      return false;
     }
     // Blocked, unvalidated or trial-expired schools cannot be unlocked locally
     if (target.isBlocked === true || target.isValidatedByPromoter === false || isExplicitlyBlockedSchool(target) || !isDailyAccessValid(schoolId)) {
@@ -369,10 +503,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const pwd = target.accessPassword || "12345678";
     if (!passwordAttempt || passwordAttempt.trim() === pwd.trim() || passwordAttempt.trim() === '12345678' || passwordAttempt.length > 0) {
-      setUnlockedSchoolIds(prev => prev.includes(schoolId) ? prev : [...prev, schoolId]);
+      setUnlockedSchoolIds(prev => prev.includes(target.id) ? prev : [...prev, target.id]);
       return true;
     }
-    setUnlockedSchoolIds(prev => prev.includes(schoolId) ? prev : [...prev, schoolId]);
+    setUnlockedSchoolIds(prev => prev.includes(target.id) ? prev : [...prev, target.id]);
     return true;
   };
 
@@ -381,8 +515,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const isDailyAccessValid = (schoolId: string): boolean => {
-    const target = schools.find(s => s.id === schoolId);
-    if (!target) return true;
+    if (!schoolId || isSchoolDeleted(schoolId)) return false;
+    const target = schools.find(s => s.id === schoolId || (s as any).officialCode === schoolId);
+    if (!target) return false;
     
     // 1. Strictly blocked schools or unvalidated schools
     if (target.isBlocked === true || target.isValidatedByPromoter === false || isExplicitlyBlockedSchool(target)) {
@@ -410,20 +545,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const isSchoolUnlocked = (schoolId: string): boolean => {
+    if (!schoolId) return false;
+    if (isPermanentlyRevokedSchool(schoolId)) return false; // Formally revoked and blocked school
+    if (isSchoolDeleted(schoolId)) return false; // Formally deleted school
+
     // Promoter and Super Admin have universal access to all schools
     const isPromoterUser = (currentUser?.email?.toLowerCase().trim() === 'mahounouvictor123@gmail.com') ||
       (typeof window !== 'undefined' && localStorage.getItem('GESTIONNAIRE_PROMOTER_AUTH') === 'true') ||
       currentUser?.role === 'SUPER_ADMIN';
     if (isPromoterUser) return true;
 
-    const target = schools.find(s => s.id === schoolId);
-    if (!target) return true;
+    const target = schools.find(s => s.id === schoolId || (s as any).officialCode === schoolId);
+    if (!target) return false; // Deleted or non-existent school is NOT unlocked
     if (target.isBlocked === true || isExplicitlyBlockedSchool(target)) return false; // Strictly blocked by promoter!
     if (target.isValidatedByPromoter === false) return false; // Validation pending!
     if (!isDailyAccessValid(schoolId)) return false; // Expired 7-day trial or expired subscription locks the school!
     if (target.isPasswordProtected === false) return true; // Super Admin granted free access!
     if (!target.accessPassword) return true;
-    return unlockedSchoolIds.includes(schoolId);
+    return unlockedSchoolIds.includes(target.id);
   };
 
   const validateDailyAccessPayment = (
@@ -688,10 +827,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [administrativeDocuments, setAdministrativeDocuments] = useState<AdministrativeDocument[]>(() => loadScopedData('ADMINISTRATIVE_DOCUMENTS', initialAdministrativeDocuments));
   const [transportRoutes] = useState<TransportRoute[]>(initialTransportRoutes);
   const [communications, setCommunications] = useState<CommunicationMessage[]>(() => loadScopedData('COMMUNICATIONS', initialCommunications));
+  const [parentComplaints, setParentComplaints] = useState<ParentComplaintMessage[]>(() => loadScopedData('PARENT_COMPLAINTS', initialParentComplaints));
+  const [officialAnnouncements, setOfficialAnnouncements] = useState<OfficialAnnouncement[]>(() => loadScopedData('OFFICIAL_ANNOUNCEMENTS', initialOfficialAnnouncements));
 
   const [subscriptionPlans] = useState<SubscriptionPlan[]>(initialSubscriptionPlans);
   const [schoolSubscription, setSchoolSubscription] = useState<SchoolSubscription>(() => loadScopedData('SUBSCRIPTION', initialSchoolSubscription));
   const [subscriptionInvoices, setSubscriptionInvoices] = useState<SubscriptionInvoice[]>(() => loadScopedData('INVOICES', initialSubscriptionInvoices));
+
+  // Multi-role & cross-device real-time synchronization tracking refs
+  const isRemoteUpdateRef = useRef<Record<string, boolean>>({});
+  const hasLoadedCloudRef = useRef<Record<string, boolean>>({});
 
   // Promoter Notifications State
   const [promoterNotifications, setPromoterNotifications] = useState<PromoterNotification[]>(() => {
@@ -743,6 +888,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     directorName: string;
     accessPassword?: string;
   }): { success: boolean; school?: School; message: string } => {
+    if (isPermanentlyRevokedSchool(registrationData.name) || isPermanentlyRevokedSchool(registrationData.email)) {
+      return {
+        success: false,
+        message: "⛔ Action refusée : L'établissement « Collège Père Aupiais » a été définitivement bloqué, révoqué et supprimé de la plateforme par le Promoteur Général."
+      };
+    }
     const normalizedCode = (registrationData.campaignCode || '').trim().toUpperCase();
     const campaign = campaigns.find(c => c.code.toUpperCase() === normalizedCode || c.id === registrationData.campaignCode);
     
@@ -919,6 +1070,319 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPromoterNotifications([]);
   };
 
+  // ==========================================
+  // SUPER-PROMOTEUR: Activation à distance & Boîte de Contrôle
+  // ==========================================
+  const [parentActivations, setParentActivations] = useState<ParentActivationRecord[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_PARENT_ACTIVATIONS`);
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return initialParentActivations;
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_PARENT_ACTIVATIONS`, JSON.stringify(parentActivations));
+    syncToCloud('global', 'PARENT_ACTIVATIONS', parentActivations);
+  }, [parentActivations]);
+
+  const [directorNotifications, setDirectorNotifications] = useState<DirectorParentActivationNotification[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DIRECTOR_NOTIFS`);
+      if (saved) {
+        try { return JSON.parse(saved); } catch (e) {}
+      }
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DIRECTOR_NOTIFS`, JSON.stringify(directorNotifications));
+  }, [directorNotifications]);
+
+  const markDirectorNotificationAsRead = (id: string) => {
+    setDirectorNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+  };
+
+  const clearDirectorNotifications = () => {
+    setDirectorNotifications([]);
+  };
+
+  const lookupParentByPhone = (phoneInput: string) => {
+    const raw = (phoneInput || '').trim();
+    if (!raw) {
+      return { found: false, records: [] };
+    }
+
+    const records: Array<{
+      student: Student;
+      school: School;
+      className: string;
+      currentActivation?: ParentActivationRecord;
+    }> = [];
+
+    // Search all registered schools
+    schools.forEach(school => {
+      let schoolStudents: Student[] = [];
+      if (school.id === currentSchoolId) {
+        schoolStudents = students;
+      } else {
+        const scoped = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${school.id}_STUDENTS`);
+        if (scoped) {
+          try { schoolStudents = JSON.parse(scoped); } catch (e) {}
+        } else if (school.id === 'sch-temple') {
+          schoolStudents = initialStudents;
+        }
+      }
+
+      let schoolClasses: SchoolClass[] = [];
+      if (school.id === currentSchoolId) {
+        schoolClasses = classes;
+      } else {
+        const scopedClasses = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${school.id}_CLASSES`);
+        if (scopedClasses) {
+          try { schoolClasses = JSON.parse(scopedClasses); } catch (e) {}
+        } else {
+          schoolClasses = initialClasses;
+        }
+      }
+
+      schoolStudents.forEach(st => {
+        if (st.parentPhone && matchPhone(st.parentPhone, raw)) {
+          const cls = schoolClasses.find(c => c.id === st.classId);
+          const className = cls?.name || 'Classe générale';
+
+          const existingAct = parentActivations.find(a =>
+            (a.studentId === st.id || matchPhone(a.phone, st.parentPhone) || matchPhone(a.rawPhone, st.parentPhone)) &&
+            a.schoolId === school.id &&
+            a.status === 'actif'
+          );
+
+          records.push({
+            student: st,
+            school,
+            className,
+            currentActivation: existingAct
+          });
+        }
+      });
+    });
+
+    return {
+      found: records.length > 0,
+      records
+    };
+  };
+
+  const activateParentRemotely = (
+    phoneInput: string,
+    durationDays: number = 30,
+    customFee?: number
+  ) => {
+    const lookup = lookupParentByPhone(phoneInput);
+    if (!lookup.found || lookup.records.length === 0) {
+      return {
+        success: false,
+        message: "Numéro non enregistré"
+      };
+    }
+
+    const receiptCode = generateReceiptCode();
+    const today = new Date();
+    const todayIso = today.toISOString();
+    const currentMonth = getCurrentMonthKey();
+
+    // Determine base date for expiration (+30 days or +365 days)
+    let baseDate = today;
+    const primaryRecord = lookup.records[0];
+    if (primaryRecord.currentActivation?.fin_abonnement) {
+      const existingExp = new Date(primaryRecord.currentActivation.fin_abonnement);
+      if (existingExp > today) {
+        baseDate = existingExp;
+      }
+    }
+    const expiryDate = new Date(baseDate);
+    expiryDate.setDate(expiryDate.getDate() + durationDays);
+    const fin_abonnement = expiryDate.toISOString().split('T')[0];
+
+    const targetSchool = primaryRecord.school;
+    const parentName = primaryRecord.student.parentName || "Parent d'Élève";
+    const studentName = lookup.records.map(r => `${r.student.firstName} ${r.student.lastName}`).join(', ');
+    const className = lookup.records.map(r => r.className).join(', ');
+
+    // Calculate fee (1000F for 30d, 9000F for 365d/1yr, or customFee)
+    // Répartition : 60% Promoteur Gestionnaire Scolaire | 30% École | 10% frais réseau/opérateurs
+    const fee = customFee !== undefined ? customFee : (durationDays >= 300 ? 9000 : 1000);
+    const promoterCommission = Math.round(fee * 0.6); // 60% Promoteur Gestionnaire Scolaire
+    const schoolShare = Math.round(fee * 0.3); // 30% Part École
+    const planType: 'MONTHLY' | 'ANNUAL' = durationDays >= 300 ? 'ANNUAL' : 'MONTHLY';
+    const planLabel = planType === 'ANNUAL' ? '1 an (365 jours)' : '30 jours';
+
+    const newActivation: ParentActivationRecord = {
+      id: `act-${Date.now()}-${receiptCode.toLowerCase()}`,
+      phone: cleanDigits(phoneInput),
+      rawPhone: phoneInput.trim(),
+      parentName,
+      studentId: primaryRecord.student.id,
+      studentName,
+      className,
+      schoolId: targetSchool.id,
+      schoolName: targetSchool.name,
+      status: 'actif',
+      activationDate: todayIso,
+      fin_abonnement,
+      receiptCode,
+      fee,
+      promoterCommission,
+      schoolShare,
+      planType,
+      durationDays,
+      monthKey: currentMonth,
+      isPaidToSchool: false,
+      notes: `Activation ${planLabel} via Super-Promoteur`
+    };
+
+    // 1. Add to parentActivations list
+    setParentActivations(prev => [newActivation, ...prev]);
+
+    // 2. Update student status in memory & storage
+    lookup.records.forEach(r => {
+      const stSchoolId = r.school.id;
+      if (stSchoolId === currentSchoolId) {
+        updateStudent(r.student.id, {
+          parentSubscriptionStatus: 'actif',
+          parentSubscriptionExpiresAt: fin_abonnement,
+          parentLastReceiptCode: receiptCode
+        });
+      } else {
+        const scoped = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${stSchoolId}_STUDENTS`);
+        if (scoped) {
+          try {
+            const list: Student[] = JSON.parse(scoped);
+            const updated = list.map(st => {
+              if (st.id === r.student.id) {
+                return {
+                  ...st,
+                  parentSubscriptionStatus: 'actif' as const,
+                  parentSubscriptionExpiresAt: fin_abonnement,
+                  parentLastReceiptCode: receiptCode
+                };
+              }
+              return st;
+            });
+            localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${stSchoolId}_STUDENTS`, JSON.stringify(updated));
+            syncToCloud(stSchoolId, 'STUDENTS', updated);
+          } catch (e) {}
+        }
+      }
+    });
+
+    // 3. Increment school's monthlyActivatedParentsCount (+1)
+    setSchools(prev => {
+      const updated = prev.map(s => {
+        if (s.id === targetSchool.id) {
+          return {
+            ...s,
+            monthlyActivatedParentsCount: (s.monthlyActivatedParentsCount || 0) + 1,
+            totalActivatedParentsCount: (s.totalActivatedParentsCount || 0) + 1
+          };
+        }
+        return s;
+      });
+      localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_SCHOOLS_REGISTRY`, JSON.stringify(updated));
+      syncSchoolsRegistryToCloud(updated);
+      return updated;
+    });
+
+    // 4. Instant notification to the director of the school
+    const directorNotif: DirectorParentActivationNotification = {
+      id: `notif-dir-${Date.now()}`,
+      schoolId: targetSchool.id,
+      type: 'PARENT_ACTIVATED',
+      title: 'Parent activé',
+      parentName,
+      parentPhone: phoneInput.trim(),
+      studentName,
+      className,
+      receiptCode,
+      fin_abonnement,
+      createdAt: todayIso,
+      isRead: false
+    };
+    setDirectorNotifications(prev => [directorNotif, ...prev]);
+
+    // Add internal communication message
+    if (targetSchool.id === currentSchoolId) {
+      addCommunication({
+        senderName: 'Super-Promoteur (Activation)',
+        recipientGroup: 'INTERNAL' as any,
+        channel: 'INTERNAL',
+        subject: `🔔 Parent activé : ${parentName}`,
+        content: `Parent ${parentName} (${phoneInput.trim()}) activé avec succès pour l'élève ${studentName} (${className}). Abonnement ${planLabel} (${fee.toLocaleString('fr-FR')} FCFA) valide jusqu'au ${fin_abonnement}. Reçu officiel N° ${receiptCode}. Part école créditée (30%) : ${schoolShare.toLocaleString('fr-FR')} FCFA.`
+      });
+    }
+
+    return {
+      success: true,
+      receiptCode,
+      fin_abonnement,
+      schoolName: targetSchool.name,
+      parentName,
+      studentName,
+      className,
+      message: `Parent « ${parentName} » activé avec succès (${planLabel}) ! Code reçu : ${receiptCode}`,
+      activation: newActivation
+    };
+  };
+
+  const verifyAndClaimReceiptCode = (receiptCode: string, phone?: string) => {
+    const code = (receiptCode || '').trim().toUpperCase();
+    if (!code) {
+      return { success: false, message: "Veuillez entrer un code reçu." };
+    }
+    const found = parentActivations.find(a => a.receiptCode.toUpperCase() === code);
+    if (!found) {
+      return { success: false, message: "Code reçu invalide ou introuvable dans le système." };
+    }
+    const now = new Date();
+    const exp = new Date(found.fin_abonnement);
+    exp.setHours(23, 59, 59, 999);
+    if (exp < now) {
+      return { success: false, message: `Ce code reçu correspond à un abonnement expiré le ${found.fin_abonnement}.` };
+    }
+    return {
+      success: true,
+      message: `Abonnement validé avec succès ! Actif jusqu'au ${found.fin_abonnement}.`,
+      activation: found
+    };
+  };
+
+  const toggleSchoolPayout = (schoolId: string, monthKey: string, isPaid: boolean) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    setParentActivations(prev => {
+      const updated = prev.map(a => {
+        if (a.schoolId === schoolId && a.monthKey === monthKey) {
+          return {
+            ...a,
+            isPaidToSchool: isPaid,
+            paidToSchoolDate: isPaid ? (a.paidToSchoolDate || todayStr) : undefined
+          };
+        }
+        return a;
+      });
+      localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_PARENT_ACTIVATIONS`, JSON.stringify(updated));
+      syncToCloud('global', 'PARENT_ACTIVATIONS', updated);
+      return updated;
+    });
+  };
+
+  const getSchoolMonthlyActivatedParentsCount = (schoolId: string, monthKey?: string) => {
+    const targetMonth = monthKey || getCurrentMonthKey();
+    return parentActivations.filter(a => a.schoolId === schoolId && a.monthKey === targetMonth && a.status === 'actif').length;
+  };
+
   const toggleSchoolBlockStatus = (schoolId: string, shouldBlock: boolean, customReason?: string) => {
     const todayIso = new Date().toISOString();
     setSchools(prev => {
@@ -938,6 +1402,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       syncSchoolsRegistryToCloud(updated);
       return updated;
     });
+
+    if (shouldBlock) {
+      lockSchool(schoolId);
+    }
   };
 
   // Persist registry changes
@@ -946,20 +1414,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     syncSchoolsRegistryToCloud(schools);
   }, [schools]);
 
+  // Subscribe to Deleted Schools list from Firestore
+  useEffect(() => {
+    const unsub = subscribeToDeletedSchools((cloudDeleted) => {
+      if (Array.isArray(cloudDeleted) && cloudDeleted.length > 0) {
+        setDeletedSchoolIds(prev => {
+          const combined = Array.from(new Set([...prev, ...cloudDeleted]));
+          if (JSON.stringify(prev) !== JSON.stringify(combined)) {
+            localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DELETED_SCHOOL_IDS`, JSON.stringify(combined));
+            return combined;
+          }
+          return prev;
+        });
+
+        // Immediately purge any deleted school from local schools state!
+        setSchools(prev => {
+          const filtered = prev.filter(s => !cloudDeleted.includes(s.id) && !cloudDeleted.includes((s as any).officialCode));
+          if (filtered.length !== prev.length) {
+            localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_SCHOOLS_REGISTRY`, JSON.stringify(filtered));
+            return filtered;
+          }
+          return prev;
+        });
+      }
+    });
+    return () => unsub();
+  }, []);
+
   // Subscribe to Cloud Registry updates (so remote school additions/modifications are synced live)
   useEffect(() => {
     const unsub = subscribeToSchoolsRegistry((cloudSchools) => {
-      if (Array.isArray(cloudSchools) && cloudSchools.length > 0) {
+      if (Array.isArray(cloudSchools)) {
         setSchools(prev => {
           const map = new Map<string, School>();
-          prev.forEach(s => map.set(s.id, s));
+          // Cloud is authoritative for active schools
           cloudSchools.forEach(cs => {
-            if (cs && cs.id) {
-              const existing = map.get(cs.id);
-              map.set(cs.id, existing ? { ...existing, ...cs } : cs);
+            if (cs && cs.id && !isPermanentlyRevokedSchool(cs) && !deletedSchoolIds.includes(cs.id)) {
+              map.set(cs.id, cs);
             }
           });
-          const merged = Array.from(map.values());
+          // Preserve local demo schools if not deleted
+          prev.forEach(s => {
+            if (s.isDemo && !deletedSchoolIds.includes(s.id) && !isPermanentlyRevokedSchool(s)) {
+              if (!map.has(s.id)) {
+                map.set(s.id, s);
+              }
+            }
+          });
+          const merged = Array.from(map.values()).filter(s => !isPermanentlyRevokedSchool(s) && !deletedSchoolIds.includes(s.id));
           if (JSON.stringify(prev) !== JSON.stringify(merged)) {
             localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_SCHOOLS_REGISTRY`, JSON.stringify(merged));
             return merged;
@@ -969,7 +1471,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
     return () => unsub();
-  }, []);
+  }, [deletedSchoolIds]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_CURRENT_SCHOOL_ID`, currentSchoolId);
@@ -982,8 +1484,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubs: (() => void)[] = [];
 
     const handleCloudUpdate = <T,>(dataType: string, setter: React.Dispatch<React.SetStateAction<T>>) => {
+      // Immediate asynchronous check for existing cloud data to prevent stale local overwriting
+      loadFromCloud(currentSchoolId, dataType).then((cloudData) => {
+        if (cloudData !== null && cloudData !== undefined) {
+          hasLoadedCloudRef.current[dataType] = true;
+          isRemoteUpdateRef.current[dataType] = true;
+          setter(prev => {
+            if (JSON.stringify(prev) !== JSON.stringify(cloudData)) {
+              localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${dataType}`, JSON.stringify(cloudData));
+              return cloudData;
+            }
+            return prev;
+          });
+        } else {
+          hasLoadedCloudRef.current[dataType] = true;
+        }
+      }).catch(() => {
+        hasLoadedCloudRef.current[dataType] = true;
+      });
+
       unsubs.push(subscribeToCloud(currentSchoolId, dataType, (data) => {
         if (data !== null && data !== undefined) {
+          hasLoadedCloudRef.current[dataType] = true;
+          isRemoteUpdateRef.current[dataType] = true;
           setter(prev => {
             if (JSON.stringify(prev) !== JSON.stringify(data)) {
               localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${dataType}`, JSON.stringify(data));
@@ -1015,6 +1538,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     handleCloudUpdate('CANTEEN_PLANS', setCanteenPlans);
     handleCloudUpdate('ADMINISTRATIVE_DOCUMENTS', setAdministrativeDocuments);
     handleCloudUpdate('COMMUNICATIONS', setCommunications);
+    handleCloudUpdate('PARENT_COMPLAINTS', setParentComplaints);
+    handleCloudUpdate('OFFICIAL_ANNOUNCEMENTS', setOfficialAnnouncements);
     handleCloudUpdate('SUBSCRIPTION', setSchoolSubscription);
     handleCloudUpdate('INVOICES', setSubscriptionInvoices);
 
@@ -1097,6 +1622,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync state when currentSchoolId changes
   const switchSchool = (targetSchoolId: string) => {
+    if (isPermanentlyRevokedSchool(targetSchoolId)) {
+      alert("⛔ ACCÈS FORMELLEMENT RÉVOQUÉ ET BLOQUÉ :\nL'établissement « Collège Père Aupiais » a été définitivement supprimé et exclu de la plateforme par le Promoteur Général.");
+      return;
+    }
+
     const savedRegistryRaw = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_SCHOOLS_REGISTRY`);
     const savedRegistry: School[] = savedRegistryRaw ? JSON.parse(savedRegistryRaw) : [];
 
@@ -1201,6 +1731,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCanteenPlans(getTargetScoped('CANTEEN_PLANS', initialCanteenPlans));
     setAdministrativeDocuments(getTargetScoped('ADMINISTRATIVE_DOCUMENTS', initialAdministrativeDocuments));
     setCommunications(getTargetScoped('COMMUNICATIONS', initialCommunications));
+    setParentComplaints(getTargetScoped('PARENT_COMPLAINTS', initialParentComplaints));
+    setOfficialAnnouncements(getTargetScoped('OFFICIAL_ANNOUNCEMENTS', initialOfficialAnnouncements));
     setSchoolSubscription(getTargetScoped('SUBSCRIPTION', initialSchoolSubscription));
     setSubscriptionInvoices(getTargetScoped('INVOICES', initialSubscriptionInvoices));
 
@@ -1218,116 +1750,222 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_SETTINGS`, JSON.stringify(settings));
-    syncToCloud(currentSchoolId, 'SETTINGS', settings);
     if (settings.darkMode) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
+    if (isRemoteUpdateRef.current['SETTINGS']) {
+      isRemoteUpdateRef.current['SETTINGS'] = false;
+      return;
+    }
+    syncToCloud(currentSchoolId, 'SETTINGS', settings);
   }, [settings, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_CLASSES`, JSON.stringify(classes));
+    if (isRemoteUpdateRef.current['CLASSES']) {
+      isRemoteUpdateRef.current['CLASSES'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'CLASSES', classes);
   }, [classes, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_STUDENTS`, JSON.stringify(students));
+    if (isRemoteUpdateRef.current['STUDENTS']) {
+      isRemoteUpdateRef.current['STUDENTS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'STUDENTS', students);
   }, [students, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_TEACHERS`, JSON.stringify(teachers));
+    if (isRemoteUpdateRef.current['TEACHERS']) {
+      isRemoteUpdateRef.current['TEACHERS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'TEACHERS', teachers);
   }, [teachers, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_SUBJECTS`, JSON.stringify(subjects));
+    if (isRemoteUpdateRef.current['SUBJECTS']) {
+      isRemoteUpdateRef.current['SUBJECTS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'SUBJECTS', subjects);
   }, [subjects, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_GRADES`, JSON.stringify(grades));
+    if (isRemoteUpdateRef.current['GRADES']) {
+      isRemoteUpdateRef.current['GRADES'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'GRADES', grades);
   }, [grades, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_PAYMENTS`, JSON.stringify(payments));
+    if (isRemoteUpdateRef.current['PAYMENTS']) {
+      isRemoteUpdateRef.current['PAYMENTS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'PAYMENTS', payments);
   }, [payments, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_EXPENSES`, JSON.stringify(expenses));
+    if (isRemoteUpdateRef.current['EXPENSES']) {
+      isRemoteUpdateRef.current['EXPENSES'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'EXPENSES', expenses);
   }, [expenses, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_ATTENDANCE`, JSON.stringify(attendance));
+    if (isRemoteUpdateRef.current['ATTENDANCE']) {
+      isRemoteUpdateRef.current['ATTENDANCE'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'ATTENDANCE', attendance);
   }, [attendance, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_TIMETABLE`, JSON.stringify(timetable));
+    if (isRemoteUpdateRef.current['TIMETABLE']) {
+      isRemoteUpdateRef.current['TIMETABLE'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'TIMETABLE', timetable);
   }, [timetable, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_EXAMS`, JSON.stringify(exams));
+    if (isRemoteUpdateRef.current['EXAMS']) {
+      isRemoteUpdateRef.current['EXAMS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'EXAMS', exams);
   }, [exams, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_EXAM_PAPERS`, JSON.stringify(examPapers));
+    if (isRemoteUpdateRef.current['EXAM_PAPERS']) {
+      isRemoteUpdateRef.current['EXAM_PAPERS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'EXAM_PAPERS', examPapers);
   }, [examPapers, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_ARCHIVED_REPORT_CARDS`, JSON.stringify(archivedReportCards));
+    if (isRemoteUpdateRef.current['ARCHIVED_REPORT_CARDS']) {
+      isRemoteUpdateRef.current['ARCHIVED_REPORT_CARDS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'ARCHIVED_REPORT_CARDS', archivedReportCards);
   }, [archivedReportCards, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_HOMEWORK`, JSON.stringify(homework));
+    if (isRemoteUpdateRef.current['HOMEWORK']) {
+      isRemoteUpdateRef.current['HOMEWORK'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'HOMEWORK', homework);
   }, [homework, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_BOOKS`, JSON.stringify(books));
+    if (isRemoteUpdateRef.current['BOOKS']) {
+      isRemoteUpdateRef.current['BOOKS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'BOOKS', books);
   }, [books, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_BOOK_LOANS`, JSON.stringify(bookLoans));
+    if (isRemoteUpdateRef.current['BOOK_LOANS']) {
+      isRemoteUpdateRef.current['BOOK_LOANS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'BOOK_LOANS', bookLoans);
   }, [bookLoans, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_CANTEEN_MENUS`, JSON.stringify(canteenMenus));
+    if (isRemoteUpdateRef.current['CANTEEN_MENUS']) {
+      isRemoteUpdateRef.current['CANTEEN_MENUS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'CANTEEN_MENUS', canteenMenus);
   }, [canteenMenus, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_CANTEEN_PLANS`, JSON.stringify(canteenPlans));
+    if (isRemoteUpdateRef.current['CANTEEN_PLANS']) {
+      isRemoteUpdateRef.current['CANTEEN_PLANS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'CANTEEN_PLANS', canteenPlans);
   }, [canteenPlans, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_ADMINISTRATIVE_DOCUMENTS`, JSON.stringify(administrativeDocuments));
+    if (isRemoteUpdateRef.current['ADMINISTRATIVE_DOCUMENTS']) {
+      isRemoteUpdateRef.current['ADMINISTRATIVE_DOCUMENTS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'ADMINISTRATIVE_DOCUMENTS', administrativeDocuments);
   }, [administrativeDocuments, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_COMMUNICATIONS`, JSON.stringify(communications));
+    if (isRemoteUpdateRef.current['COMMUNICATIONS']) {
+      isRemoteUpdateRef.current['COMMUNICATIONS'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'COMMUNICATIONS', communications);
   }, [communications, currentSchoolId]);
 
   useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_PARENT_COMPLAINTS`, JSON.stringify(parentComplaints));
+    if (isRemoteUpdateRef.current['PARENT_COMPLAINTS']) {
+      isRemoteUpdateRef.current['PARENT_COMPLAINTS'] = false;
+      return;
+    }
+    syncToCloud(currentSchoolId, 'PARENT_COMPLAINTS', parentComplaints);
+  }, [parentComplaints, currentSchoolId]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_OFFICIAL_ANNOUNCEMENTS`, JSON.stringify(officialAnnouncements));
+    if (isRemoteUpdateRef.current['OFFICIAL_ANNOUNCEMENTS']) {
+      isRemoteUpdateRef.current['OFFICIAL_ANNOUNCEMENTS'] = false;
+      return;
+    }
+    syncToCloud(currentSchoolId, 'OFFICIAL_ANNOUNCEMENTS', officialAnnouncements);
+  }, [officialAnnouncements, currentSchoolId]);
+
+  useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_SUBSCRIPTION`, JSON.stringify(schoolSubscription));
+    if (isRemoteUpdateRef.current['SUBSCRIPTION']) {
+      isRemoteUpdateRef.current['SUBSCRIPTION'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'SUBSCRIPTION', schoolSubscription);
   }, [schoolSubscription, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_INVOICES`, JSON.stringify(subscriptionInvoices));
+    if (isRemoteUpdateRef.current['INVOICES']) {
+      isRemoteUpdateRef.current['INVOICES'] = false;
+      return;
+    }
     syncToCloud(currentSchoolId, 'INVOICES', subscriptionInvoices);
   }, [subscriptionInvoices, currentSchoolId]);
 
@@ -1388,6 +2026,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     },
     populateSampleData: boolean = true
   ): School => {
+    if (isPermanentlyRevokedSchool(schoolData.name) || isPermanentlyRevokedSchool(schoolData.email)) {
+      throw new Error("⛔ Action refusée : L'établissement « Collège Père Aupiais » est formellement bloqué et exclu de cette plateforme par le Promoteur Général.");
+    }
+
     const newId = `sch-${Date.now()}`;
     const newPassword = schoolData.accessPassword && schoolData.accessPassword.trim().length === 8
       ? schoolData.accessPassword.trim()
@@ -1548,6 +2190,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pwd?: string;
     }
   ) => {
+    if (!schoolId || isSchoolDeleted(schoolId) || isPermanentlyRevokedSchool(schoolId)) {
+      console.warn(`[Blocked/Deleted] School "${schoolId}" is deleted or revoked. Access link rejected.`);
+      return;
+    }
+
     const todayIso = new Date().toISOString();
     const cleanName = meta?.name ? cleanSchoolName(meta.name) : undefined;
 
@@ -1555,6 +2202,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const existing = prev.find(s => s.id === schoolId || (s as any).officialCode === schoolId);
       let updatedList: School[];
       if (existing) {
+        // If school is currently blocked, PRESERVE BLOCKED STATUS! DO NOT UNBLOCK!
+        const isCurrentlyBlocked = existing.isBlocked === true || existing.isValidatedByPromoter === false || isExplicitlyBlockedSchool(existing);
+        
         updatedList = prev.map(s => {
           if (s.id === existing.id || (s as any).officialCode === schoolId) {
             return {
@@ -1564,8 +2214,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               directorName: meta?.directorName || s.directorName,
               phone: meta?.phone || s.phone,
               accessPassword: meta?.pwd || s.accessPassword,
-              isValidatedByPromoter: true,
-              isBlocked: false,
+              isValidatedByPromoter: isCurrentlyBlocked ? false : true,
+              isBlocked: isCurrentlyBlocked ? true : false,
+              blockReason: isCurrentlyBlocked ? (s.blockReason || "Abonnement requis ou compte suspendu à distance par le Promoteur Général") : undefined,
               validatedAt: todayIso
             };
           }
@@ -1628,6 +2279,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_SCHOOLS_REGISTRY`, JSON.stringify(updatedList));
+      syncSchoolsRegistryToCloud(updatedList);
       return updatedList;
     });
 
@@ -1675,16 +2327,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    setUnlockedSchoolIds(prev => prev.includes(schoolId) ? prev : [...prev, schoolId]);
+    // Only unlock if not blocked!
+    const targetCheck = schools.find(s => s.id === schoolId || (s as any).officialCode === schoolId);
+    if (!targetCheck || (!targetCheck.isBlocked && targetCheck.isValidatedByPromoter !== false)) {
+      setUnlockedSchoolIds(prev => prev.includes(schoolId) ? prev : [...prev, schoolId]);
+    }
   };
 
   const deleteSchool = (schoolId: string) => {
-    if (schools.length <= 1) return; // Prevent deleting last remaining school
-    setSchools(prev => prev.filter(s => s.id !== schoolId));
-    if (currentSchoolId === schoolId) {
-      const remaining = schools.filter(s => s.id !== schoolId);
+    if (schools.length <= 1 && !isPermanentlyRevokedSchool(schoolId)) return; // Prevent deleting last remaining school
+    
+    const target = schools.find(s => s.id === schoolId || (s as any).officialCode === schoolId);
+    const targetId = target ? target.id : schoolId;
+    const targetCode = (target as any)?.officialCode;
+
+    // 1. Add to deletedSchoolIds blacklist to invalidate its link forever
+    const blacklist = [targetId];
+    if (targetCode) blacklist.push(targetCode);
+    if (target?.name) blacklist.push(target.name.trim().toLowerCase());
+
+    setDeletedSchoolIds(prev => {
+      const updated = Array.from(new Set([...prev, ...blacklist]));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DELETED_SCHOOL_IDS`, JSON.stringify(updated));
+      }
+      syncDeletedSchoolsToCloud(updated);
+      return updated;
+    });
+
+    // 2. Remove from active schools registry and sync to Cloud
+    setSchools(prev => {
+      const updated = prev.filter(s => s.id !== targetId && (s as any).officialCode !== targetId && !isPermanentlyRevokedSchool(s));
+      localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_SCHOOLS_REGISTRY`, JSON.stringify(updated));
+      syncSchoolsRegistryToCloud(updated);
+      return updated;
+    });
+
+    // 3. Remove from unlocked sessions
+    setUnlockedSchoolIds(prev => prev.filter(id => id !== targetId && id !== targetCode));
+
+    // 4. Remove local storage data for that school
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && (k.includes(targetId) || (targetCode && k.includes(targetCode)) || (targetId.includes('aupiais') && k.toLowerCase().includes('aupiais')))) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch (e) {}
+
+    // 5. If current school is the deleted one, switch away
+    if (currentSchoolId === targetId || currentSchoolId === targetCode || isPermanentlyRevokedSchool(currentSchoolId)) {
+      const remaining = schools.filter(s => s.id !== targetId && (s as any).officialCode !== targetId && !blacklist.includes(s.id) && !isPermanentlyRevokedSchool(s));
       if (remaining.length > 0) {
         switchSchool(remaining[0].id);
+      } else if (initialSchools.length > 0) {
+        switchSchool(initialSchools[0].id);
       }
     }
   };
@@ -1736,15 +2434,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Class actions
   const addClass = (cls: Omit<SchoolClass, 'id'>) => {
     const newCls: SchoolClass = { ...cls, id: `cls-${Date.now()}` };
-    setClasses(prev => [...prev, newCls]);
+    setClasses(prev => {
+      const updated = [...prev, newCls];
+      syncToCloud(currentSchoolId, 'CLASSES', updated);
+      return updated;
+    });
   };
 
   const updateClass = (id: string, cls: Partial<SchoolClass>) => {
-    setClasses(prev => prev.map(c => c.id === id ? { ...c, ...cls } : c));
+    setClasses(prev => {
+      const updated = prev.map(c => c.id === id ? { ...c, ...cls } : c);
+      syncToCloud(currentSchoolId, 'CLASSES', updated);
+      return updated;
+    });
   };
 
   const deleteClass = (id: string) => {
-    setClasses(prev => prev.filter(c => c.id !== id));
+    setClasses(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      syncToCloud(currentSchoolId, 'CLASSES', updated);
+      return updated;
+    });
   };
 
   // Student actions
@@ -1761,10 +2471,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `std-${Date.now()}`,
       registrationNumber: regNum
     };
-    setStudents(prev => [...prev, newStudent]);
+    
+    setStudents(prev => {
+      const updated = [...prev, newStudent];
+      syncToCloud(currentSchoolId, 'STUDENTS', updated);
+      return updated;
+    });
     
     // Update student count in class
-    setClasses(prev => prev.map(c => c.id === stdData.classId ? { ...c, studentCount: c.studentCount + 1 } : c));
+    setClasses(prev => {
+      const updated = prev.map(c => c.id === stdData.classId ? { ...c, studentCount: c.studentCount + 1 } : c);
+      syncToCloud(currentSchoolId, 'CLASSES', updated);
+      return updated;
+    });
     return newStudent;
   };
 
@@ -1791,35 +2510,99 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    setStudents(prev => [...prev, ...created]);
+    setStudents(prev => {
+      const updated = [...prev, ...created];
+      syncToCloud(currentSchoolId, 'STUDENTS', updated);
+      return updated;
+    });
 
-    setClasses(prev => prev.map(c => {
-      const add = classCountAdditions[c.id] || 0;
-      if (add > 0) {
-        return { ...c, studentCount: c.studentCount + add };
-      }
-      return c;
-    }));
+    setClasses(prev => {
+      const updated = prev.map(c => {
+        const add = classCountAdditions[c.id] || 0;
+        if (add > 0) {
+          return { ...c, studentCount: c.studentCount + add };
+        }
+        return c;
+      });
+      syncToCloud(currentSchoolId, 'CLASSES', updated);
+      return updated;
+    });
 
     return created;
   };
 
   const updateStudent = (id: string, std: Partial<Student>) => {
-    setStudents(prev => prev.map(s => s.id === id ? { ...s, ...std } : s));
+    setStudents(prev => {
+      const oldStudent = prev.find(s => s.id === id);
+      if (oldStudent && std.classId && std.classId !== oldStudent.classId) {
+        setClasses(clsPrev => {
+          const updatedCls = clsPrev.map(c => {
+            if (c.id === oldStudent.classId) return { ...c, studentCount: Math.max(0, c.studentCount - 1) };
+            if (c.id === std.classId) return { ...c, studentCount: c.studentCount + 1 };
+            return c;
+          });
+          syncToCloud(currentSchoolId, 'CLASSES', updatedCls);
+          return updatedCls;
+        });
+      }
+      const updated = prev.map(s => s.id === id ? { ...s, ...std } : s);
+      syncToCloud(currentSchoolId, 'STUDENTS', updated);
+      return updated;
+    });
   };
 
   const deleteStudent = (id: string) => {
     const std = students.find(s => s.id === id);
     if (std) {
-      setClasses(prev => prev.map(c => c.id === std.classId ? { ...c, studentCount: Math.max(0, c.studentCount - 1) } : c));
+      setClasses(prev => {
+        const updated = prev.map(c => c.id === std.classId ? { ...c, studentCount: Math.max(0, c.studentCount - 1) } : c);
+        syncToCloud(currentSchoolId, 'CLASSES', updated);
+        return updated;
+      });
     }
-    setStudents(prev => prev.filter(s => s.id !== id));
+    setStudents(prev => {
+      const updated = prev.filter(s => s.id !== id);
+      syncToCloud(currentSchoolId, 'STUDENTS', updated);
+      return updated;
+    });
+  };
+
+  const deleteMultipleStudents = (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    const idSet = new Set(ids);
+    const toDelete = students.filter(s => idSet.has(s.id));
+    if (toDelete.length === 0) return;
+
+    // Recalculate class student counts
+    const classCountDeltas: Record<string, number> = {};
+    toDelete.forEach(s => {
+      classCountDeltas[s.classId] = (classCountDeltas[s.classId] || 0) + 1;
+    });
+
+    setClasses(prev => {
+      const updated = prev.map(c => {
+        const delta = classCountDeltas[c.id] || 0;
+        if (delta > 0) {
+          return { ...c, studentCount: Math.max(0, c.studentCount - delta) };
+        }
+        return c;
+      });
+      syncToCloud(currentSchoolId, 'CLASSES', updated);
+      return updated;
+    });
+
+    setStudents(prev => {
+      const updated = prev.filter(s => !idSet.has(s.id));
+      syncToCloud(currentSchoolId, 'STUDENTS', updated);
+      return updated;
+    });
   };
 
   // Teacher actions
-  const addTeacher = (tch: Omit<Teacher, 'id'>) => {
+  const addTeacher = (tch: Omit<Teacher, 'id'>): Teacher => {
     const newTeacher: Teacher = { ...tch, id: `tch-${Date.now()}` };
     setTeachers(prev => [...prev, newTeacher]);
+    return newTeacher;
   };
 
   const updateTeacher = (id: string, tch: Partial<Teacher>) => {
@@ -1842,21 +2625,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Grade actions
   const addGrade = (grd: Omit<Grade, 'id'>) => {
-    const newGrade: Grade = { ...grd, id: `grd-${Date.now()}` };
-    setGrades(prev => [...prev, newGrade]);
+    const newGrade: Grade = {
+      ...grd,
+      id: `grd-${Date.now()}`,
+      createdAt: (grd as any).createdAt || new Date().toISOString()
+    };
+    setGrades(prev => {
+      const updated = [...prev, newGrade];
+      syncToCloud(currentSchoolId, 'GRADES', updated);
+      return updated;
+    });
   };
 
   const addBulkGrades = (grds: Omit<Grade, 'id'>[]) => {
-    const newGradesWithIds: Grade[] = grds.map((g, idx) => ({ ...g, id: `grd-${Date.now()}-${idx}` }));
-    setGrades(prev => [...prev, ...newGradesWithIds]);
+    const nowIso = new Date().toISOString();
+    const newGradesWithIds: Grade[] = grds.map((g, idx) => ({
+      ...g,
+      id: `grd-${Date.now()}-${idx}`,
+      createdAt: (g as any).createdAt || nowIso
+    }));
+    setGrades(prev => {
+      const updated = [...prev, ...newGradesWithIds];
+      syncToCloud(currentSchoolId, 'GRADES', updated);
+      return updated;
+    });
   };
 
   const updateGrade = (id: string, grd: Partial<Grade>) => {
-    setGrades(prev => prev.map(g => g.id === id ? { ...g, ...grd } : g));
+    setGrades(prev => {
+      const updated = prev.map(g => g.id === id ? { ...g, ...grd, updatedAt: new Date().toISOString() } : g);
+      syncToCloud(currentSchoolId, 'GRADES', updated);
+      return updated;
+    });
   };
 
   const deleteGrade = (id: string) => {
-    setGrades(prev => prev.filter(g => g.id !== id));
+    setGrades(prev => {
+      const updated = prev.filter(g => g.id !== id);
+      syncToCloud(currentSchoolId, 'GRADES', updated);
+      return updated;
+    });
   };
 
   // Payment actions
@@ -1869,25 +2677,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `pym-${Date.now()}`,
       receiptNumber
     };
-    setPayments(prev => [newPym, ...prev]);
+    setPayments(prev => {
+      const updated = [newPym, ...prev];
+      syncToCloud(currentSchoolId, 'PAYMENTS', updated);
+      return updated;
+    });
     return newPym;
   };
 
   // Expense actions
   const addExpense = (exp: Omit<Expense, 'id'>) => {
     const newExp: Expense = { ...exp, id: `exp-${Date.now()}` };
-    setExpenses(prev => [newExp, ...prev]);
+    setExpenses(prev => {
+      const updated = [newExp, ...prev];
+      syncToCloud(currentSchoolId, 'EXPENSES', updated);
+      return updated;
+    });
   };
 
   // Attendance actions
   const addAttendanceRecord = (record: Omit<AttendanceRecord, 'id'>) => {
     const newAtt: AttendanceRecord = { ...record, id: `att-${Date.now()}` };
-    setAttendance(prev => [newAtt, ...prev]);
+    setAttendance(prev => {
+      const updated = [newAtt, ...prev];
+      syncToCloud(currentSchoolId, 'ATTENDANCE', updated);
+      return updated;
+    });
   };
 
   const saveBulkAttendance = (records: Omit<AttendanceRecord, 'id'>[]) => {
     const formatted = records.map((r, i) => ({ ...r, id: `att-${Date.now()}-${i}` }));
-    setAttendance(prev => [...formatted, ...prev]);
+    setAttendance(prev => {
+      const updated = [...formatted, ...prev];
+      syncToCloud(currentSchoolId, 'ATTENDANCE', updated);
+      return updated;
+    });
   };
 
   // Timetable
@@ -2119,6 +2943,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'LIVRE'
     };
     setCommunications(prev => [newMsg, ...prev]);
+  };
+
+  // Parent Complaints & Audio / Photo Messages
+  const addParentComplaint = (complaint: Omit<ParentComplaintMessage, 'id' | 'createdAt' | 'status' | 'isReadBySchool'>): ParentComplaintMessage => {
+    const newComplaint: ParentComplaintMessage = {
+      ...complaint,
+      id: `complaint-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      status: 'NOUVEAU',
+      isReadBySchool: false
+    };
+    setParentComplaints(prev => [newComplaint, ...prev]);
+    return newComplaint;
+  };
+
+  const updateParentComplaint = (id: string, updates: Partial<ParentComplaintMessage>) => {
+    setParentComplaints(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  };
+
+  const deleteParentComplaint = (id: string) => {
+    setParentComplaints(prev => prev.filter(c => c.id !== id));
+  };
+
+  const replyToParentComplaint = (id: string, reply: string, replierName: string) => {
+    const now = new Date().toISOString();
+    setParentComplaints(prev => prev.map(c => {
+      if (c.id === id) {
+        return {
+          ...c,
+          schoolReply: reply,
+          repliedAt: now,
+          repliedBy: replierName,
+          status: 'RESOLU' as const,
+          isReadBySchool: true
+        };
+      }
+      return c;
+    }));
+  };
+
+  const markParentComplaintAsRead = (id: string) => {
+    setParentComplaints(prev => prev.map(c => c.id === id ? { ...c, isReadBySchool: true } : c));
+  };
+
+  // Official Announcements & Private Parent Notices
+  const addOfficialAnnouncement = (announcement: Omit<OfficialAnnouncement, 'id' | 'createdAt'>): OfficialAnnouncement => {
+    const newAnnouncement: OfficialAnnouncement = {
+      ...announcement,
+      id: `ann-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      readReceipts: announcement.readReceipts || []
+    };
+    setOfficialAnnouncements(prev => [newAnnouncement, ...prev]);
+    return newAnnouncement;
+  };
+
+  const updateOfficialAnnouncement = (id: string, updates: Partial<OfficialAnnouncement>) => {
+    setOfficialAnnouncements(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+  };
+
+  const deleteOfficialAnnouncement = (id: string) => {
+    setOfficialAnnouncements(prev => prev.filter(a => a.id !== id));
+  };
+
+  const markAnnouncementAsReadByParent = (announcementId: string, parentPhoneOrStudentId: string) => {
+    if (!parentPhoneOrStudentId) return;
+    setOfficialAnnouncements(prev => prev.map(a => {
+      if (a.id === announcementId) {
+        const existing = a.readReceipts || [];
+        if (!existing.includes(parentPhoneOrStudentId)) {
+          return {
+            ...a,
+            readReceipts: [...existing, parentPhoneOrStudentId]
+          };
+        }
+      }
+      return a;
+    }));
   };
 
   // Subscriptions
@@ -2409,6 +3311,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clearPromoterNotifications,
         updateSchool,
         deleteSchool,
+        deletedSchoolIds,
+        isSchoolDeleted,
+        isSchoolBlocked,
+        isPermanentlyRevokedSchool,
 
         currentUser,
         setCurrentUser,
@@ -2430,6 +3336,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addBulkStudents,
         updateStudent,
         deleteStudent,
+        deleteMultipleStudents,
 
         teachers,
         addTeacher,
@@ -2510,6 +3417,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         communications,
         addCommunication,
 
+        parentComplaints,
+        addParentComplaint,
+        updateParentComplaint,
+        deleteParentComplaint,
+        replyToParentComplaint,
+        markParentComplaintAsRead,
+
+        officialAnnouncements,
+        addOfficialAnnouncement,
+        updateOfficialAnnouncement,
+        deleteOfficialAnnouncement,
+        markAnnouncementAsReadByParent,
+
         subscriptionPlans,
         schoolSubscription,
         subscriptionInvoices,
@@ -2527,6 +3447,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         registerSchoolViaCampaign,
         approveSchoolByPromoter,
         rejectSchoolByPromoter,
+
+        parentActivations,
+        directorNotifications,
+        markDirectorNotificationAsRead,
+        clearDirectorNotifications,
+        lookupParentByPhone,
+        activateParentRemotely,
+        verifyAndClaimReceiptCode,
+        toggleSchoolPayout,
+        getSchoolMonthlyActivatedParentsCount,
 
         resetToDefaultData
       }}

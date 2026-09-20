@@ -25,6 +25,7 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  FileDown,
   Share2,
   Filter
 } from 'lucide-react';
@@ -33,6 +34,11 @@ import { ScanTimetableModal } from '../components/modals/ScanTimetableModal';
 import { UploadTimetableModal } from '../components/modals/UploadTimetableModal';
 import { PrintTimetableModal } from '../components/modals/PrintTimetableModal';
 import { TimetableAICopilot } from '../components/TimetableAICopilot';
+import {
+  exportTimetableToPdf,
+  exportTimetableToWord,
+  exportTimetableToExcel
+} from '../lib/timetableExportUtils';
 
 export const TimetableView: React.FC = () => {
   const {
@@ -198,6 +204,70 @@ export const TimetableView: React.FC = () => {
     setIsPrintModalOpen(true);
   };
 
+  // Quick Direct PDF Download for the current active selection
+  const handleQuickDownloadPdf = (targetCls?: any, targetTch?: any) => {
+    try {
+      const cls = targetCls || currentClassObj;
+      const tch = targetTch || currentTeacherObj;
+      const isTeacher = currentViewTab === 'BY_TEACHER';
+      const relevantSlots = isTeacher
+        ? currentTeacherSlots
+        : timetable.filter(t => t.classId === cls?.id);
+
+      exportTimetableToPdf({
+        mode: isTeacher ? 'TEACHER' : 'CLASS',
+        currentClass: cls,
+        currentTeacher: tch,
+        classes,
+        subjects,
+        teachers,
+        slots: relevantSlots,
+        settings,
+        currentSchool,
+        showSignature: true,
+        showSubjectSummary: true
+      });
+      setNoticeMsg(`Emploi du temps téléchargé en fichier PDF (${isTeacher ? (tch?.firstName || 'Enseignant') : (cls?.name || 'Classe')})`);
+      setTimeout(() => setNoticeMsg(null), 3500);
+    } catch (err: any) {
+      console.error('Erreur export PDF:', err);
+      setNoticeMsg('Erreur lors du téléchargement du PDF');
+      setTimeout(() => setNoticeMsg(null), 3500);
+    }
+  };
+
+  // Quick Direct Word (.doc) Download for the current active selection
+  const handleQuickDownloadWord = (targetCls?: any, targetTch?: any) => {
+    try {
+      const cls = targetCls || currentClassObj;
+      const tch = targetTch || currentTeacherObj;
+      const isTeacher = currentViewTab === 'BY_TEACHER';
+      const relevantSlots = isTeacher
+        ? currentTeacherSlots
+        : timetable.filter(t => t.classId === cls?.id);
+
+      exportTimetableToWord({
+        mode: isTeacher ? 'TEACHER' : 'CLASS',
+        currentClass: cls,
+        currentTeacher: tch,
+        classes,
+        subjects,
+        teachers,
+        slots: relevantSlots,
+        settings,
+        currentSchool,
+        showSignature: true,
+        showSubjectSummary: true
+      });
+      setNoticeMsg(`Emploi du temps téléchargé en fichier Word (.doc) (${isTeacher ? (tch?.firstName || 'Enseignant') : (cls?.name || 'Classe')})`);
+      setTimeout(() => setNoticeMsg(null), 3500);
+    } catch (err: any) {
+      console.error('Erreur export Word:', err);
+      setNoticeMsg('Erreur lors du téléchargement du document Word');
+      setTimeout(() => setNoticeMsg(null), 3500);
+    }
+  };
+
   return (
     <div className="space-y-6">
       
@@ -218,7 +288,7 @@ export const TimetableView: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Téléversez (photos, scans PDF, tableurs Excel) ou téléchargez les emplois du temps officiels haute définition.
+                Téléversez ou téléchargez les emplois du temps officiels en PDF ou Word (.doc).
               </p>
             </div>
           </div>
@@ -231,45 +301,69 @@ export const TimetableView: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsUploadModalOpen(true)}
-            className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] text-white font-black text-xs flex items-center space-x-2 shadow-md shadow-blue-500/20 cursor-pointer transition-all"
+            className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] text-white font-black text-xs flex items-center space-x-2 shadow-md shadow-blue-500/20 cursor-pointer transition-all"
             title="Téléverser une photo, un scan PDF ou un fichier Excel d'emploi du temps"
           >
             <Upload className="h-4 w-4 text-blue-200" />
-            <span>Téléverser Emploi du Temps</span>
+            <span>Téléverser</span>
           </button>
 
-          {/* DOWNLOAD / TÉLÉCHARGER BUTTON */}
+          {/* DIRECT PDF DOWNLOAD BUTTON */}
+          <button
+            type="button"
+            onClick={handleQuickDownloadPdf}
+            className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 active:scale-[0.99] text-white font-black text-xs flex items-center space-x-1.5 shadow-md shadow-red-500/20 cursor-pointer transition-all"
+            title="Télécharger directement l'emploi du temps actuel en fichier PDF"
+          >
+            <FileDown className="h-4 w-4 text-red-200" />
+            <span>Télécharger PDF</span>
+          </button>
+
+          {/* DIRECT WORD DOWNLOAD BUTTON */}
+          <button
+            type="button"
+            onClick={handleQuickDownloadWord}
+            className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-600 hover:to-indigo-600 active:scale-[0.99] text-white font-black text-xs flex items-center space-x-1.5 shadow-md shadow-blue-700/20 cursor-pointer transition-all"
+            title="Télécharger directement l'emploi du temps actuel en fichier Word (.doc)"
+          >
+            <FileText className="h-4 w-4 text-blue-200" />
+            <span>Télécharger Word</span>
+          </button>
+
+          {/* MODAL OPENER FOR ALL FORMATS / OPTIONS */}
           <button
             type="button"
             onClick={() => handleOpenPrintModal('CLASS')}
-            className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.99] text-white font-black text-xs flex items-center space-x-2 shadow-md shadow-emerald-500/20 cursor-pointer transition-all"
-            title="Télécharger l'emploi du temps en PDF, Tableur Excel ou le partager sur WhatsApp"
+            className="px-3.5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white font-black text-xs flex items-center space-x-1.5 shadow-md shadow-emerald-600/20 cursor-pointer transition-all"
+            title="Options d'export par classe, par enseignant, Excel ou WhatsApp"
           >
             <Download className="h-4 w-4 text-emerald-200" />
-            <span>Télécharger / Imprimer (PDF & Excel)</span>
+            <span>Options & Export</span>
           </button>
 
           {/* Toggle AI Copilot Side Panel */}
           <button
             type="button"
             onClick={() => setShowAICopilot(!showAICopilot)}
-            className={`px-3.5 py-2.5 rounded-2xl font-black text-xs flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer ${
+            className={`px-3 py-2.5 rounded-2xl font-black text-xs flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer ${
               showAICopilot
                 ? 'bg-indigo-950 text-white shadow-indigo-950/20 border border-indigo-800'
                 : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200'
             }`}
           >
             <Bot className="h-4 w-4 text-amber-400" />
-            <span>{showAICopilot ? 'Masquer Copilote' : 'Copilote IA'}</span>
+            <span>{showAICopilot ? 'Copilote' : 'Copilote IA'}</span>
           </button>
 
-          {/* Quick Browser Print Button */}
+          {/* Direct Download For Printing Button */}
           <button
-            onClick={() => window.print()}
+            type="button"
+            onClick={() => handleQuickDownloadPdf()}
             className="px-3 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center space-x-1.5 shadow-sm transition-colors cursor-pointer"
-            title="Impression rapide de la page"
+            title="Télécharger en PDF haute définition pour impression sur papier"
           >
-            <Printer className="h-4 w-4" />
+            <FileDown className="h-4 w-4 text-red-600" />
+            <span className="hidden sm:inline">PDF pour Impression</span>
           </button>
 
         </div>
@@ -337,15 +431,38 @@ export const TimetableView: React.FC = () => {
                 ))}
               </select>
 
-              <button
-                type="button"
-                onClick={() => handleOpenPrintModal('CLASS')}
-                className="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-bold text-slate-800 dark:text-slate-200 flex items-center space-x-1.5 cursor-pointer"
-                title="Télécharger cette classe"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span>Télécharger</span>
-              </button>
+              {/* Direct PDF and Word download buttons for Class */}
+              <div className="flex items-center space-x-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleQuickDownloadPdf(currentClassObj)}
+                  className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow-xs cursor-pointer transition-all"
+                  title="Télécharger directement l'emploi du temps de cette classe en PDF"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  <span>PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickDownloadWord(currentClassObj)}
+                  className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow-xs cursor-pointer transition-all"
+                  title="Télécharger directement l'emploi du temps de cette classe en Word (.doc)"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Word</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenPrintModal('CLASS')}
+                  className="px-2.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center space-x-1 cursor-pointer"
+                  title="Toutes les options et export personnalisé"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Options</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -367,15 +484,38 @@ export const TimetableView: React.FC = () => {
                 })}
               </select>
 
-              <button
-                type="button"
-                onClick={() => handleOpenPrintModal('TEACHER')}
-                className="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-bold text-slate-800 dark:text-slate-200 flex items-center space-x-1.5 cursor-pointer"
-                title="Télécharger planning enseignant"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span>Télécharger</span>
-              </button>
+              {/* Direct PDF and Word download buttons for Teacher */}
+              <div className="flex items-center space-x-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleQuickDownloadPdf(undefined, currentTeacherObj)}
+                  className="px-3 py-2 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow-xs cursor-pointer transition-all"
+                  title="Télécharger directement le planning de cet enseignant en PDF"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  <span>PDF</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickDownloadWord(undefined, currentTeacherObj)}
+                  className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow-xs cursor-pointer transition-all"
+                  title="Télécharger directement le planning de cet enseignant en Word (.doc)"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Word</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenPrintModal('TEACHER')}
+                  className="px-2.5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-bold text-slate-800 dark:text-slate-200 text-xs flex items-center space-x-1 cursor-pointer"
+                  title="Toutes les options et export personnalisé"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Options</span>
+                </button>
+              </div>
             </div>
           )}
 
@@ -416,14 +556,24 @@ export const TimetableView: React.FC = () => {
                 </span>
               </div>
 
-              <div className="flex items-center space-x-3 text-[11px]">
+              <div className="flex items-center space-x-2 text-[11px]">
                 <button
                   type="button"
-                  onClick={() => handleOpenPrintModal('CLASS')}
-                  className="text-blue-700 dark:text-blue-300 hover:underline font-bold flex items-center space-x-1 cursor-pointer"
+                  onClick={() => handleQuickDownloadPdf(currentClassObj)}
+                  className="px-2.5 py-1 rounded-lg bg-red-50 dark:bg-red-950/60 text-red-700 dark:text-red-300 hover:bg-red-100 border border-red-200 dark:border-red-800 font-bold flex items-center space-x-1 cursor-pointer transition-colors"
+                  title="Télécharger directement en PDF"
                 >
-                  <Download className="h-3 w-3" />
-                  <span>Exporter PDF HD</span>
+                  <FileDown className="h-3 w-3" />
+                  <span>Télécharger PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickDownloadWord(currentClassObj)}
+                  className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-100 border border-blue-200 dark:border-blue-800 font-bold flex items-center space-x-1 cursor-pointer transition-colors"
+                  title="Télécharger directement en Word (.doc)"
+                >
+                  <FileText className="h-3 w-3" />
+                  <span>Télécharger Word</span>
                 </button>
                 <span>&bull;</span>
                 <button
@@ -580,14 +730,37 @@ export const TimetableView: React.FC = () => {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => handleOpenPrintModal('TEACHER')}
-              className="px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center space-x-2 cursor-pointer shadow-md"
-            >
-              <Download className="h-4 w-4" />
-              <span>Télécharger Planning Enseignant (PDF / Excel)</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleQuickDownloadPdf(undefined, currentTeacherObj)}
+                className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 active:scale-95 text-white font-black text-xs flex items-center space-x-1.5 cursor-pointer shadow-md transition-all"
+                title="Télécharger directement en PDF"
+              >
+                <FileDown className="h-4 w-4 text-red-200" />
+                <span>Télécharger PDF</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickDownloadWord(undefined, currentTeacherObj)}
+                className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-600 hover:to-indigo-600 active:scale-95 text-white font-black text-xs flex items-center space-x-1.5 cursor-pointer shadow-md transition-all"
+                title="Télécharger directement en Word (.doc)"
+              >
+                <FileText className="h-4 w-4 text-blue-200" />
+                <span>Télécharger Word</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleOpenPrintModal('TEACHER')}
+                className="px-3.5 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center space-x-1.5 cursor-pointer border border-slate-300 dark:border-slate-700"
+                title="Options, Excel ou WhatsApp"
+              >
+                <Download className="h-4 w-4 text-slate-500" />
+                <span>Options & Excel</span>
+              </button>
+            </div>
           </div>
 
           {/* Teacher Grid Table */}
@@ -703,7 +876,7 @@ export const TimetableView: React.FC = () => {
                         Classe de {cls.name}
                       </span>
                       <span className="text-[10px] font-mono text-slate-400">
-                        {cls.roomNumber || 'Salle 101'}
+                        {cls.room || (cls as any).roomNumber || 'Salle 101'}
                       </span>
                     </div>
 
@@ -715,17 +888,37 @@ export const TimetableView: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center space-x-2">
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center space-x-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickDownloadPdf(cls)}
+                      className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white font-black text-xs flex items-center justify-center space-x-1 cursor-pointer shadow-xs transition-all"
+                      title={`Télécharger l'emploi du temps de ${cls.name} en PDF`}
+                    >
+                      <FileDown className="h-3.5 w-3.5" />
+                      <span>PDF</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleQuickDownloadWord(cls)}
+                      className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs flex items-center justify-center space-x-1 cursor-pointer shadow-xs transition-all"
+                      title={`Télécharger l'emploi du temps de ${cls.name} en Word (.doc)`}
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      <span>Word</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => {
                         setSelectedClassId(cls.id);
                         handleOpenPrintModal('CLASS');
                       }}
-                      className="flex-1 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 border border-slate-200 dark:border-slate-700 cursor-pointer"
+                      title="Plus d'options d'export"
                     >
-                      <Download className="h-3.5 w-3.5" />
-                      <span>Télécharger PDF / Excel</span>
+                      <Download className="h-4 w-4" />
                     </button>
 
                     <button

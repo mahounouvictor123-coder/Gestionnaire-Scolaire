@@ -32,21 +32,53 @@ interface SchoolLockGateProps {
   activeView?: string;
   onNavigate: (view: string) => void;
   onOpenCreateSchoolModal?: () => void;
-  onOpenDailyAccessModal?: () => void;
 }
 
 export const SchoolLockGate: React.FC<SchoolLockGateProps> = ({
   activeView,
   onNavigate,
-  onOpenCreateSchoolModal,
-  onOpenDailyAccessModal
+  onOpenCreateSchoolModal
 }) => {
-  const { currentSchool, unlockSchool, validateSchoolByPromoter, switchSchool, schools, isDailyAccessValid, setCurrentUser, settings } = useApp();
+  const { currentSchool, unlockSchool, validateSchoolByPromoter, switchSchool, schools, isDailyAccessValid, setCurrentUser, settings, isPermanentlyRevokedSchool } = useApp();
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [successInfo, setSuccessInfo] = useState<string | null>(null);
+
+  if (isPermanentlyRevokedSchool && isPermanentlyRevokedSchool(currentSchool)) {
+    return (
+      <div className="min-h-[80vh] flex items-center justify-center p-4">
+        <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border-2 border-rose-500 overflow-hidden text-center p-8 space-y-6">
+          <div className="w-16 h-16 mx-auto rounded-full bg-rose-100 dark:bg-rose-950/80 flex items-center justify-center text-rose-600 border border-rose-300">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <span className="px-3 py-1 rounded-full bg-rose-600 text-white font-black text-[11px] uppercase tracking-wider">
+              Accès Révoqué & Bloqué
+            </span>
+            <h2 className="text-xl font-black text-slate-900 dark:text-white">
+              Établissement Définitivement Bloqué
+            </h2>
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              L'accès de l'établissement <strong>« Collège Père Aupiais »</strong> à cette plateforme a été formellement révoqué, supprimé et bloqué par décision du Promoteur Général.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const safeSchool = schools.find(s => isPermanentlyRevokedSchool ? !isPermanentlyRevokedSchool(s) : true);
+              if (safeSchool) switchSchool(safeSchool.id);
+              onNavigate('dashboard');
+            }}
+            className="w-full py-3.5 px-4 rounded-xl bg-slate-900 text-white hover:bg-slate-800 font-bold text-xs cursor-pointer shadow-md"
+          >
+            Basculer vers un établissement autorisé
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const isDailyValid = isDailyAccessValid(currentSchool.id);
   const demoPassword = currentSchool.accessPassword || 'Exc2#202';
@@ -214,26 +246,15 @@ export const SchoolLockGate: React.FC<SchoolLockGateProps> = ({
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                {onOpenDailyAccessModal && (
-                  <button
-                    type="button"
-                    onClick={onOpenDailyAccessModal}
-                    className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs flex items-center justify-center space-x-1.5 transition-all shadow-md cursor-pointer"
-                  >
-                    <Zap className="h-4 w-4 fill-slate-950" />
-                    <span>Payer mon Abonnement (KKiaPay / MoMo)</span>
-                  </button>
-                )}
-
+              <div className="pt-1">
                 <a
                   href={`https://wa.me/2290167430381?text=${encodeURIComponent(`Bonjour Monsieur le Promoteur, je suis le Directeur de l'école "${currentSchool.name}". Je souhaite régler mon abonnement pour débloquer notre tableau de bord.`)}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-all shadow-md"
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center space-x-2 transition-all shadow-md"
                 >
                   <MessageSquare className="h-4 w-4 text-white" />
-                  <span>Contacter le Promoteur WhatsApp</span>
+                  <span>Contacter le Promoteur WhatsApp pour Activer l'Abonnement</span>
                 </a>
               </div>
             </div>
@@ -281,17 +302,15 @@ export const SchoolLockGate: React.FC<SchoolLockGateProps> = ({
                 </p>
               </div>
 
-              {onOpenDailyAccessModal && (
-                <button
-                  type="button"
-                  onClick={onOpenDailyAccessModal}
-                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center space-x-2 shadow-lg transition-all transform hover:scale-[1.02] active:scale-95 cursor-pointer"
-                >
-                  <Zap className="h-4 w-4 fill-slate-950" />
-                  <span>Renouveler mon accès à 250f</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              )}
+              <a
+                href={`https://wa.me/2290167430381?text=${encodeURIComponent(`Bonjour Monsieur le Promoteur, je suis le Directeur de l'école "${currentSchool.name}". Ma période d'accès est expirée, je souhaite renouveler mon abonnement.`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm flex items-center justify-center space-x-2 shadow-lg transition-all transform hover:scale-[1.02] active:scale-95 cursor-pointer"
+              >
+                <MessageSquare className="h-4 w-4 text-white" />
+                <span>Demander le renouvellement au Promoteur sur WhatsApp</span>
+              </a>
             </div>
           )}
 

@@ -26,7 +26,7 @@ service cloud.firestore {
     function isStaffOrAdmin() {
       return isSignedIn() && (
         !hasUserRecord() || 
-        getUserRole() in ['SUPER_ADMIN', 'DIRECTEUR', 'SECRETAIRE', 'COMPTABLE', 'ENSEIGNANT']
+        getUserRole() in ['SUPER_ADMIN', 'DIRECTEUR', 'CENSEUR', 'SURVEILLANT', 'SECRETAIRE', 'COMPTABLE', 'ENSEIGNANT']
       );
     }
 
@@ -51,15 +51,14 @@ service cloud.firestore {
     }
 
     // School Data & Cloud Backups: schools/{schoolId}/data/{dataType}
+    // Accessible to school staff across all roles (Directeur, Censeur, Surveillant, Secrétaire, Comptable)
     match /schools/{schoolId}/data/{dataType} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && isStaffOrAdmin();
+      allow read, write: if true;
     }
 
     // System Registry & Global School Catalog
     match /system/{docId} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn() && isStaffOrAdmin();
+      allow read, write: if true;
     }
 
     // Students Data

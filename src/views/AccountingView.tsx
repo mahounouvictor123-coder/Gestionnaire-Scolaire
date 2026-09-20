@@ -5,6 +5,7 @@ import { AIReminderModal } from '../components/modals/AIReminderModal';
 import { SendPaymentRemindersModal } from '../components/modals/SendPaymentRemindersModal';
 import { AddPaymentModal } from '../components/modals/AddPaymentModal';
 import { PrintReceiptModal } from '../components/modals/PrintReceiptModal';
+import { ConfigureClassFeesModal } from '../components/modals/ConfigureClassFeesModal';
 import {
   Wallet,
   TrendingUp,
@@ -60,6 +61,8 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
   const [showAddPaymentModal, setShowAddPaymentModal] = useState<boolean>(false);
   const [paymentStudentId, setPaymentStudentId] = useState<string | undefined>(undefined);
   const [selectedPaymentForReceipt, setSelectedPaymentForReceipt] = useState<Payment | null>(null);
+  const [showConfigureFeesModal, setShowConfigureFeesModal] = useState<boolean>(false);
+  const [targetConfigureClassId, setTargetConfigureClassId] = useState<string | undefined>(undefined);
 
   // Expenses State
   const [showAddExpense, setShowAddExpense] = useState(false);
@@ -69,14 +72,7 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
 
   // Tranche Configuration & Filters
   const [selectedTranche, setSelectedTranche] = useState<1 | 2 | 3>(1);
-  const [tranche1Amount, setTranche1Amount] = useState<number>(30000);
-  const [tranche2Amount, setTranche2Amount] = useState<number>(30000);
-  const [tranche3Amount, setTranche3Amount] = useState<number>(20000);
   const [trancheClassFilter, setTrancheClassFilter] = useState<string>('ALL');
-
-  const tranche1DueDate = "30 Novembre";
-  const tranche2DueDate = "28 Février";
-  const tranche3DueDate = "31 Mai";
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'UNPAID_ONLY' | 'PAID_ONLY'>('UNPAID_ONLY');
@@ -115,8 +111,16 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
     return classes.map(cls => {
       const classStudents = students.filter(s => s.classId === cls.id);
       const studentCount = classStudents.length;
-      const unitTuition = cls.tuitionFee || 450000;
+      const unitTuition = cls.tuitionFee || 100000;
       const totalExpectedTuition = studentCount * unitTuition;
+
+      // Extract specific tranches configured for this class
+      const t1 = cls.tranches?.[0]?.amount ?? Math.round(unitTuition * 0.4);
+      const t2 = cls.tranches?.[1]?.amount ?? Math.round(unitTuition * 0.35);
+      const t3 = cls.tranches?.[2]?.amount ?? Math.max(0, unitTuition - (t1 + t2));
+      const t1DueDate = cls.tranches?.[0]?.dueDate || "30 Novembre";
+      const t2DueDate = cls.tranches?.[1]?.dueDate || "28 Février";
+      const t3DueDate = cls.tranches?.[2]?.dueDate || "31 Mai";
 
       let totalCollected = 0;
       let fullyPaidCount = 0;
@@ -142,10 +146,10 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
 
         totalCollected += paidSoFar;
 
-        // Tranches breakdown for this student
-        const t1Target = tranche1Amount;
-        const t2Target = tranche1Amount + tranche2Amount;
-        const t3Target = tranche1Amount + tranche2Amount + tranche3Amount;
+        // Tranches breakdown for this student based on class-specific tranches
+        const t1Target = t1;
+        const t2Target = t1 + t2;
+        const t3Target = t1 + t2 + t3;
 
         const t1Remaining = Math.max(0, t1Target - paidSoFar);
         const t2Remaining = Math.max(0, t2Target - paidSoFar);
@@ -162,6 +166,9 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
           remaining,
           recoveryRate,
           status,
+          t1Target,
+          t2Target,
+          t3Target,
           t1Remaining,
           t2Remaining,
           t3Remaining,
@@ -173,15 +180,13 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
       const totalRemaining = Math.max(0, totalExpectedTuition - totalCollected);
       const classRecoveryRate = totalExpectedTuition > 0 ? Math.min(100, Math.round((totalCollected / totalExpectedTuition) * 100)) : 0;
 
-      // Class Tranche totals
-      const classT1Due = studentCount * tranche1Amount;
-      const classT2Due = studentCount * (tranche1Amount + tranche2Amount);
-      const classT3Due = studentCount * (tranche1Amount + tranche2Amount + tranche3Amount);
-
       return {
         classObj: cls,
         studentCount,
         unitTuition,
+        tranche1: { amount: t1, dueDate: t1DueDate },
+        tranche2: { amount: t2, dueDate: t2DueDate },
+        tranche3: { amount: t3, dueDate: t3DueDate },
         totalExpectedTuition,
         totalCollected,
         totalRemaining,
@@ -192,7 +197,7 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
         studentDetails
       };
     });
-  }, [classes, students, studentPaymentsMap, payments, tranche1Amount, tranche2Amount, tranche3Amount]);
+  }, [classes, students, studentPaymentsMap, payments]);
 
   // Overall Global Summary across all classes
   const globalClassSummary = useMemo(() => {
@@ -267,18 +272,39 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
     setShowAddExpense(false);
   };
 
-  // Student Payment Analysis per Tranche with Class Filter
-  const currentTrancheAmount = selectedTranche === 1 ? tranche1Amount : selectedTranche === 2 ? tranche2Amount : tranche3Amount;
+  // Student Payment Analysis per Tranche with Class-Specific Tranche Rules
   const currentTrancheName = selectedTranche === 1 ? "1ère Tranche (Sept. - Nov.)" : selectedTranche === 2 ? "2ème Tranche (Déc. - Fév.)" : "3ème Tranche (Mars - Mai)";
-  const currentTrancheDueDate = selectedTranche === 1 ? tranche1DueDate : selectedTranche === 2 ? tranche2DueDate : tranche3DueDate;
 
   const studentAnalysis = students.map(std => {
     const totalPaidSoFar = studentPaymentsMap[std.id] || 0;
+    const stdClass = classes.find(c => c.id === std.classId);
+    const unitTuition = stdClass?.tuitionFee || 100000;
     
-    // Evaluate status for the selected tranche
-    let trancheTarget = currentTrancheAmount;
-    if (selectedTranche === 2) trancheTarget = tranche1Amount + tranche2Amount;
-    if (selectedTranche === 3) trancheTarget = tranche1Amount + tranche2Amount + tranche3Amount;
+    const t1 = stdClass?.tranches?.[0]?.amount ?? Math.round(unitTuition * 0.4);
+    const t2 = stdClass?.tranches?.[1]?.amount ?? Math.round(unitTuition * 0.35);
+    const t3 = stdClass?.tranches?.[2]?.amount ?? Math.max(0, unitTuition - (t1 + t2));
+
+    const t1Date = stdClass?.tranches?.[0]?.dueDate || "30 Novembre";
+    const t2Date = stdClass?.tranches?.[1]?.dueDate || "28 Février";
+    const t3Date = stdClass?.tranches?.[2]?.dueDate || "31 Mai";
+
+    let trancheTarget = t1;
+    let trancheAmountForThisStep = t1;
+    let trancheDueDate = t1Date;
+
+    if (selectedTranche === 1) {
+      trancheTarget = t1;
+      trancheAmountForThisStep = t1;
+      trancheDueDate = t1Date;
+    } else if (selectedTranche === 2) {
+      trancheTarget = t1 + t2;
+      trancheAmountForThisStep = t2;
+      trancheDueDate = t2Date;
+    } else if (selectedTranche === 3) {
+      trancheTarget = t1 + t2 + t3;
+      trancheAmountForThisStep = t3;
+      trancheDueDate = t3Date;
+    }
 
     const remainingForTranche = Math.max(0, trancheTarget - totalPaidSoFar);
     const isTranchePaid = remainingForTranche === 0;
@@ -286,11 +312,17 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
     return {
       student: std,
       classId: std.classId,
-      className: classes.find(c => c.id === std.classId)?.name || 'N/A',
+      className: stdClass?.name || 'N/A',
       totalPaidSoFar,
-      currentTrancheAmount,
+      currentTrancheAmount: trancheAmountForThisStep,
+      trancheTarget,
+      trancheDueDate,
       remainingForTranche,
-      isTranchePaid
+      isTranchePaid,
+      unitTuition,
+      t1,
+      t2,
+      t3
     };
   });
 
@@ -345,6 +377,19 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setTargetConfigureClassId(undefined);
+              setShowConfigureFeesModal(true);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-black text-xs flex items-center space-x-1.5 shadow-sm cursor-pointer transition-all"
+            title="Définir et écrire les frais de scolarité et les tranches par classe"
+          >
+            <DollarSign className="h-4 w-4 text-indigo-600" />
+            <span>Frais & Tranches par Classe</span>
+          </button>
+
           {onNavigate && (
             <button
               type="button"
@@ -563,14 +608,28 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
           {selectedClassIdForStudy === 'ALL' ? (
             <div className="space-y-4">
               
-              <div className="flex items-center justify-between">
-                <h3 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center space-x-2">
-                  <BarChart3 className="h-4 w-4 text-emerald-600" />
-                  <span>Tableau Comparatif & Bilan Comptable de Chaque Classe</span>
-                </h3>
-                <span className="text-xs text-slate-500">
-                  Cliquez sur <strong className="text-emerald-600">"Étudier le Cas"</strong> pour ouvrir le registre nominatif d'une classe.
-                </span>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center space-x-2">
+                    <BarChart3 className="h-4 w-4 text-emerald-600" />
+                    <span>Tableau Comparatif & Bilan Comptable de Chaque Classe</span>
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    Frais totaux, 1ère, 2ème et 3ème tranches configurées par classe avec taux de recouvrement.
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTargetConfigureClassId(undefined);
+                    setShowConfigureFeesModal(true);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow-md shadow-indigo-600/20 transition-all cursor-pointer shrink-0"
+                >
+                  <DollarSign className="h-4 w-4" />
+                  <span>Écrire / Modifier Frais par Classe</span>
+                </button>
               </div>
 
               <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -579,20 +638,21 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                     <thead className="bg-slate-100/80 dark:bg-slate-800/80 uppercase text-[10px] text-slate-500 font-black border-b border-slate-200 dark:border-slate-800">
                       <tr>
                         <th className="p-3.5">Classe & Niveau</th>
-                        <th className="p-3.5 text-center">Effectif Élèves</th>
-                        <th className="p-3.5 text-center">Soldés / Débiteurs</th>
-                        <th className="p-3.5 text-right">Tarif Scolarité</th>
-                        <th className="p-3.5 text-right">Total Attendu</th>
-                        <th className="p-3.5 text-right">Total Encaissé Caisse</th>
-                        <th className="p-3.5 text-right">Reste à Percevoir</th>
-                        <th className="p-3.5 text-center">Taux Recouvrement</th>
-                        <th className="p-3.5 text-center">Action Comptable</th>
+                        <th className="p-3.5 text-center">Effectif</th>
+                        <th className="p-3.5 text-right font-black text-slate-800 dark:text-slate-200">Scolarité Totale</th>
+                        <th className="p-3.5 text-right text-amber-700 dark:text-amber-400">1ère Tranche</th>
+                        <th className="p-3.5 text-right text-blue-700 dark:text-blue-400">2ème Tranche</th>
+                        <th className="p-3.5 text-right text-purple-700 dark:text-purple-400">3ème Tranche</th>
+                        <th className="p-3.5 text-right text-emerald-700 dark:text-emerald-400">Total Encaissé</th>
+                        <th className="p-3.5 text-right text-rose-700 dark:text-rose-400">Reste Dû</th>
+                        <th className="p-3.5 text-center">Recouvrement</th>
+                        <th className="p-3.5 text-center">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                       {classAccountingStats.length === 0 ? (
                         <tr>
-                          <td colSpan={9} className="p-8 text-center text-slate-400">
+                          <td colSpan={10} className="p-8 text-center text-slate-400">
                             Aucune classe enregistrée dans cet établissement pour le moment.
                           </td>
                         </tr>
@@ -616,27 +676,31 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                             {/* Student Count */}
                             <td className="p-3.5 text-center">
                               <span className="font-extrabold text-slate-900 dark:text-white px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
-                                {stat.studentCount} élèves
+                                {stat.studentCount} él.
                               </span>
                             </td>
 
-                            {/* Paid vs Debtor Count */}
-                            <td className="p-3.5 text-center">
-                              <div className="flex items-center justify-center space-x-1.5 text-[11px] font-bold">
-                                <span className="text-emerald-600 dark:text-emerald-400">{stat.fullyPaidCount} soldés</span>
-                                <span className="text-slate-300">/</span>
-                                <span className="text-rose-600 dark:text-rose-400">{stat.studentCount - stat.fullyPaidCount} débiteurs</span>
-                              </div>
-                            </td>
-
                             {/* Unit Tuition */}
-                            <td className="p-3.5 text-right font-mono font-bold text-slate-700 dark:text-slate-300">
+                            <td className="p-3.5 text-right font-mono font-black text-slate-900 dark:text-white">
                               {stat.unitTuition.toLocaleString()} {settings.currency}
                             </td>
 
-                            {/* Expected */}
-                            <td className="p-3.5 text-right font-mono font-black text-slate-900 dark:text-white">
-                              {stat.totalExpectedTuition.toLocaleString()} {settings.currency}
+                            {/* Tranche 1 */}
+                            <td className="p-3.5 text-right font-mono font-bold text-amber-700 dark:text-amber-400">
+                              <div>{stat.tranche1.amount.toLocaleString()} {settings.currency}</div>
+                              <span className="text-[9px] text-slate-400 font-normal">{stat.tranche1.dueDate}</span>
+                            </td>
+
+                            {/* Tranche 2 */}
+                            <td className="p-3.5 text-right font-mono font-bold text-blue-700 dark:text-blue-400">
+                              <div>{stat.tranche2.amount.toLocaleString()} {settings.currency}</div>
+                              <span className="text-[9px] text-slate-400 font-normal">{stat.tranche2.dueDate}</span>
+                            </td>
+
+                            {/* Tranche 3 */}
+                            <td className="p-3.5 text-right font-mono font-bold text-purple-700 dark:text-purple-400">
+                              <div>{stat.tranche3.amount.toLocaleString()} {settings.currency}</div>
+                              <span className="text-[9px] text-slate-400 font-normal">{stat.tranche3.dueDate}</span>
                             </td>
 
                             {/* Collected */}
@@ -651,12 +715,12 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
 
                             {/* Recovery Progress Bar */}
                             <td className="p-3.5 text-center">
-                              <div className="w-28 mx-auto space-y-1">
+                              <div className="w-24 mx-auto space-y-1">
                                 <div className="flex items-center justify-between text-[10px] font-bold">
                                   <span className={stat.classRecoveryRate >= 75 ? 'text-emerald-600' : stat.classRecoveryRate >= 45 ? 'text-amber-600' : 'text-rose-600'}>
                                     {stat.classRecoveryRate}%
                                   </span>
-                                  <span className="text-slate-400">{stat.studentCount} él.</span>
+                                  <span className="text-slate-400">{stat.fullyPaidCount}/{stat.studentCount}</span>
                                 </div>
                                 <div className="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
                                   <div
@@ -671,14 +735,28 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
 
                             {/* Actions */}
                             <td className="p-3.5 text-center">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedClassIdForStudy(stat.classObj.id)}
-                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] flex items-center space-x-1 shadow-sm transition-all mx-auto cursor-pointer"
-                              >
-                                <span>Étudier le Cas</span>
-                                <ArrowRight className="h-3.5 w-3.5" />
-                              </button>
+                              <div className="flex items-center justify-center space-x-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTargetConfigureClassId(stat.classObj.id);
+                                    setShowConfigureFeesModal(true);
+                                  }}
+                                  className="p-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 font-bold transition-all cursor-pointer border border-indigo-200/50"
+                                  title="Configurer les Frais et Tranches de cette classe"
+                                >
+                                  <DollarSign className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedClassIdForStudy(stat.classObj.id)}
+                                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] flex items-center space-x-1 shadow-sm transition-all cursor-pointer"
+                                  title="Ouvrir le registre nominatif de cette classe"
+                                >
+                                  <span>Étudier</span>
+                                  <ArrowRight className="h-3 w-3" />
+                                </button>
+                              </div>
                             </td>
 
                           </tr>
@@ -716,6 +794,19 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                     </div>
 
                     <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTargetConfigureClassId(activeClassStudy.classObj.id);
+                          setShowConfigureFeesModal(true);
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow-md transition-all cursor-pointer"
+                        title="Modifier les frais et tranches de cette classe"
+                      >
+                        <DollarSign className="h-4 w-4" />
+                        <span>Frais & Tranches</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => setSelectedClassIdForStudy('ALL')}
@@ -774,6 +865,57 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                       </p>
                     </div>
 
+                  </div>
+
+                  {/* 3 Tranches Breakdown for this specific class */}
+                  <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-black uppercase text-amber-300 flex items-center space-x-1.5">
+                        <Clock className="h-3.5 w-3.5" />
+                        <span>Échéancier des 3 Tranches pour {activeClassStudy.classObj.name}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTargetConfigureClassId(activeClassStudy.classObj.id);
+                          setShowConfigureFeesModal(true);
+                        }}
+                        className="text-[11px] text-amber-300 underline font-bold hover:text-amber-200 cursor-pointer"
+                      >
+                        Modifier ces montants
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                      <div className="p-2.5 rounded-xl bg-slate-900/60 border border-amber-500/30">
+                        <div className="flex justify-between items-center">
+                          <span className="font-extrabold text-amber-400 text-[11px]">1ère Tranche (T1)</span>
+                          <span className="text-[10px] text-slate-400">{activeClassStudy.tranche1.dueDate}</span>
+                        </div>
+                        <p className="font-mono font-black text-sm text-white mt-1">
+                          {activeClassStudy.tranche1.amount.toLocaleString()} {settings.currency}
+                        </p>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-900/60 border border-blue-500/30">
+                        <div className="flex justify-between items-center">
+                          <span className="font-extrabold text-blue-400 text-[11px]">2ème Tranche (T2)</span>
+                          <span className="text-[10px] text-slate-400">{activeClassStudy.tranche2.dueDate}</span>
+                        </div>
+                        <p className="font-mono font-black text-sm text-white mt-1">
+                          {activeClassStudy.tranche2.amount.toLocaleString()} {settings.currency}
+                        </p>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-slate-900/60 border border-purple-500/30">
+                        <div className="flex justify-between items-center">
+                          <span className="font-extrabold text-purple-400 text-[11px]">3ème Tranche (T3)</span>
+                          <span className="text-[10px] text-slate-400">{activeClassStudy.tranche3.dueDate}</span>
+                        </div>
+                        <p className="font-mono font-black text-sm text-white mt-1">
+                          {activeClassStudy.tranche3.amount.toLocaleString()} {settings.currency}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Progress bar */}
@@ -1054,23 +1196,37 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center space-x-2">
                   <Sparkles className="h-5 w-5 text-amber-500" />
-                  <span>Configuration des Tranches & Échéancier de Scolarité</span>
+                  <span>Suivi des Tranches & Relances par Classe</span>
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Définissez les montants exigibles pour chaque tranche. L'IA calcule automatiquement les soldes et relance les parents avec précision.
+                  Chaque classe dispose de ses frais de scolarité et de ses 3 tranches configurées sur-mesure. L'IA calcule automatiquement les soldes et relance les parents avec précision.
                 </p>
               </div>
 
-              <button
-                onClick={() => setShowBatchRemindersModal(true)}
-                className="px-4 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs flex items-center space-x-2 shadow-lg shadow-amber-600/20 transition-all shrink-0 cursor-pointer"
-              >
-                <Bell className="h-4 w-4" />
-                <span>🚀 Relancer Tous les Parents ({totalDebtorsCount})</span>
-              </button>
+              <div className="flex items-center space-x-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTargetConfigureClassId(trancheClassFilter !== 'ALL' ? trancheClassFilter : undefined);
+                    setShowConfigureFeesModal(true);
+                  }}
+                  className="px-3.5 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow-md transition-all cursor-pointer"
+                >
+                  <DollarSign className="h-4 w-4" />
+                  <span>⚙️ Configurer Frais & Tranches</span>
+                </button>
+
+                <button
+                  onClick={() => setShowBatchRemindersModal(true)}
+                  className="px-4 py-2 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs flex items-center space-x-2 shadow-lg shadow-amber-600/20 transition-all cursor-pointer"
+                >
+                  <Bell className="h-4 w-4" />
+                  <span>Relancer Débiteurs ({totalDebtorsCount})</span>
+                </button>
+              </div>
             </div>
 
-            {/* Tranche Amount Selectors */}
+            {/* Tranche Step Selectors */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               
               <div
@@ -1078,27 +1234,20 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                 className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
                   selectedTranche === 1
                     ? 'bg-amber-500 text-white border-amber-600 shadow-md ring-2 ring-amber-400'
-                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white hover:border-amber-400/50'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-extrabold text-xs uppercase">1ère Tranche</span>
+                  <span className="font-extrabold text-xs uppercase">1ère Tranche (T1)</span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${selectedTranche === 1 ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
                     Sept. - Nov.
                   </span>
                 </div>
-                <div className="flex items-center space-x-1">
-                  <input
-                    type="number"
-                    value={tranche1Amount}
-                    onChange={e => setTranche1Amount(Number(e.target.value) || 0)}
-                    onClick={e => e.stopPropagation()}
-                    className={`w-28 font-black text-sm bg-transparent border-b focus:outline-none ${selectedTranche === 1 ? 'border-white text-white' : 'border-slate-300 text-amber-600'}`}
-                  />
-                  <span className="text-xs font-bold">{settings.currency}</span>
-                </div>
+                <p className={`text-xs font-black ${selectedTranche === 1 ? 'text-white' : 'text-amber-600 dark:text-amber-400'}`}>
+                  Exigible à la rentrée scolaire
+                </p>
                 <p className={`text-[10px] mt-1 ${selectedTranche === 1 ? 'text-amber-100' : 'text-slate-400'}`}>
-                  Échéance : {tranche1DueDate}
+                  Échéance usuelle : 30 Novembre
                 </p>
               </div>
 
@@ -1107,27 +1256,20 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                 className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
                   selectedTranche === 2
                     ? 'bg-amber-500 text-white border-amber-600 shadow-md ring-2 ring-amber-400'
-                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white hover:border-amber-400/50'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-extrabold text-xs uppercase">2ème Tranche</span>
+                  <span className="font-extrabold text-xs uppercase">2ème Tranche (T2)</span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${selectedTranche === 2 ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
                     Déc. - Fév.
                   </span>
                 </div>
-                <div className="flex items-center space-x-1">
-                  <input
-                    type="number"
-                    value={tranche2Amount}
-                    onChange={e => setTranche2Amount(Number(e.target.value) || 0)}
-                    onClick={e => e.stopPropagation()}
-                    className={`w-28 font-black text-sm bg-transparent border-b focus:outline-none ${selectedTranche === 2 ? 'border-white text-white' : 'border-slate-300 text-amber-600'}`}
-                  />
-                  <span className="text-xs font-bold">{settings.currency}</span>
-                </div>
+                <p className={`text-xs font-black ${selectedTranche === 2 ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`}>
+                  Exigible au 2ème trimestre
+                </p>
                 <p className={`text-[10px] mt-1 ${selectedTranche === 2 ? 'text-amber-100' : 'text-slate-400'}`}>
-                  Échéance : {tranche2DueDate}
+                  Échéance usuelle : 28 Février
                 </p>
               </div>
 
@@ -1136,27 +1278,20 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                 className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
                   selectedTranche === 3
                     ? 'bg-amber-500 text-white border-amber-600 shadow-md ring-2 ring-amber-400'
-                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white hover:border-amber-400/50'
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-extrabold text-xs uppercase">3ème Tranche</span>
+                  <span className="font-extrabold text-xs uppercase">3ème Tranche (T3) - Solde</span>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${selectedTranche === 3 ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
                     Mars - Mai
                   </span>
                 </div>
-                <div className="flex items-center space-x-1">
-                  <input
-                    type="number"
-                    value={tranche3Amount}
-                    onChange={e => setTranche3Amount(Number(e.target.value) || 0)}
-                    onClick={e => e.stopPropagation()}
-                    className={`w-28 font-black text-sm bg-transparent border-b focus:outline-none ${selectedTranche === 3 ? 'border-white text-white' : 'border-slate-300 text-amber-600'}`}
-                  />
-                  <span className="text-xs font-bold">{settings.currency}</span>
-                </div>
+                <p className={`text-xs font-black ${selectedTranche === 3 ? 'text-white' : 'text-purple-600 dark:text-purple-400'}`}>
+                  Solde de fin d'année scolaire
+                </p>
                 <p className={`text-[10px] mt-1 ${selectedTranche === 3 ? 'text-amber-100' : 'text-slate-400'}`}>
-                  Échéance : {tranche3DueDate}
+                  Échéance usuelle : 31 Mai
                 </p>
               </div>
 
@@ -1166,15 +1301,15 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
           {/* Metric Overview Cards for Active Tranche */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-              <p className="text-[10px] font-extrabold text-slate-500 uppercase">Tranche Sélectionnée</p>
+              <p className="text-[10px] font-extrabold text-slate-500 uppercase">Tranche Observée</p>
               <p className="text-lg font-black text-amber-600 mt-0.5 truncate">{currentTrancheName}</p>
-              <p className="text-[10px] text-slate-400">Target : {currentTrancheAmount.toLocaleString()} {settings.currency}</p>
+              <p className="text-[10px] text-slate-400">Calcul individualisé selon la classe</p>
             </div>
 
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-              <p className="text-[10px] font-extrabold text-slate-500 uppercase">Parents en Retard</p>
+              <p className="text-[10px] font-extrabold text-slate-500 uppercase">Élèves en Retard</p>
               <p className="text-2xl font-black text-rose-600 mt-0.5">{totalDebtorsCount} <span className="text-xs font-medium text-slate-400">/ {students.length} élèves</span></p>
-              <p className="text-[10px] text-rose-500 font-bold">À relancer par l'IA</p>
+              <p className="text-[10px] text-rose-500 font-bold">À relancer pour cette tranche</p>
             </div>
 
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -1189,7 +1324,7 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
               <div>
                 <p className="text-[10px] font-extrabold text-amber-400 uppercase">Action Prioritaire IA</p>
                 <p className="text-xs font-extrabold mt-0.5">Envoi SMS & WhatsApp</p>
-                <p className="text-[10px] text-slate-400">Message personnalisé avec solde</p>
+                <p className="text-[10px] text-slate-400">Relance avec solde précis</p>
               </div>
               <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
                 <Sparkles className="h-5 w-5" />
@@ -1273,7 +1408,7 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                 <span>Élèves & État d'Avancement : {currentTrancheName}</span>
               </h3>
               <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-900/40">
-                Limite : {currentTrancheDueDate}
+                {selectedTranche === 1 ? 'Échéance : 30 Novembre' : selectedTranche === 2 ? 'Échéance : 28 Février' : 'Échéance : 31 Mai'}
               </span>
             </div>
 
@@ -1321,13 +1456,13 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                             {item.isTranchePaid ? (
                               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-extrabold text-[10px] border border-emerald-300">
                                 <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                                <span>À Jour ({currentTrancheAmount.toLocaleString()} F)</span>
+                                <span>À Jour ({item.trancheTarget.toLocaleString()} F)</span>
                               </span>
                             ) : (
                               <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 font-extrabold text-[10px] border border-rose-300">
                                 <AlertTriangle className="h-3 w-3 text-rose-600" />
                                 <span>
-                                  Incomplet ({item.totalPaidSoFar.toLocaleString()} / {currentTrancheAmount.toLocaleString()} F)
+                                  Incomplet ({item.totalPaidSoFar.toLocaleString()} / {item.trancheTarget.toLocaleString()} F)
                                 </span>
                               </span>
                             )}
@@ -1351,10 +1486,10 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                                     setSelectedStudentForAI({
                                       student: std,
                                       trancheName: currentTrancheName,
-                                      trancheAmountDue: currentTrancheAmount,
+                                      trancheAmountDue: item.currentTrancheAmount,
                                       amountPaid: item.totalPaidSoFar,
                                       remainingBalance: item.remainingForTranche,
-                                      dueDate: currentTrancheDueDate
+                                      dueDate: item.trancheDueDate
                                     })
                                   }
                                   className="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-[11px] flex items-center space-x-1 shadow-sm transition-all cursor-pointer"
@@ -1368,7 +1503,7 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
                                   onClick={() => {
                                     const cleanPhone = std.parentPhone.replace(/[^0-9]/g, '');
                                     const msg = encodeURIComponent(
-                                      `RAPPEL SCOLARITÉ - ${currentSchool?.name || settings.schoolName}\nCher parent de ${std.firstName} (${item.className}), au titre de la ${currentTrancheName} (${currentTrancheAmount.toLocaleString()} F), votre versement est de ${item.totalPaidSoFar.toLocaleString()} F. Il reste un solde de ${item.remainingForTranche.toLocaleString()} F à payer avant le ${currentTrancheDueDate}. Merci de régulariser à la caisse ou via Mobile Money.`
+                                      `RAPPEL SCOLARITÉ - ${currentSchool?.name || settings.schoolName}\nCher parent de ${std.firstName} (${item.className}), au titre de la ${currentTrancheName} (exigible pour cette étape: ${item.currentTrancheAmount.toLocaleString()} F, cumul exigible: ${item.trancheTarget.toLocaleString()} F), votre versement est de ${item.totalPaidSoFar.toLocaleString()} F. Il reste un solde de ${item.remainingForTranche.toLocaleString()} F à payer avant le ${item.trancheDueDate}. Merci de régulariser à la caisse ou via Mobile Money.`
                                     );
                                     window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
                                   }}
@@ -1614,6 +1749,16 @@ export const AccountingView: React.FC<AccountingViewProps> = ({ onNavigate }) =>
           }}
         />
       )}
+
+      {/* Configure Class Fees & Tranches Modal */}
+      <ConfigureClassFeesModal
+        isOpen={showConfigureFeesModal}
+        onClose={() => {
+          setShowConfigureFeesModal(false);
+          setTargetConfigureClassId(undefined);
+        }}
+        initialClassId={targetConfigureClassId}
+      />
 
     </div>
   );

@@ -3,6 +3,7 @@ import { useApp } from '../lib/store';
 import { useGoogleAuth } from './GoogleAuthGate';
 import { SchoolLogo } from './SchoolLogo';
 import { InstallPwaModal } from './InstallPwaModal';
+import { SubAppsShareModal } from './modals/SubAppsShareModal';
 import { buildDirectSchoolAccessUrl } from '../lib/urlUtils';
 import {
   Sparkles,
@@ -27,7 +28,6 @@ import {
   Crown,
   Copy,
   CheckCircle2,
-  Tag,
   LayoutDashboard,
   FileText,
   FileCheck
@@ -41,6 +41,7 @@ interface HeaderProps {
   onOpenLoginModal?: () => void;
   activeView?: string;
   onNavigate?: (view: string) => void;
+  onOpenControlBox?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -49,7 +50,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCampaignModal,
   onOpenLoginModal,
   activeView,
-  onNavigate
+  onNavigate,
+  onOpenControlBox
 }) => {
   const {
     schools,
@@ -76,8 +78,10 @@ export const Header: React.FC<HeaderProps> = ({
   const [showRoleSelector, setShowRoleSelector] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showPwaModal, setShowPwaModal] = useState(false);
+  const [showSubAppsModal, setShowSubAppsModal] = useState(false);
 
   const isPromoter = (currentUser?.email?.toLowerCase().trim() === 'mahounouvictor123@gmail.com') || 
+    (gmailUser?.email?.toLowerCase().trim() === 'mahounouvictor123@gmail.com') ||
     (typeof window !== 'undefined' && localStorage.getItem('GESTIONNAIRE_PROMOTER_AUTH') === 'true');
 
   const baseRolesList: { role: UserRole; label: string; desc: string; iconColor: string }[] = [
@@ -159,60 +163,10 @@ export const Header: React.FC<HeaderProps> = ({
                     <div className="flex items-center space-x-1.5">
                       <Building2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                       <span className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wider">
-                        {isPromoter ? `Établissements & Espace Réseau (${schools.length})` : 'Mon Établissement'}
+                        {isPromoter ? `Établissements (${schools.length})` : 'Mon Établissement'}
                       </span>
                     </div>
-
-                    {isPromoter && (
-                      <button
-                        onClick={() => {
-                          setShowSchoolDropdown(false);
-                          onNavigate && onNavigate('schools-hub');
-                        }}
-                        className="text-[11px] text-blue-600 dark:text-blue-400 font-extrabold hover:underline flex items-center space-x-1 cursor-pointer"
-                      >
-                        <Globe2 className="h-3.5 w-3.5" />
-                        <span>Vue Réseau</span>
-                      </button>
-                    )}
                   </div>
-
-                  {/* PROMOTER'S OWN DEDICATED SPACE ITEM */}
-                  {isPromoter && (
-                    <div
-                      onClick={() => {
-                        setShowSchoolDropdown(false);
-                        onNavigate && onNavigate('promoter-admin');
-                      }}
-                      className={`w-full text-left p-3 rounded-2xl flex items-center justify-between cursor-pointer transition-all border ${
-                        activeView === 'promoter-admin'
-                          ? 'bg-gradient-to-r from-purple-700 to-indigo-700 text-white shadow-lg border-amber-400 font-black'
-                          : 'bg-gradient-to-r from-slate-950 via-indigo-950 to-purple-950 hover:from-purple-950 hover:to-indigo-950 text-white border-purple-500/50 shadow-md hover:border-purple-400'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2.5 min-w-0">
-                        <div className="p-2 rounded-xl bg-amber-400 text-slate-950 shrink-0 font-black shadow">
-                          <Crown className="h-4 w-4 text-slate-950" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-xs font-black truncate">
-                              MON ESPACE PROMOTEUR
-                            </p>
-                            <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 text-[9px] font-black uppercase shrink-0">
-                              Super Admin
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-purple-200 truncate">
-                            Console centrale & supervision globale (sans altérer les écoles)
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-1 shrink-0">
-                        {activeView === 'promoter-admin' && <Check className="h-4 w-4 text-amber-300 shrink-0" />}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Active School Quick Info Card */}
                   <div className="p-3 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/60 dark:from-emerald-950/40 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between gap-2">
@@ -455,18 +409,6 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* S'inscrire par Campagne */}
-            {onOpenCampaignModal && (
-              <button
-                onClick={onOpenCampaignModal}
-                className="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200 dark:border-blue-800 font-extrabold text-xs transition-all cursor-pointer"
-                title="S'inscrire via une campagne promotionnelle"
-              >
-                <Tag className="h-3.5 w-3.5 text-blue-500" />
-                <span className="hidden xl:inline">Adhésion Campagne</span>
-              </button>
-            )}
-
             {/* Prominent "CRÉER MON ÉCOLE" Button */}
             <button
               onClick={onOpenCreateSchoolModal}
@@ -478,6 +420,19 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="sm:hidden">+ ÉCOLE</span>
             </button>
 
+            {/* Boîte de Contrôle Master des Écoles (Accessible UNIQUEMENT pour mahounouvictor123@gmail.com) */}
+            {isPromoter && (
+              <button
+                onClick={() => onOpenControlBox ? onOpenControlBox() : (onNavigate && onNavigate('control-box'))}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 hover:from-purple-600 hover:to-indigo-600 text-white font-black text-xs shadow-md border border-purple-500/40 transition-all transform hover:scale-[1.03] active:scale-95 cursor-pointer"
+                title="Boîte de contrôle à distance de toutes les écoles (mahounouvictor123@gmail.com)"
+              >
+                <Crown className="h-3.5 w-3.5 text-amber-300 animate-pulse" />
+                <span className="hidden sm:inline">Boîte Contrôle Écoles</span>
+                <span className="sm:hidden">Boîte</span>
+              </button>
+            )}
+
             {/* PWA Install / Home Screen Button */}
             <button
               onClick={() => setShowPwaModal(true)}
@@ -487,6 +442,17 @@ export const Header: React.FC<HeaderProps> = ({
               <Smartphone className="h-3.5 w-3.5 text-emerald-200" />
               <span className="hidden lg:inline">Écran d'Accueil</span>
               <span className="lg:hidden">App</span>
+            </button>
+
+            {/* Sub-Apps Parents & Profs Share Button */}
+            <button
+              onClick={() => setShowSubAppsModal(true)}
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black text-xs shadow-md transition-all transform hover:scale-[1.03] active:scale-95 cursor-pointer"
+              title="Diffuser les liens d'accès direct et sous-applications pour Parents et Professeurs"
+            >
+              <Smartphone className="h-3.5 w-3.5 text-blue-200" />
+              <span className="hidden xl:inline">Apps Parents & Profs</span>
+              <span className="xl:hidden">Sous-Apps</span>
             </button>
 
             {/* AI Assistant Button */}
@@ -663,6 +629,17 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <InstallPwaModal isOpen={showPwaModal} onClose={() => setShowPwaModal(false)} />
+      
+      <SubAppsShareModal
+        isOpen={showSubAppsModal}
+        onClose={() => setShowSubAppsModal(false)}
+        onNavigateToSubApp={(appType) => {
+          setShowSubAppsModal(false);
+          if (onNavigate) {
+            onNavigate(appType === 'parent' ? 'parent-subapp' : 'teacher-subapp');
+          }
+        }}
+      />
     </header>
   );
 };

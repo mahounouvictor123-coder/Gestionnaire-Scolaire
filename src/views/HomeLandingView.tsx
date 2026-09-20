@@ -86,16 +86,6 @@ export const HomeLandingView: React.FC<HomeLandingViewProps> = ({
               <span>CRÉER MON ÉCOLE</span>
             </button>
 
-            {onOpenCampaignModal && (
-              <button
-                onClick={onOpenCampaignModal}
-                className="w-full sm:w-auto px-7 py-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-600 text-white font-black text-sm sm:text-base shadow-xl shadow-blue-600/20 transition-all hover:scale-105 flex items-center justify-center gap-2.5 cursor-pointer border border-blue-400/30"
-              >
-                <Zap className="w-5 h-5 text-amber-300 animate-pulse" />
-                <span>🎟️ S'INSCRIRE PAR CAMPAGNE</span>
-              </button>
-            )}
-
             <button
               onClick={() => onNavigate('dashboard')}
               className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-slate-800/90 hover:bg-slate-800 text-white border border-slate-700 font-extrabold text-sm sm:text-base transition-all hover:scale-105 flex items-center justify-center gap-3 cursor-pointer"

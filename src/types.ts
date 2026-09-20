@@ -81,6 +81,9 @@ export interface Student {
   enrollmentDate: string;
   medicalNotes?: string;
   bloodGroup?: string;
+  parentSubscriptionStatus?: 'actif' | 'expire' | 'inactif';
+  parentSubscriptionExpiresAt?: string;
+  parentLastReceiptCode?: string;
 }
 
 export interface Teacher {
@@ -124,6 +127,12 @@ export interface Grade {
   maxMark?: number;
   date: string;
   coefficient: number;
+  createdAt?: string; // ISO date string for 3-day modification limit
+  updatedAt?: string;
+  teacherName?: string;
+  teacherId?: string;
+  comment?: string;
+  isLockedByDeadline?: boolean;
 }
 
 export interface ReportCard {
@@ -342,6 +351,42 @@ export interface CommunicationMessage {
   status: 'LIVRE' | 'EN_COURS' | 'ECHEC';
 }
 
+export type ParentComplaintCategory = 
+  | 'PLAINTE' 
+  | 'SUGGESTION' 
+  | 'ABSENCE' 
+  | 'QUESTION' 
+  | 'URGENCE' 
+  | 'SANTE' 
+  | 'PEDAGOGIE'
+  | 'FINANCE'
+  | 'DISCIPLINE'
+  | 'AUTRE';
+
+export interface ParentComplaintMessage {
+  id: string;
+  schoolId: string;
+  studentId: string;
+  studentName: string;
+  studentClass: string;
+  parentName: string;
+  parentPhone: string;
+  category: ParentComplaintCategory;
+  subject: string;
+  messageText?: string;
+  audioUrl?: string; // Audio Base64 / Blob data URL
+  audioDurationSeconds?: number;
+  photoUrl?: string; // Attached Photo Base64 data URL
+  photoName?: string;
+  status: 'NOUVEAU' | 'EN_COURS' | 'RESOLU' | 'ARCHIVE';
+  priority?: 'NORMALE' | 'HAUTE' | 'URGENTE';
+  createdAt: string; // ISO date string
+  schoolReply?: string;
+  repliedAt?: string;
+  repliedBy?: string;
+  isReadBySchool: boolean;
+}
+
 export interface AdministrativeDocument {
   id: string;
   studentId: string;
@@ -453,6 +498,8 @@ export interface School {
   approvedAt?: string;
   approvedBy?: string;
   promoterNotes?: string;
+  monthlyActivatedParentsCount?: number;
+  totalActivatedParentsCount?: number;
 }
 
 export interface RegistrationCampaign {
@@ -535,6 +582,26 @@ export interface ExamPaper {
   includeHeader?: boolean;
   createdAt: string;
   createdBy?: string;
+  teacherId?: string;
+  teacherName?: string;
+  teacherPhone?: string;
+  schoolId?: string;
+  status?: 'EN_ATTENTE' | 'VALIDE' | 'REJETE' | 'IMPRIME' | 'ARCHIVE';
+  isArchived?: boolean;
+  archivedAt?: string;
+  archivedBy?: string;
+  submissionNotes?: string;
+  schoolFeedback?: string;
+  attachedFileUrl?: string; // Word (.docx), PDF or scanned image
+  attachedFileName?: string;
+  attachedFileType?: 'WORD' | 'PDF' | 'IMAGE';
+  numberOfCopiesRequested?: number;
+  examDate?: string;
+  isAvailableForStudents?: boolean; // When true or undefined, accessible to students & parents in their sub-app
+  sentToSchool?: boolean; // Envoyé à l'école / direction / censeur pour tirage papier
+  sentToParents?: boolean; // Mis à disposition directe des parents d'élèves et élèves
+  parentInstructions?: string; // Consignes et directives spécifiques du professeur pour les parents et élèves
+  submissionDeadline?: string; // Date limite de remise ou de révision pour les élèves
 }
 
 export interface SubscriptionPlan {
@@ -582,5 +649,92 @@ export interface SubscriptionInvoice {
   status: 'PAYÉ' | 'EN_ATTENTE' | 'ANNULÉ';
   pdfUrl?: string;
 }
+
+export type AnnouncementAudience = 'PUBLIC_ALL' | 'PUBLIC_CLASS' | 'PRIVATE_STUDENT';
+
+export type AnnouncementCategory = 
+  | 'CIRCULAIRE' 
+  | 'REUNION' 
+  | 'PAIEMENT' 
+  | 'DISCIPLINE' 
+  | 'EVENEMENT' 
+  | 'CONVOCATION' 
+  | 'BULLETINS' 
+  | 'URGENT' 
+  | 'PUBLICITE'
+  | 'PARTENAIRE'
+  | 'ACTIVITE'
+  | 'AUTRE';
+
+export interface OfficialAnnouncement {
+  id: string;
+  schoolId: string;
+  title: string;
+  content: string;
+  audience: AnnouncementAudience; // 'PUBLIC_ALL' (Tous les parents) | 'PUBLIC_CLASS' (Classe) | 'PRIVATE_STUDENT' (Message privé parent/élève)
+  targetClassId?: string;
+  targetClassName?: string;
+  targetStudentId?: string;
+  targetStudentName?: string;
+  targetStudentRegNumber?: string;
+  targetParentName?: string;
+  targetParentPhone?: string;
+  photoUrl?: string; // Image / Circulaire / Affiche Publicitaire / Pièce jointe Base64
+  photoName?: string;
+  priority: 'NORMALE' | 'IMPORTANTE' | 'URGENTE';
+  category: AnnouncementCategory;
+  authorName: string; // Ex: "Direction de l'Établissement", "Directeur Général", "Le Censeur", "Partenaire Officiel"
+  createdAt: string; // ISO string
+  isPinned?: boolean;
+  readReceipts?: string[]; // studentIds or parentPhones that read the announcement
+  
+  // Espace Publicitaire & Visuels Divers
+  isAdBanner?: boolean; // Marqué comme encart/bannière publicitaire ou affiche visuelle
+  adTag?: string; // 'OFFICIEL' | 'SPONSOR' | 'ÉVÉNEMENT' | 'FOURNITURES' | 'SOUTIEN' | 'DIVERS'
+  ctaText?: string; // Ex: "Contacter", "En savoir plus", "WhatsApp", "Participer"
+  ctaUrl?: string; // Lien web, numéro WhatsApp (https://wa.me/...) ou numéro d'appel (tel:...)
+  sponsorName?: string; // Ex: "Librairie Centrale", "Assurance Scolaire Sunu", "Club Robotique"
+}
+
+export interface ParentActivationRecord {
+  id: string;
+  phone: string; // Numéro normalisé sans indicatif/espaces
+  rawPhone: string; // Numéro tel que saisi
+  parentName: string;
+  studentId: string;
+  studentName: string;
+  className: string;
+  schoolId: string;
+  schoolName: string;
+  status: 'actif' | 'expire';
+  activationDate: string; // Date ISO de l'activation
+  fin_abonnement: string; // Date ISO d'expiration (+30 jours ou +365 jours)
+  receiptCode: string; // Code reçu unique à 5 caractères alphanumériques (ex: A7K9P)
+  fee: number; // 1000 FCFA (mensuel) ou 9000 FCFA (annuel)
+  promoterCommission: number; // 600 FCFA (60%) ou 5400 FCFA (60%)
+  schoolShare: number; // 300 FCFA (30%) ou 2700 FCFA (30%)
+  planType?: 'MONTHLY' | 'ANNUAL';
+  durationDays?: number;
+  monthKey: string; // Ex: "2025-03" (YYYY-MM)
+  isPaidToSchool: boolean; // Statut de versement
+  paidToSchoolDate?: string;
+  notes?: string;
+}
+
+export interface DirectorParentActivationNotification {
+  id: string;
+  schoolId: string;
+  type: 'PARENT_ACTIVATED';
+  title: string;
+  parentName: string;
+  parentPhone: string;
+  studentName: string;
+  className: string;
+  receiptCode: string;
+  fin_abonnement: string;
+  createdAt: string;
+  isRead: boolean;
+}
+
 
 

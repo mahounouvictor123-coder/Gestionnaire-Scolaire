@@ -23,6 +23,7 @@ import {
   PhoneCall,
   Crown,
   AlertTriangle,
+  ShieldAlert,
   Key,
   CreditCard,
   Eye,
@@ -43,12 +44,15 @@ import {
   GraduationCap,
   Wallet,
   Settings,
-  Tag
+  Tag,
+  ArrowLeft,
+  X
 } from 'lucide-react';
 import { School } from '../types';
 import { CompleteSchoolSetupModal } from '../components/modals/CompleteSchoolSetupModal';
 import { PromoterAICopilot } from '../components/PromoterAICopilot';
 import { CampaignsManagementTab } from '../components/CampaignsManagementTab';
+import { PromoterSchoolsControlBoxModal } from '../components/modals/PromoterSchoolsControlBoxModal';
 
 interface PromoterAdminViewProps {
   onNavigate?: (view: string) => void;
@@ -82,6 +86,9 @@ export const PromoterAdminView: React.FC<PromoterAdminViewProps> = ({ onNavigate
 
   // Active Tab: Overview by default (Vue d'ensemble sur tout)
   const [activeTab, setActiveTab] = useState<'overview' | 'schools' | 'campaigns' | 'fedapay' | 'ai-copilot'>('overview');
+
+  // Promoter Master Remote Control Box
+  const [isControlBoxOpen, setIsControlBoxOpen] = useState(false);
 
   // Promoter Master Lock State
   const [promoterEmailInput, setPromoterEmailInput] = useState('mahounouvictor123@gmail.com');
@@ -428,7 +435,31 @@ export const PromoterAdminView: React.FC<PromoterAdminViewProps> = ({ onNavigate
   // Render Login Gate ONLY if unauthenticated or not master promoter
   if (!isAuthorized) {
     return (
-      <div className="max-w-xl mx-auto py-12 px-4 space-y-6">
+      <div className="max-w-xl mx-auto py-8 px-4 space-y-6">
+        {/* Top Exit Navigation Bar for Login Gate */}
+        <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3 rounded-2xl flex items-center justify-between shadow-xl">
+          <button
+            type="button"
+            onClick={() => onNavigate ? onNavigate('dashboard') : (window.location.href = '/')}
+            className="flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-900/40 border border-blue-400/30 transition-all transform hover:scale-[1.02] cursor-pointer group"
+            title="Sortir de la boîte de contrôle et revenir au Tableau de Bord de l'École"
+          >
+            <ArrowLeft className="h-4 w-4 text-amber-300 group-hover:-translate-x-1 transition-transform" />
+            <span>← Retour École</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate ? onNavigate('dashboard') : (window.location.href = '/')}
+            className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-950/60 border border-rose-400/30 transition-all transform hover:scale-105 cursor-pointer"
+            title="Fermer la boîte et sortir"
+            aria-label="Fermer et Sortir"
+          >
+            <X className="h-4 w-4" />
+            <span>Sortir</span>
+          </button>
+        </div>
+
         <div className="text-center space-y-3">
           <div className="inline-flex p-3 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
             <Crown className="h-10 w-10 fill-amber-500" />
@@ -497,13 +528,55 @@ export const PromoterAdminView: React.FC<PromoterAdminViewProps> = ({ onNavigate
             <ShieldCheck className="h-5 w-5 text-slate-950" />
             <span>Se Connecter avec mon compte Gmail</span>
           </button>
+
+          <div className="pt-2 text-center">
+            <button
+              type="button"
+              onClick={() => onNavigate ? onNavigate('dashboard') : (window.location.href = '/')}
+              className="text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center space-x-1.5 mx-auto cursor-pointer"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Annuler et retourner au Tableau de Bord de l'École</span>
+            </button>
+          </div>
         </form>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
+    <div className="space-y-6 animate-in fade-in duration-200 relative">
+
+      {/* Top Exit Navigation Bar - Prominent Arrow & Close Cross */}
+      <div className="sticky top-2 z-30 bg-slate-900/95 backdrop-blur-md border border-slate-700 p-3 sm:p-4 rounded-2xl flex items-center justify-between shadow-2xl">
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => onNavigate ? onNavigate('dashboard') : (window.location.href = '/')}
+            className="flex items-center space-x-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-900/40 border border-blue-400/30 transition-all transform hover:scale-[1.02] cursor-pointer group"
+            title="Sortir de la boîte de contrôle et revenir au Tableau de Bord de l'École"
+          >
+            <ArrowLeft className="h-4 w-4 text-amber-300 group-hover:-translate-x-1 transition-transform" />
+            <span>← Retour à mon École (Dashboard)</span>
+          </button>
+
+          <span className="hidden md:inline-flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700">
+            <Crown className="h-3.5 w-3.5 text-amber-400" />
+            <span>Espace boîte contrôle d'école & validation</span>
+          </span>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => onNavigate ? onNavigate('dashboard') : (window.location.href = '/')}
+            className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-950/60 border border-rose-400/30 transition-all transform hover:scale-105 cursor-pointer"
+            title="Fermer la boîte et sortir"
+            aria-label="Fermer et Sortir"
+          >
+            <X className="h-4 w-4" />
+            <span>Sortir de l'espace</span>
+          </button>
+        </div>
+      </div>
       
       {/* Banner Title */}
       <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-900 via-slate-800 to-amber-950 border border-amber-500/30 text-white shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -532,6 +605,24 @@ export const PromoterAdminView: React.FC<PromoterAdminViewProps> = ({ onNavigate
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
+            onClick={() => onNavigate ? onNavigate('dashboard') : (window.location.href = '/')}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs shadow-lg shadow-blue-900/40 flex items-center space-x-1.5 cursor-pointer transform hover:scale-[1.02] transition-all"
+            title="Quitter et retourner au Tableau de Bord de l'École"
+          >
+            <ArrowLeft className="h-4 w-4 text-amber-300" />
+            <span>← Retour École</span>
+          </button>
+
+          <button
+            onClick={() => setIsControlBoxOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 hover:from-purple-600 hover:to-indigo-600 text-white font-black text-xs shadow-lg shadow-purple-950/40 border border-purple-500/30 transition-all flex items-center space-x-1.5 cursor-pointer transform hover:scale-[1.02]"
+            title="Ouvrir la boîte de télécommande et de contrôle à distance des écoles (mahounouvictor123@gmail.com)"
+          >
+            <Crown className="h-4 w-4 text-amber-300 animate-pulse" />
+            <span>🎛️ Boîte Télécommande</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('ai-copilot')}
             className={`px-4 py-2.5 rounded-xl font-black text-xs shadow-lg transition-all flex items-center space-x-1.5 cursor-pointer transform hover:scale-[1.02] ${
               activeTab === 'ai-copilot'
@@ -540,7 +631,7 @@ export const PromoterAdminView: React.FC<PromoterAdminViewProps> = ({ onNavigate
             }`}
           >
             <Sparkles className="h-4 w-4" />
-            <span>🤖 Commandant IA à Distance</span>
+            <span>🤖 Commandant IA</span>
           </button>
 
           <button
@@ -548,7 +639,7 @@ export const PromoterAdminView: React.FC<PromoterAdminViewProps> = ({ onNavigate
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center space-x-1.5 cursor-pointer transform hover:scale-[1.02]"
           >
             <Globe2 className="h-4 w-4 fill-slate-950" />
-            <span>🌐 Créer une École à Distance</span>
+            <span>🌐 Créer École</span>
           </button>
 
           <button
@@ -556,14 +647,16 @@ export const PromoterAdminView: React.FC<PromoterAdminViewProps> = ({ onNavigate
             className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
           >
             <Zap className="h-4 w-4" />
-            <span>🟢 Tout Activer</span>
+            <span>🟢 Activer Tout</span>
           </button>
 
           <button
-            onClick={handlePromoterLogout}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700 cursor-pointer"
+            onClick={() => onNavigate ? onNavigate('dashboard') : (window.location.href = '/')}
+            className="px-3.5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-950/50 flex items-center space-x-1.5 cursor-pointer transition-all"
+            title="Sortir de l'espace et revenir à l'école"
           >
-            Quitter
+            <X className="h-4 w-4" />
+            <span>Sortir</span>
           </button>
         </div>
       </div>
@@ -1017,6 +1110,60 @@ export const PromoterAdminView: React.FC<PromoterAdminViewProps> = ({ onNavigate
                   </div>
                 );
               })}
+            </div>
+
+            {/* BLACKLISTED & REVOKED SCHOOLS BY PROMOTER */}
+            <div className="mt-8 p-6 rounded-3xl bg-rose-50/50 dark:bg-rose-950/20 border-2 border-rose-200 dark:border-rose-900/60 space-y-4 shadow-sm">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 rounded-xl bg-rose-600 text-white shadow-sm">
+                    <ShieldAlert className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-rose-950 dark:text-rose-200">
+                      Établissements Révoqués & Bloqués Définitivement (Liste Noire)
+                    </h3>
+                    <p className="text-xs text-rose-700/80 dark:text-rose-400">
+                      Écoles supprimées de la plateforme et formellement interdites d'accès par décision du Promoteur.
+                    </p>
+                  </div>
+                </div>
+
+                <span className="px-3 py-1 rounded-full bg-rose-600 text-white text-[11px] font-black uppercase tracking-wider shadow-sm">
+                  1 Établissement Bloqué
+                </span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
+                <div className="flex items-center space-x-3.5">
+                  <div className="h-12 w-12 rounded-2xl bg-rose-100 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-800 flex items-center justify-center text-rose-600 font-black text-lg shrink-0">
+                    <XCircle className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2 flex-wrap">
+                      <h4 className="font-black text-sm text-slate-900 dark:text-white">
+                        COLLÈGE PÈRE AUPIAIS
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-black uppercase">
+                        Accès Révoqué & Supprimé
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      📍 Boulevard de la Marina, Cotonou (Bénin) • ID : <code className="font-mono font-bold">sch-aupiais</code>
+                    </p>
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400 font-bold mt-1">
+                      🔒 Blocage actif : Accès formellement révoqué, clés et sessions supprimées, réinscription interdite.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  <span className="px-3 py-2 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 text-xs font-black border border-rose-300 dark:border-rose-800 flex items-center space-x-1.5">
+                    <Lock className="h-3.5 w-3.5" />
+                    <span>DÉFINITIVEMENT VERROUILLÉ</span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2609,6 +2756,33 @@ export const PromoterAdminView: React.FC<PromoterAdminViewProps> = ({ onNavigate
           onNavigate={onNavigate}
         />
       )}
+
+      {/* Floating Back Arrow & Exit Cross Bar for Convenient Exit Anytime */}
+      <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-slate-900/95 backdrop-blur-md p-2 rounded-2xl border border-slate-700 shadow-2xl shadow-black/80">
+        <button
+          onClick={() => onNavigate ? onNavigate('dashboard') : (window.location.href = '/')}
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs shadow-lg shadow-blue-950/60 transition-all cursor-pointer"
+          title="Retourner au Tableau de Bord de l'École"
+        >
+          <ArrowLeft className="h-4 w-4 text-amber-300" />
+          <span>← Retour École</span>
+        </button>
+        <button
+          onClick={() => onNavigate ? onNavigate('dashboard') : (window.location.href = '/')}
+          className="p-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-950/60 transition-all cursor-pointer"
+          title="Fermer la boîte (Sortir)"
+          aria-label="Fermer la boîte et sortir"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* Promoter Master Schools Remote Control Box Modal */}
+      <PromoterSchoolsControlBoxModal
+        isOpen={isControlBoxOpen}
+        onClose={() => setIsControlBoxOpen(false)}
+        onNavigate={onNavigate}
+      />
     </div>
   );
 };

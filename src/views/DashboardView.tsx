@@ -30,22 +30,117 @@ import {
   KeyRound,
   Lock,
   CalendarCheck,
-  FileCheck
+  FileCheck,
+  Smartphone,
+  Copy,
+  ExternalLink,
+  Share2,
+  Mic,
+  X,
+  Search
 } from 'lucide-react';
+import { SubAppsShareModal } from '../components/modals/SubAppsShareModal';
+import { OfficialAnnouncementsBox } from '../components/OfficialAnnouncementsBox';
+import { StaffAccessCodeManager } from '../components/StaffAccessCodeManager';
+import { StaffRoleConfig } from '../types';
+import { Sliders, Bell } from 'lucide-react';
 
 interface DashboardViewProps {
   onNavigate: (view: string) => void;
   onOpenAiModal: () => void;
-  onOpenDailyAccessModal?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
-  onOpenAiModal,
-  onOpenDailyAccessModal
+  onOpenAiModal
 }) => {
-  const { students, teachers, classes, payments, expenses, settings, currentUser, currentSchool } = useApp();
+  const {
+    students,
+    teachers,
+    classes,
+    payments,
+    expenses,
+    settings,
+    currentUser,
+    currentSchool,
+    examPapers,
+    updateSettings,
+    updateSchool,
+    directorNotifications,
+    parentActivations,
+    parentComplaints,
+    getSchoolMonthlyActivatedParentsCount,
+    markDirectorNotificationAsRead
+  } = useApp();
+
+  const [showStaffCodeManagerOnHome, setShowStaffCodeManagerOnHome] = React.useState(false);
+  const [showActivatedParentsModal, setShowActivatedParentsModal] = React.useState(false);
+  const [parentSearchTerm, setParentSearchTerm] = React.useState('');
+  const [homeStaffRoles, setHomeStaffRoles] = React.useState<StaffRoleConfig[]>(() => {
+    return currentSchool?.staffRolePermissions || settings.staffRolePermissions || defaultStaffRolePermissions;
+  });
+  const [homeStaffSavedSuccess, setHomeStaffSavedSuccess] = React.useState(false);
+
+  React.useEffect(() => {
+    if (currentSchool?.staffRolePermissions) {
+      setHomeStaffRoles(currentSchool.staffRolePermissions);
+    } else if (settings.staffRolePermissions) {
+      setHomeStaffRoles(settings.staffRolePermissions);
+    }
+  }, [currentSchool?.staffRolePermissions, settings.staffRolePermissions]);
+
+  const handleSaveStaffRolesOnHome = () => {
+    updateSettings({ staffRolePermissions: homeStaffRoles });
+    if (currentSchool?.id) {
+      updateSchool(currentSchool.id, { staffRolePermissions: homeStaffRoles });
+    }
+    setHomeStaffSavedSuccess(true);
+    setTimeout(() => setHomeStaffSavedSuccess(false), 4000);
+  };
+
+  const monthlyActivatedParentsCount = getSchoolMonthlyActivatedParentsCount(currentSchool?.id);
+  const schoolDirectorNotifications = (directorNotifications || []).filter(
+    n => n.schoolId === currentSchool?.id
+  );
+
+  const schoolParentActivations = React.useMemo(() => {
+    if (!currentSchool?.id) return [];
+    return (parentActivations || []).filter(a => a.schoolId === currentSchool.id);
+  }, [parentActivations, currentSchool?.id]);
+
+  const schoolMonthlyActivations = React.useMemo(() => {
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    return schoolParentActivations.filter(a => a.monthKey === currentMonth && a.status === 'actif');
+  }, [schoolParentActivations]);
+
+  const totalSchoolCommissionSum = React.useMemo(() => {
+    return schoolMonthlyActivations.reduce((sum, a) => sum + (a.schoolShare || (a.planType === 'ANNUAL' ? 2700 : 300)), 0);
+  }, [schoolMonthlyActivations]);
+
+  const schoolUnreadComplaintsCount = React.useMemo(() => {
+    return (parentComplaints || []).filter(
+      c => (!c.schoolId || c.schoolId === currentSchool?.id) && (!c.isReadBySchool || c.status === 'NOUVEAU')
+    ).length;
+  }, [parentComplaints, currentSchool?.id]);
+
   const [selectedCycle, setSelectedCycle] = React.useState<'ALL' | 'PRIMAIRE' | 'SECONDAIRE'>('ALL');
+  const [showSubAppsModal, setShowSubAppsModal] = React.useState(false);
+  const [copiedLinkType, setCopiedLinkType] = React.useState<'parent' | 'teacher' | null>(null);
+
+  const pendingTeacherExams = (examPapers || []).filter(p => !!(p.teacherName || p.teacherId) && (!p.status || p.status === 'EN_ATTENTE')).length;
+
+  const getSubAppUrl = (subapp: 'parent' | 'teacher') => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const schoolParam = currentSchool?.id || 'school-1';
+    return `${origin}/?subapp=${subapp}&school=${encodeURIComponent(schoolParam)}`;
+  };
+
+  const copyToClipboard = (subapp: 'parent' | 'teacher') => {
+    const url = getSubAppUrl(subapp);
+    navigator.clipboard.writeText(url);
+    setCopiedLinkType(subapp);
+    setTimeout(() => setCopiedLinkType(null), 3000);
+  };
 
   // Cycle specific data filtering
   const primaryClassesList = classes.filter(c => c.level === 'PRIMAIRE' || c.level === 'MATERNELLE');
@@ -101,12 +196,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     FORMATION: students.filter(s => s.level === 'FORMATION').length
   };
 
-  // Retrieve staff role config for current user
+  // Retrieve staff role config for current user with fallback
   const staffConfigs = currentSchool?.staffRolePermissions || settings.staffRolePermissions || defaultStaffRolePermissions;
-  const currentStaffConfig = staffConfigs.find(s => s.role === currentUser?.role);
+  const currentStaffConfig = staffConfigs.find(s => s.role === currentUser?.role) || defaultStaffRolePermissions.find(d => d.role === currentUser?.role);
   const isStaffRestricted = currentUser?.role && ['CENSEUR', 'SURVEILLANT', 'COMPTABLE', 'SECRETAIRE'].includes(currentUser.role);
   const allowedViewsList = currentStaffConfig?.allowedViews?.includes('*')
-    ? ['dashboard', 'students', 'scan-roster', 'classes', 'subjects', 'grades', 'report-cards', 'attendance', 'timetable', 'exams', 'epreuves', 'teachers', 'documents', 'communication', 'accounting', 'payments', 'canteen', 'transport', 'library']
+    ? ['dashboard', 'students', 'scan-roster', 'classes', 'subjects', 'grades', 'report-cards', 'attendance', 'timetable', 'exams', 'epreuves', 'teachers', 'documents', 'communication', 'accounting', 'payments', 'canteen', 'transport', 'library', 'parent-complaints', 'ai-studio']
     : (currentStaffConfig?.allowedViews || []);
 
   const isViewAllowed = (viewKey: string) => {
@@ -156,16 +251,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            {onOpenDailyAccessModal && (
-              <button
-                onClick={onOpenDailyAccessModal}
-                className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black text-xs sm:text-sm shadow-xl transition-all hover:scale-105"
-              >
-                <Zap className="h-4 w-4 fill-slate-950" />
-                <span>Valider mon accès à 250f</span>
-              </button>
-            )}
-
             <button
               onClick={onOpenAiModal}
               className="flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-white/90 hover:bg-white text-emerald-950 font-extrabold text-xs sm:text-sm shadow-lg transition-all hover:scale-105"
@@ -387,6 +472,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </button>
             )}
 
+            {isViewAllowed('classes') && (
+              <button
+                onClick={() => onNavigate('classes')}
+                className="p-3 rounded-xl bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/60 text-left transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center space-x-2 truncate">
+                  <Building2 className="h-4 w-4 text-sky-400 shrink-0" />
+                  <span className="font-extrabold text-xs text-white truncate">Classes & Salles</span>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-indigo-400 group-hover:translate-x-1 transition-transform shrink-0" />
+              </button>
+            )}
+
+            {isViewAllowed('subjects') && (
+              <button
+                onClick={() => onNavigate('subjects')}
+                className="p-3 rounded-xl bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/60 text-left transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center space-x-2 truncate">
+                  <BookOpen className="h-4 w-4 text-violet-400 shrink-0" />
+                  <span className="font-extrabold text-xs text-white truncate">Matières & Coeffs</span>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-indigo-400 group-hover:translate-x-1 transition-transform shrink-0" />
+              </button>
+            )}
+
+            {isViewAllowed('teachers') && (
+              <button
+                onClick={() => onNavigate('teachers')}
+                className="p-3 rounded-xl bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/60 text-left transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center space-x-2 truncate">
+                  <GraduationCap className="h-4 w-4 text-blue-400 shrink-0" />
+                  <span className="font-extrabold text-xs text-white truncate">Enseignants</span>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-indigo-400 group-hover:translate-x-1 transition-transform shrink-0" />
+              </button>
+            )}
+
             {isViewAllowed('communication') && (
               <button
                 onClick={() => onNavigate('communication')}
@@ -399,8 +523,271 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <ArrowRight className="h-3.5 w-3.5 text-indigo-400 group-hover:translate-x-1 transition-transform shrink-0" />
               </button>
             )}
+
+            {isViewAllowed('parent-complaints') && (
+              <button
+                onClick={() => onNavigate('parent-complaints')}
+                className="p-3 rounded-xl bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/60 text-left transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center space-x-2 truncate">
+                  <Mic className="h-4 w-4 text-rose-400 shrink-0" />
+                  <span className="font-extrabold text-xs text-white truncate">Boîte Audios Parents</span>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-indigo-400 group-hover:translate-x-1 transition-transform shrink-0" />
+              </button>
+            )}
+
+            {isViewAllowed('ai-studio') && (
+              <button
+                onClick={() => onNavigate('ai-studio')}
+                className="p-3 rounded-xl bg-indigo-900/60 hover:bg-indigo-800 border border-indigo-700/60 text-left transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center space-x-2 truncate">
+                  <Sparkles className="h-4 w-4 text-purple-400 shrink-0" />
+                  <span className="font-extrabold text-xs text-white truncate">IA Gemini Pro</span>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-indigo-400 group-hover:translate-x-1 transition-transform shrink-0" />
+              </button>
+            )}
           </div>
         </div>
+      )}
+
+      {/* SOUS-APPLICATIONS & LIENS DIRECTS HORS-PLATEFORME */}
+      {(!isStaffRestricted || isViewAllowed('communication')) && (
+        <>
+          <div className="rounded-3xl p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-2 border-indigo-500/40 text-white shadow-2xl space-y-5 relative overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/60 pb-4">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-lg shadow-indigo-600/30">
+              <Smartphone className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white uppercase tracking-wider">
+                  NOUVEAU
+                </span>
+                <span className="text-xs text-indigo-300 font-bold">Accès Dédiés & Cloisonnés</span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-black text-white mt-0.5 tracking-tight">
+                Liens Directs des Sous-Applications Parents & Professeurs
+              </h2>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowSubAppsModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md transition-all self-start sm:self-auto cursor-pointer"
+          >
+            <Share2 className="h-4 w-4" />
+            <span>QR Codes & Partage Complet</span>
+          </button>
+        </div>
+
+        <p className="text-xs text-slate-300 leading-relaxed max-w-3xl">
+          Ces liens permettent aux parents et aux professeurs d’utiliser leurs espaces dédiés directement sur leur smartphone sans avoir accès à la plateforme générale, ni à la barre de navigation, ni aux réglages administrateurs.
+        </p>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* CARTE PARENT */}
+          <div className="p-5 rounded-2xl bg-slate-950/70 border border-emerald-500/30 hover:border-emerald-500/60 transition-all flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 rounded-xl bg-emerald-600/20 text-emerald-400">
+                    <Smartphone className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white">Sous-App Parents d'Élèves</h3>
+                    <p className="text-[11px] text-emerald-400 font-bold">Notes, tranches de scolarité & avis en direct</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={() => setShowActivatedParentsModal(true)}
+                    className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 cursor-pointer transition-all hover:scale-105"
+                    title="Cliquer pour voir la liste détaillée des parents ayant activé l'application"
+                  >
+                    <Smartphone className="w-3 h-3 text-emerald-400" />
+                    <span>{monthlyActivatedParentsCount} Parent{monthlyActivatedParentsCount > 1 ? 's' : ''} activé{monthlyActivatedParentsCount > 1 ? 's' : ''} (ce mois)</span>
+                    <span className="underline ml-0.5 text-emerald-200">Voir</span>
+                  </button>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                    Lecture Seule
+                  </span>
+                </div>
+              </div>
+
+              {/* Live Director Notification for Remote Parent Activation */}
+              {schoolDirectorNotifications.length > 0 && (
+                <div className="mt-2.5 p-2.5 rounded-xl bg-gradient-to-r from-purple-950/80 to-emerald-950/80 border border-purple-500/40 text-xs text-white space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 font-black text-amber-300 text-[11px] uppercase tracking-wider">
+                      <Zap className="h-3.5 w-3.5 animate-pulse" />
+                      Notification Reçue : Parent Activé à distance
+                    </span>
+                    <button
+                      onClick={() => markDirectorNotificationAsRead(schoolDirectorNotifications[0].id)}
+                      className="text-[10px] text-slate-400 hover:text-white cursor-pointer"
+                    >
+                      ✕ Marquer lu
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-200">
+                    Parent : <strong>{schoolDirectorNotifications[0].parentName}</strong> • Élève : <strong>{schoolDirectorNotifications[0].studentName}</strong> ({schoolDirectorNotifications[0].className})
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-emerald-300 font-mono">
+                    <span>Code reçu : {schoolDirectorNotifications[0].receiptCode}</span>
+                    <button
+                      onClick={() => setShowActivatedParentsModal(true)}
+                      className="text-purple-300 font-sans font-bold underline cursor-pointer hover:text-purple-200"
+                    >
+                      Voir tous les parents activés →
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* URL Display */}
+              <div className="mt-3 p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 flex items-center justify-between gap-2 overflow-hidden">
+                <span className="truncate text-emerald-200">{getSubAppUrl('parent')}</span>
+                <button
+                  onClick={() => copyToClipboard('parent')}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold shrink-0 transition-all flex items-center space-x-1 cursor-pointer"
+                >
+                  {copiedLinkType === 'parent' ? (
+                    <>
+                      <CheckCircle2 className="h-3 w-3 text-white" />
+                      <span>Copié !</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3 w-3" />
+                      <span>Copier</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setShowActivatedParentsModal(true)}
+                className="py-2 px-3 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 hover:text-emerald-200 font-black text-xs flex items-center justify-center space-x-1.5 transition-all border border-emerald-600/40 cursor-pointer shadow-sm"
+                title="Consulter la liste de tous les parents ayant activé l'application ce mois"
+              >
+                <Smartphone className="h-3.5 w-3.5 text-emerald-400" />
+                <span>Liste Parents Activés ({monthlyActivatedParentsCount})</span>
+              </button>
+
+              <button
+                onClick={() => onNavigate('parent-complaints')}
+                className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-extrabold text-xs flex items-center justify-center space-x-1.5 transition-all border border-slate-700 cursor-pointer relative"
+                title="Consulter la boîte de réception des audios et plaintes des parents"
+              >
+                <Mic className="h-3.5 w-3.5 text-emerald-400" />
+                <span>Boîte Audios</span>
+                {schoolUnreadComplaintsCount > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
+                    {schoolUnreadComplaintsCount}
+                  </span>
+                )}
+              </button>
+
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(`Bonjour chers parents,\nVoici le lien officiel pour suivre les notes, bulletins, tranches et envoyer vos messages/audios à ${currentSchool?.name || settings.schoolName} :\n\n${getSubAppUrl('parent')}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2 rounded-xl bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 font-bold text-xs flex items-center justify-center transition-all border border-emerald-700/50 cursor-pointer"
+                title="Partager le lien par WhatsApp"
+              >
+                <Share2 className="h-4 w-4" />
+              </a>
+            </div>
+          </div>
+
+          {/* CARTE PROFESSEUR */}
+          <div className="p-5 rounded-2xl bg-slate-950/70 border border-indigo-500/30 hover:border-indigo-500/60 transition-all flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="p-2 rounded-xl bg-indigo-600/20 text-indigo-400">
+                    <GraduationCap className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white">Sous-App Enseignants & Profs</h3>
+                    <p className="text-[11px] text-indigo-300 font-bold">Inscription • Saisie des notes • Dépôt d'épreuves Word/PDF</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  {pendingTeacherExams > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 animate-pulse">
+                      {pendingTeacherExams} épreuve(s) à valider
+                    </span>
+                  )}
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">
+                    Saisie Sécurisée
+                  </span>
+                </div>
+              </div>
+
+              {/* URL Display */}
+              <div className="mt-3 p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-300 flex items-center justify-between gap-2 overflow-hidden">
+                <span className="truncate text-indigo-200">{getSubAppUrl('teacher')}</span>
+                <button
+                  onClick={() => copyToClipboard('teacher')}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold shrink-0 transition-all flex items-center space-x-1"
+                >
+                  {copiedLinkType === 'teacher' ? (
+                    <>
+                      <CheckCircle2 className="h-3 w-3 text-white" />
+                      <span>Copié !</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3 w-3" />
+                      <span>Copier</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => onNavigate('teacher-subapp')}
+                className="flex-1 py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs flex items-center justify-center space-x-1.5 transition-all shadow-md cursor-pointer"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                <span>Tester Espace Professeur</span>
+              </button>
+
+              <button
+                onClick={() => onNavigate('epreuves')}
+                className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-extrabold text-xs flex items-center justify-center space-x-1.5 transition-all border border-slate-700 cursor-pointer"
+                title="Consulter et valider les épreuves déposées par les professeurs"
+              >
+                <FileText className="h-3.5 w-3.5 text-amber-400" />
+                <span>Épreuves ({pendingTeacherExams})</span>
+              </button>
+
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(`Bonjour chers collègues enseignants,\nVoici le lien officiel pour vous inscrire, saisir vos notes et envoyer vos épreuves d'évaluation à ${currentSchool?.name || settings.schoolName} :\n\n${getSubAppUrl('teacher')}`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2 rounded-xl bg-indigo-900/60 hover:bg-indigo-800 text-indigo-300 font-bold text-xs flex items-center justify-center transition-all border border-indigo-700/50"
+                title="Partager le lien par WhatsApp"
+              >
+                <Share2 className="h-4 w-4" />
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* BOÎTE D'ANNONCES OFFICIELLES & MESSAGES PRIVÉS AUX PARENTS */}
+      <OfficialAnnouncementsBox onNavigateToParentApp={() => window.open(getSubAppUrl('parent'), '_blank')} />
+        </>
       )}
 
       {/* DUAL WORKSPACES SELECTION HUB: ESPACE DIRECTION & ESPACE SECRÉTARIAT (Visible for Director) */}
@@ -544,27 +931,93 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       )}
 
-      {/* DIRECTOR STAFF ACCESS CODES BANNER (Visible for Director & Super Admin) */}
+      {/* DIRECTOR STAFF ACCESS CODES BANNER & DIRECT INLINE MANAGER (Visible for Director & Super Admin) */}
       {(currentUser?.role === 'DIRECTEUR' || currentUser?.role === 'SUPER_ADMIN') && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-900/90 via-indigo-900/90 to-purple-900/90 text-white border border-blue-500/40 shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-xl bg-blue-500/30 border border-blue-400/40 shrink-0">
-              <ShieldCheck className="h-5 w-5 text-blue-300" />
+        <div className="space-y-4">
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-900 text-white border border-blue-500/40 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center space-x-3.5">
+              <div className="p-3 rounded-2xl bg-blue-500/30 border border-blue-400/40 shrink-0">
+                <ShieldCheck className="h-6 w-6 text-blue-300" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-black text-sm sm:text-base text-white">Cloisonnement des Rôles & Codes d'Accès Secrets</h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 uppercase tracking-wider">
+                    Direct sur Accueil
+                  </span>
+                </div>
+                <p className="text-xs text-blue-200 mt-0.5">
+                  Choisissez les fenêtres accessibles et modifiez les codes secrets pour chaque membre (Censeur, Surveillant, Comptable, Secrétaire) directement ici.
+                </p>
+              </div>
             </div>
-            <div>
-              <h4 className="font-extrabold text-sm text-white">Cloisonnement des Rôles & Codes d'Accès Équipe</h4>
-              <p className="text-xs text-blue-200">
-                Vous avez le contrôle total : définissez les codes confidentiels et cochez les fenêtres visibles pour le Censeur, le Surveillant, le Comptable et le Secrétaire.
-              </p>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowStaffCodeManagerOnHome(!showStaffCodeManagerOnHome)}
+                className={`px-4 py-2.5 rounded-xl font-black text-xs shadow-md transition-all flex items-center space-x-2 cursor-pointer ${
+                  showStaffCodeManagerOnHome
+                    ? 'bg-amber-400 text-slate-950 hover:bg-amber-300'
+                    : 'bg-white text-blue-950 hover:bg-blue-50'
+                }`}
+              >
+                <Sliders className="h-4 w-4" />
+                <span>
+                  {showStaffCodeManagerOnHome
+                    ? 'Masquer le Panneau de Gestion'
+                    : 'Choisir Fenêtres & Codes Directement'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onNavigate('settings')}
+                className="px-3 py-2.5 rounded-xl bg-blue-950/60 hover:bg-blue-950 text-blue-200 hover:text-white border border-blue-700/50 font-bold text-xs transition-all flex items-center space-x-1 cursor-pointer"
+                title="Accéder aux réglages complets"
+              >
+                <span>Paramètres Généraux</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
-          <button
-            onClick={() => onNavigate('settings')}
-            className="px-4 py-2 rounded-xl bg-white text-blue-900 font-extrabold text-xs hover:bg-blue-50 shadow-md transition-all shrink-0 flex items-center space-x-1.5 cursor-pointer"
-          >
-            <span>Gérer les Codes & Rôles</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
+
+          {/* Direct Interactive Staff Manager on Home Page */}
+          {showStaffCodeManagerOnHome && (
+            <div className="p-4 sm:p-6 rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-500/40 shadow-2xl space-y-4 animate-in fade-in slide-in-from-top-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 gap-2">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <KeyRound className="h-5 w-5 text-indigo-600" />
+                    <span>Configuration Directe du Cloisonnement de l'Administration</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Définissez le code confidentiel et cochez précisément les fenêtres autorisées pour chaque collaborateur.
+                  </p>
+                </div>
+
+                {homeStaffSavedSuccess ? (
+                  <span className="px-3 py-1.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-400 animate-in fade-in">
+                    ✓ Modifications enregistrées avec succès !
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSaveStaffRolesOnHome}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-md transition-all flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <span>Enregistrer Tout Directement</span>
+                  </button>
+                )}
+              </div>
+
+              <StaffAccessCodeManager
+                staffRoles={homeStaffRoles}
+                onChangeStaffRoles={setHomeStaffRoles}
+                onSave={handleSaveStaffRolesOnHome}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -917,22 +1370,24 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Recettes de la Scolarité */}
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Recettes Perçues</p>
-              <h3 className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1 truncate">
-                {totalRevenue.toLocaleString()} {settings.currency}
-              </h3>
-              <p className="text-[11px] text-amber-600 font-bold mt-1">
-                Impayés: {totalUnpaid.toLocaleString()} {settings.currency}
-              </p>
-            </div>
-            <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
-              <CreditCard className="h-6 w-6" />
+        {(isViewAllowed('payments') || isViewAllowed('accounting')) && (
+          <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Recettes Perçues</p>
+                <h3 className="text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1 truncate">
+                  {totalRevenue.toLocaleString()} {settings.currency}
+                </h3>
+                <p className="text-[11px] text-amber-600 font-bold mt-1">
+                  Impayés: {totalUnpaid.toLocaleString()} {settings.currency}
+                </p>
+              </div>
+              <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
+                <CreditCard className="h-6 w-6" />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
       </div>
 
@@ -1073,59 +1528,262 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* Recent Payments Table */}
-      <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-          <div>
-            <h3 className="font-bold text-slate-900 dark:text-white text-sm">Derniers Encaissements Reçus</h3>
-            <p className="text-xs text-slate-500">Historique récent des versements scolaires</p>
+      {(isViewAllowed('payments') || isViewAllowed('accounting')) && (
+        <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div>
+              <h3 className="font-bold text-slate-900 dark:text-white text-sm">Derniers Encaissements Reçus</h3>
+              <p className="text-xs text-slate-500">Historique récent des versements scolaires</p>
+            </div>
+            <button
+              onClick={() => onNavigate('payments')}
+              className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+            >
+              Voir toute la comptabilité
+            </button>
           </div>
-          <button
-            onClick={() => onNavigate('payments')}
-            className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
-          >
-            Voir toute la comptabilité
-          </button>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left text-slate-700 dark:text-slate-300">
-            <thead className="bg-slate-50 dark:bg-slate-800/60 uppercase text-[10px] text-slate-500 font-bold">
-              <tr>
-                <th className="p-3">N° Reçu</th>
-                <th className="p-3">Élève</th>
-                <th className="p-3">Type</th>
-                <th className="p-3">Mode</th>
-                <th className="p-3">Montant Versé</th>
-                <th className="p-3">Solde Restant</th>
-                <th className="p-3">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {payments.slice(0, 5).map(p => {
-                const std = students.find(s => s.id === p.studentId);
-                return (
-                  <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
-                    <td className="p-3 font-bold text-blue-600">{p.receiptNumber}</td>
-                    <td className="p-3 font-bold text-slate-900 dark:text-white">
-                      {std ? `${std.lastName} ${std.firstName}` : 'N/A'}
-                    </td>
-                    <td className="p-3">{p.paymentType}</td>
-                    <td className="p-3">{p.paymentMethod}</td>
-                    <td className="p-3 font-black text-emerald-600">
-                      {p.amountPaid.toLocaleString()} {settings.currency}
-                    </td>
-                    <td className="p-3 font-bold text-amber-600">
-                      {p.remainingBalance.toLocaleString()} {settings.currency}
-                    </td>
-                    <td className="p-3 text-slate-500">{p.date}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left text-slate-700 dark:text-slate-300">
+              <thead className="bg-slate-50 dark:bg-slate-800/60 uppercase text-[10px] text-slate-500 font-bold">
+                <tr>
+                  <th className="p-3">N° Reçu</th>
+                  <th className="p-3">Élève</th>
+                  <th className="p-3">Type</th>
+                  <th className="p-3">Mode</th>
+                  <th className="p-3">Montant Versé</th>
+                  <th className="p-3">Solde Restant</th>
+                  <th className="p-3">Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {payments.slice(0, 5).map(p => {
+                  const std = students.find(s => s.id === p.studentId);
+                  return (
+                    <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                      <td className="p-3 font-bold text-blue-600">{p.receiptNumber}</td>
+                      <td className="p-3 font-bold text-slate-900 dark:text-white">
+                        {std ? `${std.lastName} ${std.firstName}` : 'N/A'}
+                      </td>
+                      <td className="p-3">{p.paymentType}</td>
+                      <td className="p-3">{p.paymentMethod}</td>
+                      <td className="p-3 font-black text-emerald-600">
+                        {p.amountPaid.toLocaleString()} {settings.currency}
+                      </td>
+                      <td className="p-3 font-bold text-amber-600">
+                        {p.remainingBalance.toLocaleString()} {settings.currency}
+                      </td>
+                      <td className="p-3 text-slate-500">{p.date}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <SubAppsShareModal
+        isOpen={showSubAppsModal}
+        onClose={() => setShowSubAppsModal(false)}
+        onNavigateToSubApp={(appType) => {
+          setShowSubAppsModal(false);
+          onNavigate(appType === 'parent' ? 'parent-subapp' : 'teacher-subapp');
+        }}
+      />
+
+      {/* MODAL: SUIVI DES PARENTS AVEC APPLICATION ACTIVE (ESPACE ÉCOLE) */}
+      {showActivatedParentsModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in">
+          <div className="w-full max-w-4xl bg-slate-900 border border-slate-700 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 my-8 text-white">
+            
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-800">
+              <div className="flex items-center space-x-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                  <Smartphone className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg sm:text-xl font-black text-white">
+                    Parents avec Application Active
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {currentSchool?.name || 'Établissement'} • Suivi des abonnements & commissions école (30%)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowActivatedParentsModal(false)}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                  Activés ce mois
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-emerald-400 mt-1 block">
+                  {monthlyActivatedParentsCount} parent{monthlyActivatedParentsCount > 1 ? 's' : ''}
+                </span>
+                <span className="text-[10px] text-slate-500">Mois en cours</span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-purple-500/30">
+                <span className="text-[10px] font-black uppercase tracking-wider text-purple-400 block">
+                  Part École (30%)
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-purple-300 mt-1 block">
+                  {totalSchoolCommissionSum.toLocaleString('fr-FR')} F
+                </span>
+                <span className="text-[10px] text-slate-400">300 F/m ou 2 700 F/an</span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                  Total Historique
+                </span>
+                <span className="text-xl sm:text-2xl font-black text-white mt-1 block">
+                  {schoolParentActivations.length}
+                </span>
+                <span className="text-[10px] text-slate-500">Activations enregistrées</span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                  Reversement
+                </span>
+                <span className="text-xs sm:text-sm font-black text-amber-300 mt-1 block">
+                  Par le Promoteur
+                </span>
+                <span className="text-[10px] text-emerald-400">Direct / MoMo</span>
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={parentSearchTerm}
+                onChange={(e) => setParentSearchTerm(e.target.value)}
+                placeholder="Rechercher par nom parent, élève, téléphone, classe, code reçu..."
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            {/* Activations Table */}
+            <div className="rounded-2xl border border-slate-800 overflow-hidden bg-slate-950/60 max-h-80 overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-800/80 text-slate-300 font-bold sticky top-0 z-10">
+                  <tr>
+                    <th className="p-3">Élève & Classe</th>
+                    <th className="p-3">Parent & Contact</th>
+                    <th className="p-3">Formule</th>
+                    <th className="p-3">Validité</th>
+                    <th className="p-3">Code Reçu</th>
+                    <th className="p-3 text-right">Part École (30%)</th>
+                    <th className="p-3 text-center">Statut</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-200">
+                  {schoolParentActivations
+                    .filter(act => {
+                      if (!parentSearchTerm.trim()) return true;
+                      const term = parentSearchTerm.toLowerCase();
+                      return (
+                        act.studentName.toLowerCase().includes(term) ||
+                        act.parentName.toLowerCase().includes(term) ||
+                        act.parentPhone.includes(term) ||
+                        act.className.toLowerCase().includes(term) ||
+                        act.receiptCode.toLowerCase().includes(term)
+                      );
+                    })
+                    .map(act => {
+                      const isExpired = act.fin_abonnement && new Date(act.fin_abonnement).getTime() < Date.now();
+                      const schoolShare = act.schoolShare || (act.planType === 'ANNUAL' ? 2700 : 300);
 
+                      return (
+                        <tr key={act.id} className="hover:bg-slate-800/40 transition-colors">
+                          <td className="p-3">
+                            <p className="font-bold text-white">{act.studentName}</p>
+                            <span className="text-[10px] text-slate-400 font-medium">Classe: {act.className}</span>
+                          </td>
+                          <td className="p-3">
+                            <p className="font-semibold text-slate-200">{act.parentName}</p>
+                            <span className="text-[11px] font-mono text-emerald-400">{act.parentPhone}</span>
+                          </td>
+                          <td className="p-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                              act.planType === 'ANNUAL'
+                                ? 'bg-purple-950 text-purple-300 border border-purple-800'
+                                : 'bg-blue-950 text-blue-300 border border-blue-800'
+                            }`}>
+                              {act.planType === 'ANNUAL' ? '1 An (9 000F)' : '1 Mois (1 000F)'}
+                            </span>
+                          </td>
+                          <td className="p-3 text-[11px]">
+                            <p className="text-slate-400">Du {new Date(act.dateActivation).toLocaleDateString('fr-FR')}</p>
+                            <p className="font-bold text-slate-200">
+                              Au {act.fin_abonnement ? new Date(act.fin_abonnement).toLocaleDateString('fr-FR') : 'N/A'}
+                            </p>
+                          </td>
+                          <td className="p-3">
+                            <span className="font-mono font-bold text-amber-300 bg-slate-900 border border-slate-700 px-2 py-1 rounded text-[11px]">
+                              {act.receiptCode}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            <span className="font-black text-emerald-400 font-mono">
+                              +{schoolShare.toLocaleString('fr-FR')} F
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                              !isExpired && act.status === 'actif'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                            }`}>
+                              {!isExpired && act.status === 'actif' ? 'Actif' : 'Expiré'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  {schoolParentActivations.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-400">
+                        <Smartphone className="w-8 h-8 text-slate-600 mx-auto mb-2 opacity-60" />
+                        <p className="font-bold text-sm text-slate-300">Aucun parent activé pour l'instant ce mois</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Dès qu'un parent envoie son reçu WhatsApp au promoteur (01 43 75 45 93), son accès est activé à distance et apparaît immédiatement ici.
+                        </p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Note & Close button */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-slate-800 text-xs text-slate-400">
+              <p className="leading-relaxed">
+                💡 <strong>Rappel :</strong> Les parents paient 1 000 F/mois ou 9 000 F/an. <strong>60%</strong> revient au Promoteur Gestionnaire Scolaire (+600 F / +5 400 F) et <strong>30%</strong> (+300 F / +2 700 F) est directement crédité à votre école (10% de frais techniques/opérateur).
+              </p>
+              <button
+                onClick={() => setShowActivatedParentsModal(false)}
+                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs cursor-pointer shrink-0 transition-all"
+              >
+                Fermer
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../lib/store';
 import { PrintBulletinModal } from '../components/modals/PrintBulletinModal';
 import { SendBulletinParentModal } from '../components/modals/SendBulletinParentModal';
+import { ParentExamPapersTab } from '../components/ParentExamPapersTab';
 import {
   GraduationCap,
   Award,
@@ -36,7 +37,8 @@ export const StudentPortalView: React.FC = () => {
     exams,
     settings,
     currentSchool,
-    currentUser
+    currentUser,
+    examPapers
   } = useApp();
 
   // Selected Trimester state (default to settings currentTrimester or 1)
@@ -751,6 +753,17 @@ export const StudentPortalView: React.FC = () => {
         </div>
 
       </div>
+
+      {/* SECTION 4: SUJETS D'ÉPREUVES & DEVOIRS MIS À DISPOSITION PAR LES PROFESSEURS */}
+      {student && (
+        <ParentExamPapersTab
+          student={student}
+          currentClass={classObj}
+          examPapers={examPapers}
+          settings={settings}
+          currentSchool={currentSchool}
+        />
+      )}
 
       {/* Printable Bulletin Modal */}
       {showPrintModal && student && (

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../lib/store';
+import { useGoogleAuth } from './GoogleAuthGate';
 import { SchoolLogo } from './SchoolLogo';
 import { defaultStaffRolePermissions } from '../data/initialData';
 import {
@@ -28,13 +29,15 @@ import {
   ScanLine,
   Zap,
   Home,
-  Crown
+  Crown,
+  Mic
 } from 'lucide-react';
 import { UserRole } from '../types';
 
 interface SidebarProps {
   activeView: string;
   setActiveView: (view: string) => void;
+  onOpenControlBox?: () => void;
 }
 
 interface NavItem {
@@ -46,11 +49,17 @@ interface NavItem {
   category?: string;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView }) => {
-  const { currentUser, settings, currentSchool } = useApp();
+export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onOpenControlBox }) => {
+  const { currentUser, settings, currentSchool, parentComplaints } = useApp();
+  const { gmailUser } = useGoogleAuth();
 
   const isPromoter = (currentUser?.email?.toLowerCase().trim() === 'mahounouvictor123@gmail.com') || 
+    (gmailUser?.email?.toLowerCase().trim() === 'mahounouvictor123@gmail.com') ||
     (typeof window !== 'undefined' && localStorage.getItem('GESTIONNAIRE_PROMOTER_AUTH') === 'true');
+
+  const unreadComplaintsCount = (parentComplaints || []).filter(
+    c => !c.read && (!c.schoolId || c.schoolId === currentSchool.id)
+  ).length;
 
   const navItems: NavItem[] = [
     // Pôle Accueil
@@ -61,7 +70,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView }) =
     { id: 'accounting', label: 'Comptabilité & Caisse', icon: Wallet, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'COMPTABLE'], category: '🏢 ESPACE DIRECTION' },
     { id: 'payments', label: 'Frais de Scolarité', icon: CreditCard, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'COMPTABLE', 'PARENT'], category: '🏢 ESPACE DIRECTION' },
     { id: 'subscriptions', label: "Plans d'Abonnement", icon: Zap, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'COMPTABLE'], badge: 'SaaS Pro', category: '🏢 ESPACE DIRECTION' },
-    { id: 'kkiapay', label: 'Paiement KKiaPay Abonnements', icon: CreditCard, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'COMPTABLE'], badge: 'MoMo Licences', category: '🏢 ESPACE DIRECTION' },
     { id: 'teachers', label: 'Maîtres & Professeurs', icon: GraduationCap, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'CENSEUR', 'SECRETAIRE'], category: '🏢 ESPACE DIRECTION' },
     { id: 'settings', label: 'Paramètres Établissement', icon: Settings, roles: ['SUPER_ADMIN', 'DIRECTEUR'], category: '🏢 ESPACE DIRECTION' },
 
@@ -77,19 +85,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView }) =
     { id: 'epreuves', label: 'Espace Épreuves Word IA', icon: FileText, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'CENSEUR', 'ENSEIGNANT'], badge: 'Word IA', category: '📝 ESPACE SECRÉTARIAT' },
     { id: 'documents', label: 'Documents & Cartes Scolaires', icon: FileText, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'CENSEUR', 'SURVEILLANT', 'SECRETAIRE', 'PARENT', 'ELEVE'], category: '📝 ESPACE SECRÉTARIAT' },
     { id: 'communication', label: 'Envoi SMS & WhatsApp', icon: MessageSquare, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'CENSEUR', 'SURVEILLANT', 'COMPTABLE', 'SECRETAIRE', 'ENSEIGNANT'], category: '📝 ESPACE SECRÉTARIAT' },
+    { id: 'parent-complaints', label: 'Boîte Audios & Plaintes', icon: Mic, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'CENSEUR', 'SURVEILLANT', 'SECRETAIRE'], badge: unreadComplaintsCount > 0 ? `${unreadComplaintsCount} direct` : 'Direct', category: '📝 ESPACE SECRÉTARIAT' },
     { id: 'canteen', label: 'Service Cantine', icon: UtensilsCrossed, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'SURVEILLANT', 'COMPTABLE', 'SECRETAIRE', 'PARENT', 'ELEVE'], category: '📝 ESPACE SECRÉTARIAT' },
     { id: 'transport', label: 'Service Transport', icon: Bus, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'COMPTABLE', 'SECRETAIRE', 'PARENT', 'ELEVE'], category: '📝 ESPACE SECRÉTARIAT' },
     { id: 'library', label: 'Bibliothèque', icon: BookMarked, category: '📝 ESPACE SECRÉTARIAT' },
 
     // Dedicated Portals
-    { id: 'parent-portal', label: 'Espace Parent', icon: HeartHandshake, roles: ['PARENT', 'SUPER_ADMIN', 'DIRECTEUR'], badge: 'Enfants', category: '👥 PORTAILS UTILISATEURS' },
-    { id: 'student-portal', label: 'Espace Élève', icon: UserCheck2, roles: ['ELEVE', 'SUPER_ADMIN', 'DIRECTEUR'], badge: 'Propre', category: '👥 PORTAILS UTILISATEURS' },
-
-    // 👑 ESPACE PROMOTEUR MASTER (Tout en bas - Strictement réservé au Promoteur Général)
-    ...(isPromoter ? [
-      { id: 'schools-hub', label: 'Réseau Multi-Écoles', icon: Building2, badge: 'Master', category: '👑 RÉSEAU MULTI-ÉCOLES' },
-      { id: 'promoter-admin', label: 'Supervision Promoteur', icon: Crown, badge: 'Directeur Général', category: '👑 RÉSEAU MULTI-ÉCOLES' }
-    ] : [])
+    { id: 'student-portal', label: 'Espace Élève', icon: UserCheck2, roles: ['ELEVE', 'SUPER_ADMIN', 'DIRECTEUR'], badge: 'Propre', category: '👥 PORTAILS UTILISATEURS' }
   ];
 
   const isPromoterAuth = localStorage.getItem('GESTIONNAIRE_PROMOTER_AUTH') === 'true';
@@ -120,10 +122,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView }) =
       return true;
     }
 
-    // If specific staff role permissions are configured by Director
-    if (currentStaffConfig && ['CENSEUR', 'SURVEILLANT', 'COMPTABLE', 'SECRETAIRE'].includes(currentUser.role)) {
-      if (currentStaffConfig.allowedViews.includes('*')) return true;
-      return currentStaffConfig.allowedViews.includes(item.id);
+    // Strictly enforce role-based view partitioning for staff members
+    if (['CENSEUR', 'SURVEILLANT', 'COMPTABLE', 'SECRETAIRE'].includes(currentUser.role)) {
+      const activeStaffConfig = currentStaffConfig || defaultStaffRolePermissions.find(d => d.role === currentUser.role);
+      if (!activeStaffConfig) return false;
+      if (activeStaffConfig.allowedViews.includes('*')) return true;
+      return activeStaffConfig.allowedViews.includes(item.id);
     }
 
     if (!item.roles) return true;
@@ -206,6 +210,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView }) =
           );
         })}
       </nav>
+
+      {/* Exclusive Master Box Button for Promoter ONLY */}
+      {isPromoter && (
+        <div className="p-3 border-t border-slate-800">
+          <button
+            onClick={() => onOpenControlBox ? onOpenControlBox() : setActiveView('control-box')}
+            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-black text-xs flex items-center justify-between shadow-lg shadow-purple-900/40 transition-all cursor-pointer group"
+            title="Boîte de contrôle à distance de toutes les écoles (mahounouvictor123@gmail.com)"
+          >
+            <div className="flex items-center space-x-2">
+              <Crown className="h-4 w-4 text-amber-300 group-hover:scale-110 transition-transform" />
+              <span>Boîte Contrôle Écoles</span>
+            </div>
+            <span className="text-[10px] bg-purple-900/70 px-1.5 py-0.5 rounded text-purple-200 border border-purple-500/30">
+              Master
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Footer info */}
       <div className="p-3 border-t border-slate-800/80 space-y-2">

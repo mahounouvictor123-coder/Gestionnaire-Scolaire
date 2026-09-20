@@ -6,6 +6,7 @@ import {
   Building2,
   Plus,
   ArrowRight,
+  ArrowLeft,
   ShieldCheck,
   Users,
   GraduationCap,
@@ -236,8 +237,37 @@ export const MultiSchoolHubView: React.FC<MultiSchoolHubViewProps> = ({
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300">
+    <div className="space-y-6 animate-in fade-in duration-300">
       
+      {/* Top Exit Navigation Bar */}
+      <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800 p-3 sm:p-4 rounded-2xl flex items-center justify-between shadow-xl">
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => onNavigate('dashboard')}
+            className="flex items-center space-x-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-900/40 border border-blue-400/30 transition-all transform hover:scale-[1.02] cursor-pointer group"
+            title="Revenir au Tableau de Bord de l'École"
+          >
+            <ArrowLeft className="h-4 w-4 text-amber-300 group-hover:-translate-x-1 transition-transform" />
+            <span>← Retour École (Tableau de Bord)</span>
+          </button>
+
+          <span className="hidden md:inline-flex items-center gap-1.5 text-xs text-slate-300 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700">
+            <Building2 className="h-3.5 w-3.5 text-emerald-400" />
+            <span>Gestion Multi-Établissements</span>
+          </span>
+        </div>
+
+        <button
+          onClick={() => onNavigate('dashboard')}
+          className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-950/60 border border-rose-400/30 transition-all transform hover:scale-105 cursor-pointer"
+          title="Fermer l'espace multi-écoles et sortir"
+          aria-label="Fermer et Sortir"
+        >
+          <X className="h-4 w-4" />
+          <span>Sortir</span>
+        </button>
+      </div>
+
       {/* Hero Welcome Header */}
       <div className="relative rounded-3xl bg-gradient-to-r from-slate-900 via-blue-950 to-emerald-950 p-8 sm:p-10 text-white overflow-hidden shadow-2xl border border-slate-800">
         <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />

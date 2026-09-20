@@ -44,18 +44,16 @@ export function buildStaffRoleAccessUrl(
     city?: string;
   },
   role: string,
-  code: string,
+  _code?: string,
   staffName?: string
 ): string {
   const baseUrl = getPublicBaseUrl();
   const params = new URLSearchParams({
     school_id: school.id,
     role: role,
-    code: code,
     ...(staffName ? { staff_name: staffName } : {}),
     ...(school.name ? { name: school.name } : {}),
-    ...(school.city ? { city: school.city } : {}),
-    autologin: 'true'
+    ...(school.city ? { city: school.city } : {})
   });
   return `${baseUrl}?${params.toString()}`;
 }

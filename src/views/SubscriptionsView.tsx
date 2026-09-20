@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useApp } from '../lib/store';
-import { DailyAccessPaymentModal } from '../components/modals/DailyAccessPaymentModal';
 import { initiateKkiapayPayment, getKkiapayCheckoutUrl } from '../lib/kkiapay';
 import {
   Zap,
@@ -57,7 +56,6 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({ onNavigate
   const [billingCycle, setBillingCycle] = useState<'MONTHLY' | 'ANNUAL'>('ANNUAL');
   const [selectedPlanForUpgrade, setSelectedPlanForUpgrade] = useState<SubscriptionPlan | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showDailyAccessModal, setShowDailyAccessModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'MOBILE_MONEY' | 'CARTE_BANCAIRE' | 'VIREMENT'>('MOBILE_MONEY');
   const [phoneNumber, setPhoneNumber] = useState('01 67 43 03 81');
   const [operator, setOperator] = useState<'MTN' | 'MOOV' | 'CELTIIS' | 'ORANGE' | 'WAVE'>('MTN');
@@ -209,33 +207,17 @@ export const SubscriptionsView: React.FC<SubscriptionsViewProps> = ({ onNavigate
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full md:w-auto">
-          {onNavigate && (
-            <button
-              onClick={() => onNavigate('kkiapay')}
-              className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center space-x-2 shadow-lg transition-all cursor-pointer"
-            >
-              <CreditCard className="h-4 w-4" />
-              <span>Payer avec KKiaPay</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setShowDailyAccessModal(true)}
-            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-slate-950 font-black text-sm flex items-center justify-center space-x-2 shadow-xl transition-all transform hover:scale-105 shrink-0 cursor-pointer"
+          <a
+            href={`https://wa.me/2290167430381?text=${encodeURIComponent(`Bonjour Monsieur le Promoteur, je suis le Directeur de l'école "${currentSchool.name}". Je souhaite valider ou renouveler notre abonnement.`)}`}
+            target="_blank"
+            rel="noreferrer"
+            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm flex items-center justify-center space-x-2 shadow-xl transition-all transform hover:scale-105 shrink-0 cursor-pointer"
           >
-            <Zap className="h-5 w-5 fill-slate-950" />
-            <span>Valider mon accès à 250f</span>
-          </button>
+            <MessageSquare className="h-4 w-4 text-white" />
+            <span>Contacter le Promoteur sur WhatsApp</span>
+          </a>
         </div>
       </div>
-
-      {/* Render Daily Access Payment Modal if open */}
-      {showDailyAccessModal && (
-        <DailyAccessPaymentModal
-          isOpen={showDailyAccessModal}
-          onClose={() => setShowDailyAccessModal(false)}
-        />
-      )}
 
       {/* View Header */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-6 sm:p-8 shadow-xl border border-indigo-900/50 relative overflow-hidden">

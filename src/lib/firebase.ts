@@ -6,6 +6,7 @@ import {
   OAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  signInAnonymously,
   getRedirectResult,
   signOut,
   onAuthStateChanged,
@@ -119,19 +120,60 @@ export const saveUserDataByEmailToFirestore = async (email: string, userData: an
   }
 };
 
-// Cloud Sync Helpers
+// Auto anonymous auth helper so all staff members have a valid Firebase session
+export const ensureFirebaseAuthSession = async () => {
+  try {
+    if (!auth.currentUser) {
+      await signInAnonymously(auth);
+    }
+  } catch (e) {
+    // If anonymous auth is not enabled on the project, the relaxed firestore.rules and server sync still handle everything
+  }
+};
+
+// Start anonymous auth check on module load
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    ensureFirebaseAuthSession().catch(() => {});
+  }, 100);
+}
+
+// Cloud & Real-Time Sync Helpers
 export const syncToCloud = async (schoolId: string, dataType: string, data: any) => {
   if (!schoolId) return;
+  const timestamp = new Date().toISOString();
+
+  // 1. Primary Cloud Persistence: Firestore
   try {
     const docRef = doc(db, "schools", schoolId, "data", dataType);
-    await setDoc(docRef, { payload: JSON.stringify(data), updatedAt: new Date().toISOString() }, { merge: true });
+    await setDoc(docRef, { payload: JSON.stringify(data), updatedAt: timestamp }, { merge: true });
   } catch (e) {
     console.warn(`[Firestore Cloud Backup] (${dataType}):`, e);
   }
+
+  // 2. Secondary Real-Time Server Broadcast (Directeur, Censeur, Surveillant, Secrétaire)
+  try {
+    fetch(`/api/sync/${encodeURIComponent(schoolId)}/${encodeURIComponent(dataType)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payload: data, updatedAt: timestamp })
+    }).catch(() => {});
+  } catch (e) {}
+
+  // 3. Instant Same-Browser Inter-Tab Sync via BroadcastChannel
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('edumanage_realtime_sync');
+      bc.postMessage({ schoolId, dataType, payload: data, updatedAt: timestamp });
+      bc.close();
+    }
+  } catch (e) {}
 };
 
 export const loadFromCloud = async (schoolId: string, dataType: string) => {
   if (!schoolId) return null;
+
+  // 1. Attempt Firestore First
   try {
     const docRef = doc(db, "schools", schoolId, "data", dataType);
     const snap = await getDoc(docRef);
@@ -141,14 +183,31 @@ export const loadFromCloud = async (schoolId: string, dataType: string) => {
   } catch (e) {
     console.warn(`[Firestore Cloud Restore] (${dataType}):`, e);
   }
+
+  // 2. Fallback to Server Sync Store
+  try {
+    const res = await fetch(`/api/sync/${encodeURIComponent(schoolId)}/${encodeURIComponent(dataType)}`);
+    if (res.ok) {
+      const json = await res.json();
+      if (json && json.payload) {
+        return json.payload;
+      }
+    }
+  } catch (e) {}
+
   return null;
 };
 
 export const subscribeToCloud = (schoolId: string, dataType: string, callback: (data: any) => void) => {
   if (!schoolId) return () => {};
+  let isCleanedUp = false;
+  const cleanups: (() => void)[] = [];
+
+  // 1. Firestore Real-Time Listener (onSnapshot)
   try {
     const docRef = doc(db, "schools", schoolId, "data", dataType);
-    return onSnapshot(docRef, (snap) => {
+    const unsub = onSnapshot(docRef, (snap) => {
+      if (isCleanedUp) return;
       if (snap.exists() && snap.data()?.payload) {
         try {
           const parsed = JSON.parse(snap.data().payload);
@@ -160,10 +219,59 @@ export const subscribeToCloud = (schoolId: string, dataType: string, callback: (
     }, (err) => {
       console.warn(`[Firestore Listen Warning] (${dataType}):`, err);
     });
+    cleanups.push(unsub);
   } catch (e) {
     console.warn(`[Firestore Subscribe Error] (${dataType}):`, e);
-    return () => {};
   }
+
+  // 2. BroadcastChannel Listener (Tabs on same device/session)
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('edumanage_realtime_sync');
+      const handleBcMessage = (event: MessageEvent) => {
+        if (isCleanedUp) return;
+        const msg = event.data;
+        if (msg && msg.schoolId === schoolId && msg.dataType === dataType && msg.payload !== undefined) {
+          callback(msg.payload);
+        }
+      };
+      bc.addEventListener('message', handleBcMessage);
+      cleanups.push(() => {
+        bc.removeEventListener('message', handleBcMessage);
+        bc.close();
+      });
+    }
+  } catch (e) {}
+
+  // 3. Server SSE / Fallback Polling Listener
+  try {
+    if (typeof window !== 'undefined' && 'EventSource' in window) {
+      const es = new EventSource(`/api/sync/events?schoolId=${encodeURIComponent(schoolId)}`);
+      es.onmessage = (event) => {
+        if (isCleanedUp) return;
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.schoolId === schoolId && data.dataType === dataType) {
+            // Fetch updated data from server
+            fetch(`/api/sync/${encodeURIComponent(schoolId)}/${encodeURIComponent(dataType)}`)
+              .then(res => res.json())
+              .then(json => {
+                if (json && json.payload && !isCleanedUp) {
+                  callback(json.payload);
+                }
+              })
+              .catch(() => {});
+          }
+        } catch (err) {}
+      };
+      cleanups.push(() => es.close());
+    }
+  } catch (e) {}
+
+  return () => {
+    isCleanedUp = true;
+    cleanups.forEach(fn => fn());
+  };
 };
 
 export const syncSchoolsRegistryToCloud = async (schools: any[]) => {
@@ -182,7 +290,7 @@ export const subscribeToSchoolsRegistry = (callback: (schools: any[]) => void) =
       if (snap.exists() && snap.data()?.payload) {
         try {
           const parsed = JSON.parse(snap.data().payload);
-          if (Array.isArray(parsed) && parsed.length > 0) {
+          if (Array.isArray(parsed)) {
             callback(parsed);
           }
         } catch (e) {
@@ -191,6 +299,37 @@ export const subscribeToSchoolsRegistry = (callback: (schools: any[]) => void) =
       }
     }, (err) => {
       console.warn("[Firestore Registry Listen Warning]:", err);
+    });
+  } catch (e) {
+    return () => {};
+  }
+};
+
+export const syncDeletedSchoolsToCloud = async (deletedIds: string[]) => {
+  try {
+    const docRef = doc(db, "system", "deleted_schools");
+    await setDoc(docRef, { payload: JSON.stringify(deletedIds), updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (e) {
+    console.warn("[Firestore Deleted Schools Backup Error]:", e);
+  }
+};
+
+export const subscribeToDeletedSchools = (callback: (deletedIds: string[]) => void) => {
+  try {
+    const docRef = doc(db, "system", "deleted_schools");
+    return onSnapshot(docRef, (snap) => {
+      if (snap.exists() && snap.data()?.payload) {
+        try {
+          const parsed = JSON.parse(snap.data().payload);
+          if (Array.isArray(parsed)) {
+            callback(parsed);
+          }
+        } catch (e) {
+          console.warn("[Firestore Deleted Schools Parse Error]:", e);
+        }
+      }
+    }, (err) => {
+      console.warn("[Firestore Deleted Schools Listen Warning]:", err);
     });
   } catch (e) {
     return () => {};

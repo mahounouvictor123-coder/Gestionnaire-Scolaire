@@ -18,9 +18,11 @@ import {
   AdministrativeDocument,
   TransportRoute,
   CommunicationMessage,
+  ParentComplaintMessage,
   User,
   ArchivedReportCard,
-  StaffRoleConfig
+  StaffRoleConfig,
+  OfficialAnnouncement
 } from '../types';
 
 export const defaultStaffRolePermissions: StaffRoleConfig[] = [
@@ -847,10 +849,16 @@ export const initialAdministrativeDocuments: AdministrativeDocument[] = [
   {
     id: "doc-cert-1",
     studentId: "std-1",
+    studentName: "Marc-Aurele DIALLO",
+    studentBirthDate: "2010-04-12",
+    studentBirthPlace: "Abidjan",
+    className: "3ème A",
     type: "CERTIFICAT_SCOLARITE",
     documentNumber: "CERT-2025-0012",
     issueDate: "2025-10-15",
     academicYear: "2025-2026",
+    conductAppraisal: "Très bonne conduite et assiduité exemplaire",
+    notes: "Pour servir et valoir ce que de droit (Dossier de Passeport & Démarches administratives)",
     reason: "Pour servir et valoir ce que de droit (Dossier de Passeport & Démarches administratives)",
     directorName: "Dr. Amadou KOUASSI",
     observations: "Élève assidu(e) et régulier(ère) aux cours.",
@@ -859,10 +867,16 @@ export const initialAdministrativeDocuments: AdministrativeDocument[] = [
   {
     id: "doc-cert-2",
     studentId: "std-4",
+    studentName: "Grace AMOUSSOU",
+    studentBirthDate: "2011-09-25",
+    studentBirthPlace: "Cotonou",
+    className: "4ème B",
     type: "CERTIFICAT_SCOLARITE",
     documentNumber: "CERT-2025-0018",
     issueDate: "2025-10-22",
     academicYear: "2025-2026",
+    conductAppraisal: "Conduite irréprochable et excellent comportement",
+    notes: "Dossier d'Allocations Familiales et Prise en Charge",
     reason: "Dossier d'Allocations Familiales et Prise en Charge",
     directorName: "Dr. Amadou KOUASSI",
     observations: "Inscrit(e) régulièrement en classe d'examen.",
@@ -871,10 +885,16 @@ export const initialAdministrativeDocuments: AdministrativeDocument[] = [
   {
     id: "doc-attest-1",
     studentId: "std-2",
+    studentName: "Yasmine KOUAME",
+    studentBirthDate: "2007-02-18",
+    studentBirthPlace: "Bouaké",
+    className: "Terminale D",
     type: "ATTESTATION_FREQUENTATION",
     documentNumber: "ATT-2025-0005",
     issueDate: "2025-11-05",
     academicYear: "2025-2026",
+    conductAppraisal: "Assiduité régulière et participation active",
+    notes: "Attestation de Fréquentation Régulière",
     reason: "Attestation de Fréquentation Régulière",
     directorName: "Dr. Amadou KOUASSI",
     observations: "Fréquente assidûment les cours depuis la rentrée scolaire.",
@@ -892,6 +912,69 @@ export const initialCommunications: CommunicationMessage[] = [
   { id: "msg-2", senderName: "Service Comptabilité", recipientGroup: "PARENTS", channel: "WHATSAPP", subject: "Avis de Recouvrement 1er Trimestre", content: "Chers parents, nous vous prions de bien vouloir régulariser le solde de scolarité avant le 05 Décembre.", sentAt: "2025-11-22 10:15", deliveryCount: 145, status: "LIVRE" }
 ];
 
+export const initialParentComplaints: ParentComplaintMessage[] = [
+  {
+    id: "complaint-1",
+    schoolId: "sch-temple",
+    studentId: "std-prim-1",
+    studentName: "Emmanuel SOSSOU",
+    studentClass: "CM2",
+    parentName: "Mme Reine SOSSOU",
+    parentPhone: "+229 97 22 33 44",
+    category: "ABSENCE",
+    subject: "Justification d'absence pour cause de fièvre",
+    messageText: "Bonjour Monsieur le Directeur, Emmanuel a eu un épisode de fièvre cette nuit. Je vous transmets un mot et vous joins également un message audio pour vous expliquer.",
+    audioUrl: "", // Can be tested by playing synth or recording
+    audioDurationSeconds: 24,
+    photoUrl: "https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&fit=crop&q=80&w=400",
+    photoName: "ordonnance_medicale.jpg",
+    status: "NOUVEAU",
+    priority: "HAUTE",
+    createdAt: "2025-11-24T08:15:00Z",
+    isReadBySchool: false
+  },
+  {
+    id: "complaint-2",
+    schoolId: "sch-temple",
+    studentId: "std-prim-3",
+    studentName: "David ADJANOHOUN",
+    studentClass: "CE2",
+    parentName: "M. Victor ADJANOHOUN",
+    parentPhone: "+229 95 88 99 00",
+    category: "SANTE",
+    subject: "Allergie alimentaire cantine & Carnet de santé",
+    messageText: "David a développé une réaction après le déjeuner. Merci de vérifier la composition des sauces à la cantine ce midi.",
+    photoUrl: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&q=80&w=400",
+    photoName: "certificat_allergie.jpg",
+    status: "EN_COURS",
+    priority: "URGENTE",
+    createdAt: "2025-11-23T12:40:00Z",
+    schoolReply: "Bonjour M. Adjanohoun, nous avons alerté le responsable cantine. Le menu de David a été adapté sans arachide.",
+    repliedAt: "2025-11-23T14:10:00Z",
+    repliedBy: "Directeur Général",
+    isReadBySchool: true
+  },
+  {
+    id: "complaint-3",
+    schoolId: "sch-temple",
+    studentId: "std-1",
+    studentName: "Marc-Aurele DIALLO",
+    studentClass: "3ème A",
+    parentName: "M. Ibrahima DIALLO",
+    parentPhone: "+225 07 11 22 33",
+    category: "QUESTION",
+    subject: "Précision sur la date du devoir surveillé de PCT",
+    messageText: "Bonjour l'équipe pédagogique, pourriez-vous nous confirmer l'heure et la date exacte du devoir surveillé de PCT pour les 3ème ?",
+    status: "RESOLU",
+    priority: "NORMALE",
+    createdAt: "2025-11-22T17:00:00Z",
+    schoolReply: "Bonjour M. Diallo, le devoir aura lieu ce jeudi 27 novembre à 08h00 en Grande Salle. Bon courage à Marc-Aurèle !",
+    repliedAt: "2025-11-22T18:30:00Z",
+    repliedBy: "M. Censeur",
+    isReadBySchool: true
+  }
+];
+
 export const initialExamPapers = [
   {
     id: "ex-paper-1",
@@ -904,6 +987,13 @@ export const initialExamPapers = [
     academicYear: "2025-2026",
     duration: "02 Heures",
     coefficient: 3,
+    teacherName: "M. TCHIBOZO Christian",
+    teacherPhone: "+229 97 12 34 56",
+    status: "VALIDE" as const,
+    numberOfCopiesRequested: 48,
+    submissionNotes: "Tirage recto-verso requis. Les élèves ont besoin des figures géométriques nettes.",
+    attachedFileName: "Devoir1_Maths_3emeA.docx",
+    attachedFileType: "WORD" as const,
     instructions: "L'usage de la calculatrice non programmable est autorisé. Les deux exercices et le problème sont obligatoires.",
     content: `EXERCICE 1 : CALCUL NUMÉRIQUE & RACINES CARRÉES (6 points)
 1) Simplifier les expressions sous forme a√b :
@@ -927,11 +1017,13 @@ Un entrepreneur souhaite construire une clôture rectangulaire autour d'un terra
 1) Écrire le système d'équations traduisant cette situation.
 2) Déterminer les dimensions L et l du terrain.
 3) Calculer l'aire totale du terrain en mètres carrés.`,
-    createdAt: "2025-11-10"
+    createdAt: "2025-11-10",
+    isArchived: false,
+    isAvailableForStudents: true
   },
   {
     id: "ex-paper-2",
-    title: "COMPOSITION DU PREMIER TRIMESTRE",
+    title: "COMPOSITION DU PREMIER TRIMESTRE - PCT",
     classId: "cls-5",
     className: "Terminales C & D",
     subjectName: "Physique-Chimie et Technologie (PCT)",
@@ -940,6 +1032,13 @@ Un entrepreneur souhaite construire une clôture rectangulaire autour d'un terra
     academicYear: "2025-2026",
     duration: "03 Heures",
     coefficient: 4,
+    teacherName: "M. DOSSOU Rodrigue",
+    teacherPhone: "+229 95 88 11 22",
+    status: "EN_ATTENTE" as const,
+    numberOfCopiesRequested: 65,
+    submissionNotes: "Veuillez vérifier les notations d'oxydoréduction avant tirage.",
+    attachedFileName: "Compo1_PCT_TerminaleCD.docx",
+    attachedFileType: "WORD" as const,
     instructions: "Rédiger avec soin. Les schémas doivent être annotés au crayon.",
     content: `CHIMIE : CINETIQUE ET SOLUTIONS AQUEUSES (8 points)
 On mélange un volume V1 = 50 mL d'une solution de thiosulfate de sodium de concentration C1 = 0,2 mol/L avec un volume V2 = 50 mL d'acide chlorhydrique de concentration C2 = 0,4 mol/L.
@@ -951,7 +1050,8 @@ PHYSIQUE : MÉCANIQUE DU POINT (12 points)
 Un solide (S) de masse m = 500 g glisse sur une piste inclinée d'un angle α = 30° par rapport à l'horizontale.
 1) Faire le bilan des forces appliquées au solide.
 2) En appliquant le théorème de l'énergie cinétique, déterminer la vitesse du solide au bas de la piste.`,
-    createdAt: "2025-12-15"
+    createdAt: "2025-12-15",
+    isArchived: false
   },
   {
     id: "ex-paper-3",
@@ -964,6 +1064,14 @@ Un solide (S) de masse m = 500 g glisse sur une piste inclinée d'un angle α = 
     academicYear: "2024-2025",
     duration: "02 Heures",
     coefficient: 2,
+    teacherName: "Mme ADANHO Denise",
+    teacherPhone: "+229 96 33 44 55",
+    status: "ARCHIVE" as const,
+    isArchived: true,
+    archivedAt: "2025-04-15",
+    archivedBy: "Direction Censeur",
+    numberOfCopiesRequested: 50,
+    submissionNotes: "Épreuve archivée après les épreuves du BEPC Blanc.",
     instructions: "L'usage de la calculatrice est interdit. Réponses claires et précises exigées.",
     content: `PARTIE I : RESTITUTION SÉCURISÉE DES CONNAISSANCES (8 points)
 1) Définir : Réflexe inné, Synapse, Immunité acquise.
@@ -984,6 +1092,14 @@ Monsieur KANON, agriculteur à Djougou, observe une baisse de rendement de sa ma
     academicYear: "2023-2024",
     duration: "04 Heures",
     coefficient: 3,
+    teacherName: "Prof. HOUNKPONOU Paul",
+    teacherPhone: "+229 90 22 44 66",
+    status: "ARCHIVE" as const,
+    isArchived: true,
+    archivedAt: "2024-05-20",
+    archivedBy: "Direction Censeur",
+    numberOfCopiesRequested: 70,
+    submissionNotes: "Archives Session 2024.",
     instructions: "Le candidat traitera au choix l'un des trois sujets suivants (Contraction, Dissertaion, Commentaire).",
     content: `SUJET I : CONTRACTION DE TEXTE ET ESSAI
 Résumé du texte de Léopold Sédar Senghor sur la Négritude et la Civilisation de l'Universel...
@@ -991,6 +1107,117 @@ Résumé du texte de Léopold Sédar Senghor sur la Négritude et la Civilisatio
 SUJET II : DISSERTATION LITTÉRAIRE
 « La littérature africaine contemporaine doit-elle obligatoirement être engagée ? »`,
     createdAt: "2024-04-12"
+  },
+  {
+    id: "ex-paper-5",
+    title: "1ER DEVOIR DU 1ER TRIMESTRE - HISTOIRE-GÉO",
+    classId: "cls-1",
+    className: "6ème A",
+    subjectName: "Histoire-Géographie",
+    examType: "DEVOIR_1" as const,
+    trimester: 1,
+    academicYear: "2025-2026",
+    duration: "01 Heure 30",
+    coefficient: 2,
+    teacherName: "M. ZANNOU Sévérin",
+    teacherPhone: "+229 94 77 11 33",
+    status: "VALIDE" as const,
+    isArchived: false,
+    numberOfCopiesRequested: 42,
+    submissionNotes: "Feuilles simples. Rendre une copie soignée.",
+    attachedFileName: "Devoir1_HG_6emeA.docx",
+    attachedFileType: "WORD" as const,
+    instructions: "Répondre avec clarté et précision.",
+    content: `I. HISTOIRE (10 points)
+1) Définir l'Histoire et citer deux sources de l'histoire.
+2) Citer les trois grandes périodes de la préhistoire.
+
+II. GÉOGRAPHIE (10 points)
+1) Définir : L'atmosphère, Le relief.
+2) Citer les quatre points cardinaux et expliquer l'utilité de la boussole.`,
+    createdAt: "2025-10-25",
+    isAvailableForStudents: true
+  },
+  {
+    id: "ex-paper-6",
+    title: "DEVOIR SURVEILLÉ N°1 DU PREMIER TRIMESTRE - FRANÇAIS",
+    classId: "cls-3",
+    className: "3ème A",
+    subjectName: "Français",
+    examType: "DEVOIR" as const,
+    trimester: 1,
+    academicYear: "2025-2026",
+    duration: "02 Heures",
+    coefficient: 3,
+    teacherName: "Mme KOUASSI Estelle",
+    teacherPhone: "+229 97 88 44 11",
+    status: "VALIDE" as const,
+    isArchived: false,
+    numberOfCopiesRequested: 48,
+    submissionNotes: "Sujet officiel avec texte d'appui et questions de compréhension.",
+    attachedFileName: "Devoir1_Francais_3emeA.docx",
+    attachedFileType: "WORD" as const,
+    instructions: "L'orthographe, le soin et la qualité de l'expression écrite seront pris en compte.",
+    content: `I. COMPRÉHENSION ET VOCABULAIRE (6 points)
+Texte d'appui : « L'Afrique et le défi du développement durable... »
+1) Dégager l'idée générale développée par l'auteur dans le texte.
+2) Expliquer selon le texte l'expression « préserver les ressources pour les générations futures ».
+3) Donner un antonyme et un synonyme contextuel du mot « dégradation ».
+
+II. FONCTIONNEMENT DE LA LANGUE (6 points)
+1) Identifier la nature et la fonction des propositions soulignées dans le paragraphe 2.
+2) Mettre la phrase suivante au discours indirect : Le conférencier a déclaré : « Nous devons reboiser nos forêts dès aujourd'hui ».
+3) Conjuguer les verbes entre parenthèses au subjonctif présent : « Il faut que chaque citoyen (prendre) conscience et (agir) promptement ».
+
+[--- PAGE 2 / VERSO ---]
+
+III. PRODUCTION D'ÉCRIT / EXPRESSION (8 points)
+Dans le cadre de la journée de salubrité de votre collège, rédigez un texte argumentatif de 25 lignes pour convaincre vos camarades de l'importance de maintenir un environnement scolaire propre et sain.`,
+    createdAt: "2025-11-18",
+    isAvailableForStudents: true
+  },
+  {
+    id: "ex-paper-7",
+    title: "FIRST TERM EVALUATION TEST - ENGLISH LANGUAGE",
+    classId: "cls-3",
+    className: "3ème A",
+    subjectName: "Anglais",
+    examType: "DEVOIR" as const,
+    trimester: 1,
+    academicYear: "2025-2026",
+    duration: "02 Heures",
+    coefficient: 2,
+    teacherName: "M. LAWSON David",
+    teacherPhone: "+229 96 22 55 88",
+    status: "VALIDE" as const,
+    isArchived: false,
+    numberOfCopiesRequested: 48,
+    submissionNotes: "Reading comprehension and guided writing.",
+    attachedFileName: "Test1_English_Form3.docx",
+    attachedFileType: "WORD" as const,
+    instructions: "Answer all questions. Dictionaries are not permitted.",
+    content: `SECTION A : READING COMPREHENSION (7 points)
+Read the text about "Youth and Technology in Africa" carefully and answer the following questions:
+1) True or False? Justify with a sentence from the passage:
+   a) Mobile phones are rarely used by young entrepreneurs in West Africa.
+   b) Access to the internet has improved agricultural trade.
+2) Answer in complete English sentences:
+   a) According to paragraph 2, how do mobile money applications facilitate local commerce?
+   b) What advice does the author give to students regarding social media?
+
+SECTION B : LINGUISTIC COMPETENCE (6 points)
+1) Put the verbs in brackets into the correct tense (Present Perfect or Simple Past):
+   a) John (already / finish) his science project yesterday.
+   b) Since 2020, our school (receive) modern digital computers.
+2) Turn into the passive voice:
+   "The English teacher explained the grammar rules clearly."
+
+[--- PAGE 2 / VERSO ---]
+
+SECTION C : GUIDED WRITING (7 points)
+Write a letter of about 120 words to your pen pal in London telling him or her about your favourite subject at school, your teachers, and what you plan to do next holiday.`,
+    createdAt: "2025-11-22",
+    isAvailableForStudents: true
   }
 ];
 
@@ -1233,6 +1460,144 @@ export const initialRegistrationCampaigns = [
     approvedCount: 2,
     welcomeMessage: "Rejoignez la plateforme de gestion scolaire de référence. Votre inscription sera examinée et validée rapidement par le promoteur.",
     commissionRate: 10
+  }
+];
+
+export const initialOfficialAnnouncements: OfficialAnnouncement[] = [
+  {
+    id: "ann-pub-1",
+    schoolId: "sch-temple",
+    title: "Assemblée Générale Ordinaire des Parents d'Élèves du 1er Trimestre",
+    content: "Chers parents d'élèves, la Direction et le Conseil d'Administration vous invitent cordialement à l'Assemblée Générale annuelle qui se tiendra ce samedi à 09h00 dans la Grande Salle polyvalente. Ordre du jour : Bilan de la rentrée scolaire, projets pédagogiques, sécurité et élection du bureau de l'Association des Parents d'Élèves (APE). Votre présence active est vivement souhaitée pour la réussite de nos enfants.",
+    audience: "PUBLIC_ALL",
+    photoUrl: "https://images.unsplash.com/photo-1577896851231-70ef18881754?auto=format&fit=crop&q=80&w=800",
+    photoName: "circulaire_assemblee_generale.jpg",
+    priority: "IMPORTANTE",
+    category: "REUNION",
+    authorName: "Direction Générale",
+    createdAt: "2025-11-20T08:30:00Z",
+    isPinned: true,
+    readReceipts: ["+229 97 22 33 44", "+225 07 11 22 33"],
+    isAdBanner: true,
+    adTag: "OFFICIEL",
+    ctaText: "Confirmer Présence",
+    ctaUrl: "https://wa.me/22997000001?text=Bonjour,%20je%20confirme%20ma%20presence%20a%20l'Assemblee%20Generale",
+    sponsorName: "Direction de l'Établissement"
+  },
+  {
+    id: "ann-ad-1",
+    schoolId: "sch-temple",
+    title: "Grande Kermesse Annuelle & Festival des Sciences et des Arts 2025",
+    content: "Venez célébrer le talent de nos élèves ! Au programme : Démonstrations scientifiques, représentations théâtrales, tombola avec de magnifiques lots (tablettes, bourses), stands gastronomiques africains et jeux récréatifs géants pour petits et grands. Entrée gratuite pour les familles inscrites. Réservation des carnets de tombola au secrétariat.",
+    audience: "PUBLIC_ALL",
+    photoUrl: "https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&q=80&w=800",
+    photoName: "affiche_kermesse_festival.jpg",
+    priority: "IMPORTANTE",
+    category: "EVENEMENT",
+    authorName: "Comité des Fêtes & Direction",
+    createdAt: "2025-11-22T11:00:00Z",
+    isPinned: true,
+    readReceipts: [],
+    isAdBanner: true,
+    adTag: "ÉVÉNEMENT",
+    ctaText: "Réserver Billets / Stand",
+    ctaUrl: "https://wa.me/22997000001?text=Je%20souhaite%20reserver%20un%20stand%20ou%20des%20billets%20kermesse",
+    sponsorName: "Association des Parents & Comité École"
+  },
+  {
+    id: "ann-ad-2",
+    schoolId: "sch-temple",
+    title: "Partenaire Librairie Agréée : Packs Livres & Fournitures scolaires avec -15% de réduction",
+    content: "Offre exclusive réservée aux parents d'élèves de l'établissement : bénéficiez d'une réduction immédiate de 15% sur tous les manuels scolaires au programme officiel, romans au programme et fournitures de bureau sur présentation du badge ou matricule de votre enfant. Livraison offerte à l'école chaque vendredi.",
+    audience: "PUBLIC_ALL",
+    photoUrl: "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&q=80&w=800",
+    photoName: "partenaire_librairie_fournitures.jpg",
+    priority: "NORMALE",
+    category: "PARTENAIRE",
+    authorName: "Librairie Centrale & Scolaire",
+    createdAt: "2025-11-21T15:30:00Z",
+    isPinned: false,
+    readReceipts: [],
+    isAdBanner: true,
+    adTag: "PARTENAIRE",
+    ctaText: "Commander sur WhatsApp",
+    ctaUrl: "https://wa.me/22997000002?text=Bonjour,%20je%20commande%20le%20pack%20livres%20scolaires%20avec%20le%20tarif%20ecole",
+    sponsorName: "Librairie Centrale & Papeterie Moderne"
+  },
+  {
+    id: "ann-ad-3",
+    schoolId: "sch-temple",
+    title: "Atelier Coding, IA & Robotique pour Enfants (Samedis de 09h à 12h)",
+    content: "Initiez vos enfants de 7 à 16 ans à la programmation Scratch, Python, création de jeux vidéo et robotique éducative Lego Mindstorms. Sessions animées par des ingénieurs certifiés dans les laboratoires informatiques de l'établissement. Attestation officielle délivrée en fin d'année scolaire.",
+    audience: "PUBLIC_ALL",
+    photoUrl: "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&q=80&w=800",
+    photoName: "atelier_robotique_enfants.jpg",
+    priority: "NORMALE",
+    category: "ACTIVITE",
+    authorName: "Académie Tech Jeunesse",
+    createdAt: "2025-11-19T14:00:00Z",
+    isPinned: false,
+    readReceipts: [],
+    isAdBanner: true,
+    adTag: "ACTIVITÉ",
+    ctaText: "Inscrire mon Enfant",
+    ctaUrl: "https://wa.me/22997000003?text=Inscription%20Atelier%20Robotique%20et%20Coding%20Enfants",
+    sponsorName: "Club Tech & Sciences Agréé"
+  },
+  {
+    id: "ann-cls-1",
+    schoolId: "sch-temple",
+    title: "Programme des Travaux Dirigés (TD) & Soutien en Mathématiques & PCT",
+    content: "Chers parents des élèves de la classe de 3ème A, les séances obligatoires de renforcement et de préparation au Brevet (BEPC) débutent ce mercredi de 15h00 à 17h30. Les élèves doivent être munis de leur matériel de géométrie et de leurs cahiers d'activités. La ponctualité et l'assiduité sont exigées.",
+    audience: "PUBLIC_CLASS",
+    targetClassId: "cls-3",
+    targetClassName: "3ème A",
+    photoUrl: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&q=80&w=800",
+    photoName: "planning_td_3eme.jpg",
+    priority: "NORMALE",
+    category: "CIRCULAIRE",
+    authorName: "Le Censeur des Études",
+    createdAt: "2025-11-21T10:00:00Z",
+    isPinned: false,
+    readReceipts: []
+  },
+  {
+    id: "ann-priv-1",
+    schoolId: "sch-temple",
+    title: "Convocation Confidentielle : Point d'étape pédagogique & Orientation",
+    content: "Cher M. Diallo, nous sollicitons un bref entretien avec vous concernant les résultats et l'orientation de Marc-Aurèle. Merci de vous présenter au bureau du Censeur ce vendredi entre 10h00 et 12h00 ou de nous contacter pour convenir d'un autre créneau.",
+    audience: "PRIVATE_STUDENT",
+    targetStudentId: "std-1",
+    targetStudentName: "Marc-Aurele DIALLO",
+    targetStudentRegNumber: "2025-COL-001",
+    targetParentName: "M. Ibrahima DIALLO",
+    targetParentPhone: "+225 07 11 22 33",
+    photoUrl: "https://images.unsplash.com/photo-1450133064473-71024230f91b?auto=format&fit=crop&q=80&w=800",
+    photoName: "convocation_direction_signee.jpg",
+    priority: "URGENTE",
+    category: "CONVOCATION",
+    authorName: "Le Censeur",
+    createdAt: "2025-11-22T14:15:00Z",
+    isPinned: true,
+    readReceipts: []
+  },
+  {
+    id: "ann-priv-2",
+    schoolId: "sch-temple",
+    title: "Rappel Amical : Bilan de santé & Carnet de vaccination scolaire",
+    content: "Chère Mme SOSSOU, l'infirmerie scolaire vous rappelle de déposer une copie de la page des vaccins du carnet de santé d'Emmanuel auprès de la maîtresse de CM2 pour compléter son dossier d'assurance scolaire.",
+    audience: "PRIVATE_STUDENT",
+    targetStudentId: "std-prim-1",
+    targetStudentName: "Emmanuel SOSSOU",
+    targetStudentRegNumber: "2025-PRI-001",
+    targetParentName: "Mme Reine SOSSOU",
+    targetParentPhone: "+229 97 22 33 44",
+    priority: "NORMALE",
+    category: "CIRCULAIRE",
+    authorName: "Service Médical & Direction",
+    createdAt: "2025-11-23T09:00:00Z",
+    isPinned: false,
+    readReceipts: []
   }
 ];
 

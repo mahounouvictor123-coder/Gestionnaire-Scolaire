@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../lib/store';
-import { SchoolLevel, SchoolClass } from '../types';
+import { SchoolLevel, SchoolClass, TuitionTranche } from '../types';
+import { ConfigureClassFeesModal } from '../components/modals/ConfigureClassFeesModal';
 import { 
   Building2, 
   Users, 
@@ -19,7 +20,10 @@ import {
   CheckCircle2,
   X,
   Layers,
-  GraduationCap
+  GraduationCap,
+  Calendar,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 
 interface ClassesViewProps {
@@ -54,6 +58,8 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
 
   const [showModal, setShowModal] = useState(false);
   const [editingClassId, setEditingClassId] = useState<string | null>(null);
+  const [showFeesModal, setShowFeesModal] = useState(false);
+  const [targetFeeClassId, setTargetFeeClassId] = useState<string | undefined>(undefined);
 
   const [selectedLevelFilter, setSelectedLevelFilter] = useState<'ALL' | SchoolLevel | 'G2' | 'TECHNIQUE'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
@@ -65,7 +71,39 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
   const [capacity, setCapacity] = useState('60');
   const [roomNumber, setRoomNumber] = useState('Salle 101');
   const [tuitionFee, setTuitionFee] = useState('130000');
+  const [tranche1, setTranche1] = useState('52000');
+  const [dueDate1, setDueDate1] = useState('30 Novembre');
+  const [tranche2, setTranche2] = useState('45500');
+  const [dueDate2, setDueDate2] = useState('28 Février');
+  const [tranche3, setTranche3] = useState('32500');
+  const [dueDate3, setDueDate3] = useState('31 Mai');
   const [mainTeacherId, setMainTeacherId] = useState('');
+
+  const recalculateTranches = (totalVal: number, mode: '40_35_25' | '50_30_20' | '33_33_34' = '40_35_25') => {
+    let t1 = 0, t2 = 0, t3 = 0;
+    if (mode === '40_35_25') {
+      t1 = Math.round(totalVal * 0.4);
+      t2 = Math.round(totalVal * 0.35);
+      t3 = totalVal - (t1 + t2);
+    } else if (mode === '50_30_20') {
+      t1 = Math.round(totalVal * 0.5);
+      t2 = Math.round(totalVal * 0.3);
+      t3 = totalVal - (t1 + t2);
+    } else {
+      t1 = Math.round(totalVal / 3);
+      t2 = Math.round(totalVal / 3);
+      t3 = totalVal - (t1 + t2);
+    }
+    setTranche1(t1.toString());
+    setTranche2(t2.toString());
+    setTranche3(t3.toString());
+  };
+
+  const handleTuitionFeeChange = (valStr: string) => {
+    setTuitionFee(valStr);
+    const num = parseFloat(valStr) || 0;
+    recalculateTranches(num, '40_35_25');
+  };
 
   const openCreateModal = (presetLevel: SchoolLevel = 'LYCEE') => {
     setEditingClassId(null);
@@ -74,7 +112,12 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
     setStream(presetLevel === 'LYCEE' ? 'Série D - Scientifique' : presetLevel === 'COLLEGE' ? 'Enseignement Général' : 'Général');
     setCapacity('60');
     setRoomNumber(`Salle ${presetLevel.charAt(0)}-1`);
-    setTuitionFee(presetLevel === 'LYCEE' ? '130000' : presetLevel === 'COLLEGE' ? '85000' : '50000');
+    const initialFee = presetLevel === 'LYCEE' ? 130000 : presetLevel === 'COLLEGE' ? 85000 : 50000;
+    setTuitionFee(initialFee.toString());
+    recalculateTranches(initialFee, '40_35_25');
+    setDueDate1('30 Novembre');
+    setDueDate2('28 Février');
+    setDueDate3('31 Mai');
     setMainTeacherId(teachers[0]?.id || '');
     setShowModal(true);
   };
@@ -86,7 +129,23 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
     setStream(cls.stream || '');
     setCapacity(cls.capacity?.toString() || '60');
     setRoomNumber(cls.room || 'Salle 1');
-    setTuitionFee(cls.tuitionFee?.toString() || '100000');
+    const total = cls.tuitionFee || 100000;
+    setTuitionFee(total.toString());
+
+    if (cls.tranches && cls.tranches.length >= 3) {
+      setTranche1(cls.tranches[0]?.amount?.toString() || Math.round(total * 0.4).toString());
+      setDueDate1(cls.tranches[0]?.dueDate || '30 Novembre');
+      setTranche2(cls.tranches[1]?.amount?.toString() || Math.round(total * 0.35).toString());
+      setDueDate2(cls.tranches[1]?.dueDate || '28 Février');
+      setTranche3(cls.tranches[2]?.amount?.toString() || (total - (Number(cls.tranches[0]?.amount || 0) + Number(cls.tranches[1]?.amount || 0))).toString());
+      setDueDate3(cls.tranches[2]?.dueDate || '31 Mai');
+    } else {
+      recalculateTranches(total, '40_35_25');
+      setDueDate1('30 Novembre');
+      setDueDate2('28 Février');
+      setDueDate3('31 Mai');
+    }
+
     setMainTeacherId(cls.mainTeacherId || teachers[0]?.id || '');
     setShowModal(true);
   };
@@ -101,7 +160,8 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
       studentCount: 0,
       mainTeacherId: cls.mainTeacherId || teachers[0]?.id,
       room: `${cls.room || 'Salle'} B`,
-      tuitionFee: cls.tuitionFee || 100000
+      tuitionFee: cls.tuitionFee || 100000,
+      tranches: cls.tranches
     });
   };
 
@@ -126,6 +186,35 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
       return;
     }
 
+    const tFee = parseFloat(tuitionFee) || 0;
+    const t1Num = parseFloat(tranche1) || Math.round(tFee * 0.4);
+    const t2Num = parseFloat(tranche2) || Math.round(tFee * 0.35);
+    const t3Num = parseFloat(tranche3) || Math.max(0, tFee - (t1Num + t2Num));
+
+    const tranchesList: TuitionTranche[] = [
+      {
+        id: `${editingClassId || 'new'}-t1`,
+        name: '1ère Tranche',
+        amount: t1Num,
+        dueDate: dueDate1.trim() || '30 Novembre',
+        description: 'Rentrée & 1er Trimestre'
+      },
+      {
+        id: `${editingClassId || 'new'}-t2`,
+        name: '2ème Tranche',
+        amount: t2Num,
+        dueDate: dueDate2.trim() || '28 Février',
+        description: '2ème Trimestre'
+      },
+      {
+        id: `${editingClassId || 'new'}-t3`,
+        name: '3ème Tranche',
+        amount: t3Num,
+        dueDate: dueDate3.trim() || '31 Mai',
+        description: '3ème Trimestre'
+      }
+    ];
+
     const classData = {
       name: name.trim(),
       level,
@@ -134,7 +223,8 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
       studentCount: editingClassId ? (classes.find(c => c.id === editingClassId)?.studentCount || 0) : 0,
       mainTeacherId: mainTeacherId || teachers[0]?.id,
       room: roomNumber.trim() || 'Salle 1',
-      tuitionFee: parseFloat(tuitionFee) || 100000
+      tuitionFee: tFee,
+      tranches: tranchesList
     };
 
     if (editingClassId) {
@@ -301,11 +391,22 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
 
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
+            onClick={() => {
+              setTargetFeeClassId(undefined);
+              setShowFeesModal(true);
+            }}
+            className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center space-x-1.5 shadow-md transition-all cursor-pointer"
+          >
+            <DollarSign className="h-4 w-4" />
+            <span>💰 Barème & Tranches (T1, T2, T3)</span>
+          </button>
+
+          <button
             onClick={handleAddPrimairePack}
             className="px-3.5 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 text-amber-900 dark:text-amber-300 font-extrabold text-xs flex items-center space-x-1.5 border border-amber-200 dark:border-amber-800 shadow-sm transition-all cursor-pointer"
           >
             <Sparkles className="h-4 w-4 text-amber-600" />
-            <span>🎒 + Pack Primaire (CI-CM2)</span>
+            <span>🎒 + Pack Primaire</span>
           </button>
 
           {!hasLycee && (
@@ -314,7 +415,7 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
               className="px-3.5 py-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 text-purple-700 dark:text-purple-300 font-extrabold text-xs flex items-center space-x-1.5 border border-purple-200 dark:border-purple-800 shadow-sm transition-all cursor-pointer"
             >
               <Sparkles className="h-4 w-4 text-purple-600" />
-              <span>+ Pack Lycée & G2</span>
+              <span>+ Pack Lycée</span>
             </button>
           )}
 
@@ -324,7 +425,7 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
               className="px-3.5 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-extrabold text-xs flex items-center space-x-1.5 border border-emerald-200 dark:border-emerald-800 shadow-sm transition-all cursor-pointer"
             >
               <Sparkles className="h-4 w-4 text-emerald-600" />
-              <span>+ Ajouter Série G2 (Compta)</span>
+              <span>+ Série G2</span>
             </button>
           )}
 
@@ -333,7 +434,7 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
             className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm flex items-center space-x-2 shadow-md transition-all shrink-0 cursor-pointer"
           >
             <Plus className="h-4 w-4" />
-            <span>Créer une Classe & Série</span>
+            <span>Créer une Classe</span>
           </button>
         </div>
       </div>
@@ -590,7 +691,20 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
 
                 {/* Bottom Action Bar */}
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTargetFeeClassId(cls.id);
+                        setShowFeesModal(true);
+                      }}
+                      className="py-1.5 px-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-extrabold text-[11px] flex items-center justify-center space-x-1 transition-all cursor-pointer border border-emerald-200/50"
+                      title="Modifier les Frais & Tranches de cette classe"
+                    >
+                      <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Frais & Tranches</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => openEditModal(cls)}
@@ -600,7 +714,9 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
                       <Edit2 className="h-3 w-3" />
                       <span>Modifier</span>
                     </button>
+                  </div>
 
+                  <div className="grid grid-cols-2 gap-1.5">
                     <button
                       type="button"
                       onClick={() => handleDuplicate(cls)}
@@ -773,16 +889,139 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
 
                 <div>
                   <label className="block font-black text-slate-700 dark:text-slate-300 mb-1">
-                    Frais de Scolarité Annuelle ({settings.currency})
+                    Frais de Scolarité Annuelle Totale ({settings.currency}) *
                   </label>
                   <input
                     type="number"
                     step="1000"
                     placeholder="ex: 130000"
                     value={tuitionFee}
-                    onChange={e => setTuitionFee(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-emerald-500 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-black text-xs text-emerald-600"
+                    onChange={e => handleTuitionFeeChange(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border-2 border-emerald-500 bg-emerald-50/30 dark:bg-emerald-950/20 text-slate-900 dark:text-white font-black text-sm text-emerald-600 dark:text-emerald-400"
                   />
+                </div>
+              </div>
+
+              {/* TRANCHES DE SCOLARITÉ SPÉCIFIQUES À CETTE CLASSE */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="font-black uppercase text-[10px] text-amber-900 dark:text-amber-300 flex items-center space-x-1.5">
+                    <DollarSign className="h-4 w-4 text-amber-600" />
+                    <span>Échelonnement des 3 Tranches de cette classe :</span>
+                  </label>
+                  <div className="flex items-center space-x-1">
+                    <span className="text-[10px] font-bold text-slate-500">Répartir :</span>
+                    <button
+                      type="button"
+                      onClick={() => recalculateTranches(parseFloat(tuitionFee) || 0, '40_35_25')}
+                      className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold text-[10px] hover:bg-amber-500 hover:text-white transition-all cursor-pointer"
+                    >
+                      40% / 35% / 25%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => recalculateTranches(parseFloat(tuitionFee) || 0, '50_30_20')}
+                      className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 font-bold text-[10px] hover:bg-amber-500 hover:text-white transition-all cursor-pointer"
+                    >
+                      50% / 30% / 20%
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {/* Tranche 1 */}
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-[11px] text-indigo-600 dark:text-indigo-400">1ère Tranche</span>
+                      <span className="text-[10px] text-slate-400">Rentrée</span>
+                    </div>
+                    <input
+                      type="number"
+                      step="500"
+                      value={tranche1}
+                      onChange={e => {
+                        setTranche1(e.target.value);
+                        const t1 = parseFloat(e.target.value) || 0;
+                        const t2 = parseFloat(tranche2) || 0;
+                        const t3 = parseFloat(tranche3) || 0;
+                        setTuitionFee((t1 + t2 + t3).toString());
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-black text-xs text-slate-900 dark:text-white font-mono"
+                      placeholder="Montant T1"
+                    />
+                    <input
+                      type="text"
+                      value={dueDate1}
+                      onChange={e => setDueDate1(e.target.value)}
+                      placeholder="Date ex: 30 Nov"
+                      className="w-full px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-300"
+                    />
+                  </div>
+
+                  {/* Tranche 2 */}
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-[11px] text-indigo-600 dark:text-indigo-400">2ème Tranche</span>
+                      <span className="text-[10px] text-slate-400">Trimestre 2</span>
+                    </div>
+                    <input
+                      type="number"
+                      step="500"
+                      value={tranche2}
+                      onChange={e => {
+                        setTranche2(e.target.value);
+                        const t1 = parseFloat(tranche1) || 0;
+                        const t2 = parseFloat(e.target.value) || 0;
+                        const t3 = parseFloat(tranche3) || 0;
+                        setTuitionFee((t1 + t2 + t3).toString());
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-black text-xs text-slate-900 dark:text-white font-mono"
+                      placeholder="Montant T2"
+                    />
+                    <input
+                      type="text"
+                      value={dueDate2}
+                      onChange={e => setDueDate2(e.target.value)}
+                      placeholder="Date ex: 28 Fév"
+                      className="w-full px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-300"
+                    />
+                  </div>
+
+                  {/* Tranche 3 */}
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-[11px] text-indigo-600 dark:text-indigo-400">3ème Tranche</span>
+                      <span className="text-[10px] text-slate-400">Trimestre 3</span>
+                    </div>
+                    <input
+                      type="number"
+                      step="500"
+                      value={tranche3}
+                      onChange={e => {
+                        setTranche3(e.target.value);
+                        const t1 = parseFloat(tranche1) || 0;
+                        const t2 = parseFloat(tranche2) || 0;
+                        const t3 = parseFloat(e.target.value) || 0;
+                        setTuitionFee((t1 + t2 + t3).toString());
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-black text-xs text-slate-900 dark:text-white font-mono"
+                      placeholder="Montant T3"
+                    />
+                    <input
+                      type="text"
+                      value={dueDate3}
+                      onChange={e => setDueDate3(e.target.value)}
+                      placeholder="Date ex: 31 Mai"
+                      className="w-full px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-300"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] px-1 font-bold">
+                  <span className="text-slate-500">Total Somme des 3 tranches :</span>
+                  <span className="font-mono font-black text-slate-900 dark:text-white">
+                    {((parseFloat(tranche1) || 0) + (parseFloat(tranche2) || 0) + (parseFloat(tranche3) || 0)).toLocaleString()} {settings.currency}
+                  </span>
                 </div>
               </div>
 
@@ -851,6 +1090,13 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
           </div>
         </div>
       )}
+
+      {/* MODAL CONFIGURATION DES FRAIS & TRANCHES PAR CLASSE */}
+      <ConfigureClassFeesModal
+        isOpen={showFeesModal}
+        onClose={() => setShowFeesModal(false)}
+        targetClassId={targetFeeClassId}
+      />
 
     </div>
   );

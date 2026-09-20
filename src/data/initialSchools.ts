@@ -58,7 +58,9 @@ export const initialSchools: School[] = [
     createdAt: "2025-09-10",
     isDemo: true,
     accessPassword: "Exc2#202",
-    isPasswordProtected: true
+    isPasswordProtected: true,
+    isValidatedByPromoter: true,
+    isBlocked: false
   },
   {
     id: "sch-pepites",
@@ -86,7 +88,9 @@ export const initialSchools: School[] = [
     createdAt: "2025-09-15",
     isDemo: true,
     accessPassword: "Pep3!202",
-    isPasswordProtected: true
+    isPasswordProtected: true,
+    isValidatedByPromoter: true,
+    isBlocked: false
   },
   {
     id: "sch-bonberger",
@@ -115,35 +119,6 @@ export const initialSchools: School[] = [
     blockReason: "🔒 Accès bloqué par le Promoteur Général. Abonnement requis pour débloquer votre établissement.",
     blockedAt: "2025-09-20T00:00:00.000Z",
     accessPassword: "Bon2#202",
-    isPasswordProtected: true
-  },
-  {
-    id: "sch-aupiais",
-    name: "COLLÈGE PÈRE AUPIAIS",
-    motto: "Virtus et Scientia • Courage et Savoir",
-    schoolType: "Enseignement Secondaire Général",
-    logoUrl: "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&q=80&w=250",
-    address: "Boulevard de la Marina, Cotonou",
-    city: "Cotonou, Bénin",
-    phone: "+229 21 30 14 15",
-    email: "direction@pereaupiais.bj",
-    directorName: "Direction Père Aupiais",
-    academicYear: "2025-2026",
-    currentTrimester: 1,
-    currency: "FCFA",
-    country: "Bénin",
-    countryCode: "BJ",
-    countryFlag: "🇧🇯",
-    primaryTeachersCount: 0,
-    secondaryProfessorsCount: 32,
-    totalStudentsCount: 580,
-    createdAt: "2025-09-01",
-    isDemo: false,
-    isBlocked: true,
-    isValidatedByPromoter: false,
-    blockReason: "🔒 Accès bloqué par le Promoteur Général. Abonnement requis pour débloquer votre établissement.",
-    blockedAt: "2025-09-20T00:00:00.000Z",
-    accessPassword: "Aup3#202",
     isPasswordProtected: true
   }
 ];

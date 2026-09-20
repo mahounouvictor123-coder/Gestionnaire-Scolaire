@@ -17,8 +17,15 @@ import {
   Sparkles,
   Building2,
   FileText,
+  FileDown,
   ChevronDown
 } from 'lucide-react';
+import {
+  exportTimetableToPdf,
+  exportTimetableToWord,
+  exportTimetableToExcel,
+  getTeacherDisplayName
+} from '../../lib/timetableExportUtils';
 
 interface PrintTimetableModalProps {
   isOpen: boolean;
@@ -102,67 +109,77 @@ export const PrintTimetableModal: React.FC<PrintTimetableModalProps> = ({
   const subjectStats = getSubjectVolumeStats(activeSlots);
   const totalWeeklyHours = subjectStats.reduce((acc, s) => acc + s.hours, 0);
 
+  // Export as PDF format (vector download)
+  const handleDownloadPdf = () => {
+    try {
+      exportTimetableToPdf({
+        mode: exportMode,
+        currentClass,
+        currentTeacher,
+        classes,
+        subjects,
+        teachers,
+        slots: exportMode === 'TEACHER' ? activeSlots : timetable,
+        settings,
+        currentSchool,
+        showSignature,
+        showSubjectSummary
+      });
+      setNoticeMsg('Emploi du temps téléchargé en fichier PDF avec succès !');
+      setTimeout(() => setNoticeMsg(null), 3500);
+    } catch (err: any) {
+      console.error('Erreur téléchargement PDF:', err);
+      setNoticeMsg('Erreur lors de la génération du fichier PDF.');
+      setTimeout(() => setNoticeMsg(null), 3500);
+    }
+  };
+
+  // Export as Microsoft Word (.doc) format
+  const handleDownloadWord = () => {
+    try {
+      exportTimetableToWord({
+        mode: exportMode,
+        currentClass,
+        currentTeacher,
+        classes,
+        subjects,
+        teachers,
+        slots: exportMode === 'TEACHER' ? activeSlots : timetable,
+        settings,
+        currentSchool,
+        showSignature,
+        showSubjectSummary
+      });
+      setNoticeMsg('Emploi du temps téléchargé en fichier Word (.doc) avec succès !');
+      setTimeout(() => setNoticeMsg(null), 3500);
+    } catch (err: any) {
+      console.error('Erreur téléchargement Word:', err);
+      setNoticeMsg('Erreur lors de la génération du fichier Word.');
+      setTimeout(() => setNoticeMsg(null), 3500);
+    }
+  };
+
   // Export as CSV/Excel format
   const handleDownloadCsv = () => {
-    let csvContent = 'data:text/csv;charset=utf-8,';
-    
-    if (exportMode === 'TEACHER') {
-      csvContent += `EMPLOI DU TEMPS ENSEIGNANT - ${currentTeacher?.name || 'Enseignant'}\r\n`;
-      csvContent += `Établissement: ${currentSchool?.name || settings.schoolName}\r\n`;
-      csvContent += `Année Académique: ${currentSchool?.academicYear || settings.academicYear}\r\n\r\n`;
-      csvContent += 'Horaire,Lundi,Mardi,Mercredi,Jeudi,Vendredi,Samedi\r\n';
-
-      hours.forEach(h => {
-        const startH = h.split(' - ')[0];
-        const row = [h];
-        days.forEach(d => {
-          const slot = activeSlots.find(s => (s.dayOfWeek === d || s.day === d) && (s.startTime === startH || s.startTime?.startsWith(startH.substring(0, 2))));
-          if (slot) {
-            const cls = classes.find(c => c.id === slot.classId);
-            const sbj = subjects.find(s => s.id === slot.subjectId);
-            row.push(`"${sbj?.name || slot.customSubject || ''} (${cls?.name || ''}) [${slot.room || ''}]"`);
-          } else {
-            row.push('""');
-          }
-        });
-        csvContent += row.join(',') + '\r\n';
+    try {
+      exportTimetableToExcel({
+        mode: exportMode,
+        currentClass,
+        currentTeacher,
+        classes,
+        subjects,
+        teachers,
+        slots: activeSlots,
+        settings,
+        currentSchool
       });
-    } else {
-      csvContent += `EMPLOI DU TEMPS - CLASSE: ${currentClass?.name || 'Classe'}\r\n`;
-      csvContent += `Établissement: ${currentSchool?.name || settings.schoolName}\r\n`;
-      csvContent += `Année Académique: ${currentSchool?.academicYear || settings.academicYear}\r\n\r\n`;
-      csvContent += 'Horaire,Lundi,Mardi,Mercredi,Jeudi,Vendredi,Samedi\r\n';
-
-      hours.forEach(h => {
-        const startH = h.split(' - ')[0];
-        const row = [h];
-        days.forEach(d => {
-          const slot = activeSlots.find(s => (s.dayOfWeek === d || s.day === d) && (s.startTime === startH || s.startTime?.startsWith(startH.substring(0, 2))));
-          if (slot) {
-            const sbj = subjects.find(s => s.id === slot.subjectId);
-            const tch = teachers.find(t => t.id === slot.teacherId);
-            row.push(`"${sbj?.name || slot.customSubject || ''} - ${tch?.name || slot.customTeacher || ''} [${slot.room || ''}]"`);
-          } else {
-            row.push('""');
-          }
-        });
-        csvContent += row.join(',') + '\r\n';
-      });
+      setNoticeMsg('Fichier Tableur Excel/CSV téléchargé avec succès !');
+      setTimeout(() => setNoticeMsg(null), 3500);
+    } catch (err: any) {
+      console.error('Erreur téléchargement Excel:', err);
+      setNoticeMsg('Erreur lors de l\'export Excel.');
+      setTimeout(() => setNoticeMsg(null), 3500);
     }
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    const fileName = exportMode === 'TEACHER'
-      ? `Emploi_du_Temps_${(currentTeacher?.name || 'Prof').replace(/\s+/g, '_')}.csv`
-      : `Emploi_du_Temps_${(currentClass?.name || 'Classe').replace(/\s+/g, '_')}.csv`;
-    link.setAttribute('download', fileName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    setNoticeMsg('Fichier Tableur Excel/CSV téléchargé avec succès !');
-    setTimeout(() => setNoticeMsg(null), 3500);
   };
 
   // WhatsApp formatted share text
@@ -172,9 +189,9 @@ export const PrintTimetableModal: React.FC<PrintTimetableModalProps> = ({
     text += `Année Scolaire : ${currentSchool?.academicYear || settings.academicYear}\n`;
     
     if (exportMode === 'TEACHER') {
-      text += `👤 *Enseignant : ${currentTeacher?.name}*\n\n`;
+      text += `👤 *Enseignant : ${getTeacherDisplayName(currentTeacher)}*\n\n`;
     } else {
-      text += `🎓 *Classe : ${currentClass?.name}* (Salle : ${currentClass?.roomNumber || 'Salle 101'})\n\n`;
+      text += `🎓 *Classe : ${currentClass?.name}* (Salle : ${currentClass?.room || (currentClass as any)?.roomNumber || 'Salle 101'})\n\n`;
     }
 
     days.forEach(day => {
@@ -188,7 +205,7 @@ export const PrintTimetableModal: React.FC<PrintTimetableModalProps> = ({
           if (exportMode === 'TEACHER') {
             text += `  ⏰ ${s.startTime} - ${s.endTime} : ${sbj?.name || s.customSubject} (${cls?.name}) [${s.room || 'Salle'}]\n`;
           } else {
-            text += `  ⏰ ${s.startTime} - ${s.endTime} : ${sbj?.name || s.customSubject} (${tch?.name || s.customTeacher}) [${s.room || 'Salle'}]\n`;
+            text += `  ⏰ ${s.startTime} - ${s.endTime} : ${sbj?.name || s.customSubject} (${getTeacherDisplayName(tch) || s.customTeacher}) [${s.room || 'Salle'}]\n`;
           }
         });
         text += `\n`;
@@ -220,20 +237,44 @@ export const PrintTimetableModal: React.FC<PrintTimetableModalProps> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <h3 className="font-black text-base sm:text-lg tracking-tight">
-                  Télécharger & Imprimer l'Emploi du Temps
+                  Télécharger l'Emploi du Temps
                 </h3>
                 <span className="px-2 py-0.5 rounded-md bg-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase">
-                  PDF & Tableur HD
+                  PDF &bull; Word &bull; Excel
                 </span>
               </div>
               <p className="text-xs text-slate-300">
-                Document officiel haute fidélité prêt pour affichage et distribution.
+                Téléchargement direct en fichier PDF ou Word (.doc) prêt pour affichage et distribution.
               </p>
             </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons: PDF, Word, Excel, WhatsApp, Impression */}
           <div className="flex flex-wrap items-center gap-2">
+            
+            {/* Direct PDF Download */}
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow-md shadow-red-600/30 transition-all cursor-pointer active:scale-95"
+              title="Télécharger directement l'emploi du temps au format PDF"
+            >
+              <FileDown className="h-4 w-4 text-red-200" />
+              <span>Télécharger en PDF</span>
+            </button>
+
+            {/* Direct Word Download */}
+            <button
+              type="button"
+              onClick={handleDownloadWord}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow-md shadow-blue-600/30 transition-all cursor-pointer active:scale-95"
+              title="Télécharger au format Microsoft Word (.doc) modifiable"
+            >
+              <FileText className="h-4 w-4 text-blue-200" />
+              <span>Télécharger Word (.doc)</span>
+            </button>
+
+            {/* Excel / CSV format */}
             <button
               type="button"
               onClick={handleDownloadCsv}
@@ -244,6 +285,7 @@ export const PrintTimetableModal: React.FC<PrintTimetableModalProps> = ({
               <span>Format Excel</span>
             </button>
 
+            {/* WhatsApp */}
             <button
               type="button"
               onClick={handleShareWhatsApp}
@@ -254,13 +296,15 @@ export const PrintTimetableModal: React.FC<PrintTimetableModalProps> = ({
               <span>WhatsApp</span>
             </button>
 
+            {/* Physical Print Option */}
             <button
               type="button"
               onClick={handlePrint}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs sm:text-sm flex items-center space-x-1.5 shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs flex items-center space-x-1.5 border border-slate-700 transition-all cursor-pointer"
+              title="Envoyer vers une imprimante papier"
             >
-              <Printer className="h-4 w-4" />
-              <span>Télécharger PDF / Imprimer</span>
+              <Printer className="h-4 w-4 text-slate-300" />
+              <span>Imprimer papier</span>
             </button>
 
             <button
@@ -625,6 +669,54 @@ export const PrintTimetableModal: React.FC<PrintTimetableModalProps> = ({
 
           </div>
 
+        </div>
+
+        {/* Sticky Action Footer */}
+        <div className="p-3.5 bg-slate-100 dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+          <div className="flex items-center space-x-2 text-xs text-slate-600 dark:text-slate-300">
+            <span className="font-extrabold text-slate-900 dark:text-white">Formats certifiés :</span>
+            <span className="text-[11px] text-slate-500">Le PDF et Word intègrent l'en-tête officiel et les signatures.</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 active:scale-95 text-white font-black text-xs flex items-center space-x-2 shadow-md shadow-red-600/30 cursor-pointer transition-all"
+              title="Télécharger directement le fichier PDF"
+            >
+              <FileDown className="h-4 w-4 text-red-200" />
+              <span>Télécharger en PDF (.pdf)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadWord}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-95 text-white font-black text-xs flex items-center space-x-2 shadow-md shadow-blue-600/30 cursor-pointer transition-all"
+              title="Télécharger directement le fichier Word"
+            >
+              <FileText className="h-4 w-4 text-blue-200" />
+              <span>Télécharger en Word (.doc)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadCsv}
+              className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center space-x-1.5 cursor-pointer shadow-xs"
+              title="Format Excel / CSV"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              <span>Format Excel</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer transition-colors"
+            >
+              Fermer
+            </button>
+          </div>
         </div>
 
       </div>

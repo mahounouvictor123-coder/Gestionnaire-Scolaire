@@ -31,8 +31,15 @@ import {
   Maximize2,
   ClipboardPaste,
   Camera,
-  ArrowLeft
+  ArrowLeft,
+  FolderArchive,
+  GraduationCap,
+  Archive,
+  ArchiveRestore,
+  FileUp
 } from 'lucide-react';
+import { ClassExamRepositoryAndArchiveTab } from '../components/ClassExamRepositoryAndArchiveTab';
+import { exportExamPaperToWord, downloadAttachedTeacherFile } from '../lib/examExportUtils';
 
 interface EspaceEpreuvesViewProps {
   onNavigate?: (view: string) => void;
@@ -45,8 +52,10 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
   const [scanModalInitialTab, setScanModalInitialTab] = useState<'IMAGE' | 'TEXT' | 'DEMO'>('IMAGE');
   const [isHeaderConfigOpen, setIsHeaderConfigOpen] = useState(false);
 
+  const [mainTab, setMainTab] = useState<'CLASS_ARCHIVES' | 'OCR_GENERATOR' | 'ALL_EXAMS'>('CLASS_ARCHIVES');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('ALL');
+  const [originFilter, setOriginFilter] = useState<'ALL' | 'TEACHERS' | 'ADMIN'>('ALL');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   const [activePreviewPaper, setActivePreviewPaper] = useState<ExamPaper | null>(null);
@@ -54,6 +63,13 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
   const [isSynchronizing, setIsSynchronizing] = useState(false);
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
+
+  const handleDirectPrint = (paper: ExamPaper) => {
+    setActivePreviewPaper(paper);
+    setTimeout(() => {
+      window.print();
+    }, 350);
+  };
 
   // Smooth Escape key handler to easily exit preview
   useEffect(() => {
@@ -117,11 +133,19 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
   const filteredPapers = examPapers.filter(paper => {
     const matchesClass = selectedClassFilter === 'ALL' || paper.classId === selectedClassFilter || paper.className === selectedClassFilter;
     const matchesType = selectedTypeFilter === 'ALL' || paper.examType === selectedTypeFilter;
+    const isFromTeacher = !!(paper.teacherName || paper.teacherId || paper.teacherPhone);
+    const matchesOrigin = originFilter === 'ALL' || (originFilter === 'TEACHERS' && isFromTeacher) || (originFilter === 'ADMIN' && !isFromTeacher);
     const matchesSearch = paper.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           paper.subjectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          paper.className.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesClass && matchesType && matchesSearch;
+                          paper.className.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (paper.teacherName && paper.teacherName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                          (paper.teacherPhone && paper.teacherPhone.includes(searchTerm));
+    return matchesClass && matchesType && matchesOrigin && matchesSearch;
   });
+
+  const teacherPapersCount = examPapers.filter(p => !!(p.teacherName || p.teacherId || p.teacherPhone)).length;
+  const pendingTeacherPapersCount = examPapers.filter(p => !!(p.teacherName || p.teacherId) && (!p.status || p.status === 'EN_ATTENTE')).length;
+  const adminPapersCount = examPapers.length - teacherPapersCount;
 
   // Export any paper directly to Word (.doc)
   const exportToWord = (paper: ExamPaper) => {
@@ -323,6 +347,110 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
         </div>
       </div>
 
+      {/* Main Section Navigation Switcher */}
+      <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-200/90 dark:bg-slate-800/90 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-sm w-full">
+        <button
+          type="button"
+          onClick={() => setMainTab('CLASS_ARCHIVES')}
+          className={`flex-1 sm:flex-none px-4 py-3 rounded-xl font-black text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+            mainTab === 'CLASS_ARCHIVES'
+              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+              : 'text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
+          }`}
+        >
+          <FolderArchive className="h-4 w-4 text-amber-300" />
+          <span>📂 Recueil & Archives par Classe ({teacherPapersCount})</span>
+          {pendingTeacherPapersCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 animate-pulse">
+              {pendingTeacherPapersCount} à valider
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMainTab('OCR_GENERATOR');
+            setOriginFilter('ALL');
+          }}
+          className={`flex-1 sm:flex-none px-4 py-3 rounded-xl font-black text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+            mainTab === 'OCR_GENERATOR'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+              : 'text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
+          }`}
+        >
+          <Sparkles className="h-4 w-4 text-amber-300" />
+          <span>🤖 Scanner & Générateur Word (IA)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMainTab('ALL_EXAMS');
+            setOriginFilter('ALL');
+          }}
+          className={`flex-1 sm:flex-none px-4 py-3 rounded-xl font-black text-xs flex items-center justify-center space-x-2 transition-all cursor-pointer ${
+            mainTab === 'ALL_EXAMS'
+              ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950 shadow-md'
+              : 'text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
+          }`}
+        >
+          <FileText className="h-4 w-4" />
+          <span>📚 Banque Complète ({examPapers.length})</span>
+        </button>
+      </div>
+
+      {mainTab === 'CLASS_ARCHIVES' ? (
+        <ClassExamRepositoryAndArchiveTab
+          onPreviewPaper={setActivePreviewPaper}
+          onDirectPrint={handleDirectPrint}
+        />
+      ) : (
+        <>
+          {/* Origin Filter Tabs */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setOriginFilter('ALL')}
+              className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all cursor-pointer ${
+                originFilter === 'ALL'
+                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-950 shadow-md'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              Toutes les Épreuves ({examPapers.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOriginFilter('TEACHERS')}
+              className={`px-4 py-2.5 rounded-2xl font-black text-xs flex items-center space-x-2 transition-all cursor-pointer ${
+                originFilter === 'TEACHERS'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              <span>👨‍🏫 Déposées par les Professeurs ({teacherPapersCount})</span>
+              {pendingTeacherPapersCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 animate-pulse">
+                  {pendingTeacherPapersCount} à valider
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOriginFilter('ADMIN')}
+              className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all cursor-pointer ${
+                originFilter === 'ADMIN'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              🏛️ Numérisées en Administration ({adminPapersCount})
+            </button>
+          </div>
+
       {/* Filter and Stats Bar */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
         
@@ -390,20 +518,90 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
             <div className="space-y-3">
               
               {/* Badges */}
-              <div className="flex items-center justify-between">
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                  paper.examType === 'COMPOSITION'
-                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
-                    : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
-                }`}>
-                  {paper.examType === 'COMPOSITION' ? 'Composition' : 'Devoir Surveillé'}
-                </span>
+              <div className="flex items-center justify-between flex-wrap gap-1.5">
+                <div className="flex items-center space-x-1.5 flex-wrap gap-1">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                    paper.examType === 'COMPOSITION'
+                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                  }`}>
+                    {paper.examType === 'COMPOSITION' ? 'Composition' : 'Devoir'}
+                  </span>
 
-                <span className="text-[10px] font-bold text-slate-400 flex items-center space-x-1">
+                  {paper.teacherName && (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      paper.status === 'VALIDE'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-500/30'
+                        : paper.status === 'IMPRIME'
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-500/30'
+                        : paper.status === 'REJETE'
+                        ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border border-red-500/30'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-500/30'
+                    }`}>
+                      {paper.status === 'VALIDE' ? '✓ Validée Censeur' :
+                       paper.status === 'IMPRIME' ? '🖨️ Tirage Prêt' :
+                       paper.status === 'REJETE' ? '⚠️ Retouche' :
+                       '⏳ En attente validation'}
+                    </span>
+                  )}
+                </div>
+
+                <span className="text-[10px] font-bold text-slate-400 flex items-center space-x-1 shrink-0">
                   <Calendar className="h-3 w-3 inline mr-1" />
                   {paper.createdAt}
                 </span>
               </div>
+
+              {/* Teacher Origin Banner */}
+              {paper.teacherName && (
+                <div className="p-2.5 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-indigo-900 dark:text-indigo-200 flex items-center space-x-1 truncate">
+                      <span>👨‍🏫 Prof. {paper.teacherName}</span>
+                    </span>
+                    {paper.teacherPhone && (
+                      <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 shrink-0 font-mono">
+                        📞 {paper.teacherPhone}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400 pt-0.5">
+                    {paper.numberOfCopiesRequested ? (
+                      <span className="font-bold text-emerald-700 dark:text-emerald-300">
+                        🖨️ {paper.numberOfCopiesRequested} copies demandées
+                      </span>
+                    ) : <span />}
+                    {paper.examDate && (
+                      <span>Prévu le : <strong>{paper.examDate}</strong></span>
+                    )}
+                  </div>
+
+                  {paper.submissionNotes && (
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
+                      "{paper.submissionNotes}"
+                    </p>
+                  )}
+
+                  {/* Attached File Pill & Download */}
+                  {paper.attachedFileName && (
+                    <div className="mt-1 pt-1.5 border-t border-indigo-200/50 dark:border-indigo-800/40 flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-mono text-indigo-800 dark:text-indigo-300 truncate">
+                        📎 {paper.attachedFileName}
+                      </span>
+                      {paper.attachedFileUrl && (
+                        <a
+                          href={paper.attachedFileUrl}
+                          download={paper.attachedFileName}
+                          className="px-2 py-0.5 rounded-md bg-indigo-600 text-white font-bold text-[10px] hover:bg-indigo-700 shrink-0 transition-colors"
+                        >
+                          Télécharger
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Title & Subject */}
               <div>
@@ -433,6 +631,53 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
               </p>
 
             </div>
+
+            {/* Quick Administrative Workflow Actions for Teacher Submissions */}
+            {paper.teacherName && (!paper.status || paper.status === 'EN_ATTENTE') && (
+              <div className="p-2 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-800/40 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-amber-900 dark:text-amber-200">
+                  Validation Censeur :
+                </span>
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const feedback = prompt("Précisez la remarque ou correction demandée à l'enseignant :");
+                      if (feedback !== null) {
+                        updateExamPaper({ ...paper, status: 'REJETE', schoolFeedback: feedback });
+                      }
+                    }}
+                    className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-red-100 hover:text-red-700 transition-colors cursor-pointer"
+                  >
+                    Demander retouche
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => updateExamPaper({ ...paper, status: 'VALIDE' })}
+                    className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-600 hover:bg-emerald-500 text-white shadow transition-all cursor-pointer flex items-center space-x-1"
+                  >
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>Valider Tirage</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {paper.teacherName && paper.status === 'VALIDE' && (
+              <div className="p-2 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-emerald-900 dark:text-emerald-200">
+                  Épreuve validée ({paper.numberOfCopiesRequested || 'X'} copies)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => updateExamPaper({ ...paper, status: 'IMPRIME' })}
+                  className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-blue-600 hover:bg-blue-500 text-white shadow transition-all cursor-pointer flex items-center space-x-1"
+                >
+                  <Printer className="w-3 h-3" />
+                  <span>Marquer Tiré</span>
+                </button>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
@@ -516,6 +761,8 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
             </button>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* FULL-SCREEN A4 PREVIEW MODAL */}
@@ -620,9 +867,49 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
                   </button>
                 </div>
 
+                {/* Download original attached teacher file if present */}
+                {activePreviewPaper.attachedFileUrl && (
+                  <button
+                    type="button"
+                    onClick={() => downloadAttachedTeacherFile(activePreviewPaper)}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs flex items-center space-x-1.5 shadow-md cursor-pointer"
+                    title="Télécharger le fichier original déposé par l'enseignant"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Fichier Original Prof</span>
+                  </button>
+                )}
+
+                {/* Archive / Restore Button */}
                 <button
-                  onClick={() => exportToWord(activePreviewPaper)}
-                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center space-x-1.5 shadow-md"
+                  type="button"
+                  onClick={() => {
+                    const isArchived = activePreviewPaper.isArchived || activePreviewPaper.status === 'ARCHIVE';
+                    const updated: ExamPaper = {
+                      ...activePreviewPaper,
+                      isArchived: !isArchived,
+                      status: !isArchived ? 'ARCHIVE' : 'VALIDE',
+                      archivedAt: !isArchived ? new Date().toISOString() : undefined,
+                      archivedBy: !isArchived ? (settings.schoolName || 'Direction') : undefined
+                    };
+                    setActivePreviewPaper(updated);
+                    updateExamPaper(updated);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl font-black text-xs flex items-center space-x-1.5 transition-all cursor-pointer ${
+                    activePreviewPaper.isArchived || activePreviewPaper.status === 'ARCHIVE'
+                      ? 'bg-purple-700 text-white shadow-md'
+                      : 'bg-slate-100 hover:bg-purple-100 dark:bg-slate-800 dark:hover:bg-purple-950 text-slate-700 dark:text-slate-200'
+                  }`}
+                  title={activePreviewPaper.isArchived || activePreviewPaper.status === 'ARCHIVE' ? "Désarchiver l'épreuve" : "Archiver l'épreuve"}
+                >
+                  <FolderArchive className="h-3.5 w-3.5 text-purple-400" />
+                  <span>{activePreviewPaper.isArchived || activePreviewPaper.status === 'ARCHIVE' ? 'Archivée (Restaurer)' : 'Archiver'}</span>
+                </button>
+
+                <button
+                  onClick={() => exportExamPaperToWord(activePreviewPaper, settings, currentSchool)}
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center space-x-1.5 shadow-md cursor-pointer"
+                  title="Télécharger l'épreuve formatée au format Word (.doc)"
                 >
                   <Download className="h-3.5 w-3.5 text-amber-300" />
                   <span>Version Word (.doc)</span>
@@ -630,7 +917,8 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
 
                 <button
                   onClick={() => window.print()}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 text-white font-black text-xs flex items-center space-x-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 text-white font-black text-xs flex items-center space-x-1.5 cursor-pointer"
+                  title="Imprimer l'épreuve"
                 >
                   <Printer className="h-3.5 w-3.5 text-emerald-400" />
                   <span>Imprimer</span>
