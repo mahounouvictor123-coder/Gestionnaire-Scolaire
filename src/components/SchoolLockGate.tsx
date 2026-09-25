@@ -39,7 +39,9 @@ export const SchoolLockGate: React.FC<SchoolLockGateProps> = ({
   onNavigate,
   onOpenCreateSchoolModal
 }) => {
-  const { currentSchool, unlockSchool, validateSchoolByPromoter, switchSchool, schools, isDailyAccessValid, setCurrentUser, settings, isPermanentlyRevokedSchool } = useApp();
+  const { currentSchool, unlockSchool, validateSchoolByPromoter, switchSchool, schools, isDailyAccessValid, setCurrentUser, settings, isPermanentlyRevokedSchool, currentUser } = useApp();
+  const isPromoter = (currentUser?.email?.toLowerCase().trim() === 'mahounouvictor123@gmail.com') || 
+    (typeof window !== 'undefined' && localStorage.getItem('GESTIONNAIRE_PROMOTER_AUTH') === 'true');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -471,7 +473,7 @@ export const SchoolLockGate: React.FC<SchoolLockGateProps> = ({
               <span>Retour à l'accueil</span>
             </button>
 
-            {onOpenCreateSchoolModal && (
+            {onOpenCreateSchoolModal && isPromoter && (
               <button
                 type="button"
                 onClick={onOpenCreateSchoolModal}

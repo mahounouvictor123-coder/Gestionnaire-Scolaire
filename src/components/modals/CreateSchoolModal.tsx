@@ -460,6 +460,10 @@ export const CreateSchoolModal: React.FC<CreateSchoolModalProps> = ({ isOpen, on
                   type="button"
                   onClick={() => {
                     if (createdSchoolData) {
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem('has_created_school', 'true');
+                        localStorage.setItem('user_created_school_id', createdSchoolData.id);
+                      }
                       switchSchool(createdSchoolData.id);
                       const pwd = createdSchoolData.accessPassword || createdSchoolData.tempPassword;
                       if (pwd) {

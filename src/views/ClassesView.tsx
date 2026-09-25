@@ -823,7 +823,6 @@ export const ClassesView: React.FC<ClassesViewProps> = ({ onNavigateToScanRoster
                     <option value="COLLEGE">Collège (6ème, 5ème, 4ème, 3ème)</option>
                     <option value="LYCEE">Lycée Général & Technique (2nde, 1ère, Tle)</option>
                     <option value="FORMATION">Formation Professionnelle (CAP, BEP, BT)</option>
-                    <option value="UNIVERSITE">Supérieur / Université (Licence, Master)</option>
                   </select>
                 </div>
 

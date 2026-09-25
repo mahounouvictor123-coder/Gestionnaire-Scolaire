@@ -22,7 +22,8 @@ import {
   User,
   ArchivedReportCard,
   StaffRoleConfig,
-  OfficialAnnouncement
+  OfficialAnnouncement,
+  QuizWeek
 } from '../types';
 
 export const defaultStaffRolePermissions: StaffRoleConfig[] = [
@@ -296,7 +297,7 @@ export const initialSubjects: Subject[] = [
   { id: "sbj-5", code: "HIST", name: "Histoire - Géographie", category: "LITTERAIRE", coefficient: 3, level: "COLLEGE" },
   { id: "sbj-6", code: "ANG", name: "Langue Anglaise", category: "LANGUE", coefficient: 3, level: "COLLEGE" },
   { id: "sbj-7", code: "PHIL", name: "Philosophie", category: "LITTERAIRE", coefficient: 3, level: "LYCEE" },
-  { id: "sbj-8", code: "INFO", name: "Informatique & Algo", category: "TECHNIQUE", coefficient: 3, level: "UNIVERSITE" },
+  { id: "sbj-8", code: "INFO", name: "Informatique & Algo", category: "TECHNIQUE", coefficient: 3, level: "LYCEE" },
   { id: "sbj-9", code: "EPS", name: "Éducation Physique & Sportive", category: "DIVERS", coefficient: 1, level: "LYCEE" },
   { id: "sbj-cpt", code: "CPT", name: "Comptabilité Générale & Analytique (G2)", category: "TECHNIQUE", coefficient: 6, level: "LYCEE" },
   { id: "sbj-eco", code: "ECO", name: "Économie & Organisation d'Entreprise (G2)", category: "TECHNIQUE", coefficient: 4, level: "LYCEE" },
@@ -397,7 +398,7 @@ export const initialStudents: Student[] = [
     parentName: "Mme Marie-Claire BONY",
     parentPhone: "+225 05 66 77 88 99",
     parentEmail: "mc.bony@gmail.com",
-    address: "Cité Universitaire Mermoz",
+    address: "Quartier Mermoz, Cocody",
     status: "ACTIF",
     enrollmentDate: "2025-10-01",
     bloodGroup: "B+"
@@ -1600,5 +1601,209 @@ export const initialOfficialAnnouncements: OfficialAnnouncement[] = [
     readReceipts: []
   }
 ];
+
+export const initialQuizWeeks: QuizWeek[] = [
+  {
+    id: "qw-1",
+    schoolId: "sch-temple",
+    title: "Quiz Week N°1 : Théorème de Thalès & Équations Réduites",
+    classId: "cls-3",
+    className: "3ème (Classe d'Examen BEPC)",
+    subjectId: "sbj-1",
+    subjectName: "Mathématiques",
+    teacherId: "tch-s4",
+    teacherName: "M. Kouamé KOFFI",
+    teacherPhone: "+225 07 44 55 66 77",
+    weekendTargetDate: "Weekend du 26-27 Septembre 2026",
+    deadline: "Dimanche 27 Septembre à 20h00",
+    instructions: "Chers élèves de 3ème, voici vos exercices d'entraînement du week-end pour préparer le prochain devoir surveillé. Traitez le devoir sur feuille d'entraînement ou directement sur la plateforme. Soumettez votre travail (en prenant une photo/scan de votre feuille ou en rédigeant directement en ligne) pour débloquer immédiatement le corrigé type officiel et le barème détaillé.",
+    content: `EXERCICE 1 (8 points) : Calcul Littéral & Équations
+On considère l'expression algébrique : E = (3x - 5)² - (2x + 1)(3x - 5)
+1) Développer, réduire et ordonner E selon les puissances décroissantes de x.
+2) Factoriser l'expression E sous forme d'un produit de deux facteurs du premier degré.
+3) Résoudre dans ℝ l'équation : (3x - 5)(x - 6) = 0.
+
+EXERCICE 2 (12 points) : Géométrie & Théorème de Thalès
+Sur la figure ci-contre (ou schéma d'exercice) :
+Les droites (AB) et (CD) sont sécantes en O.
+Les droites (AC) et (BD) sont parallèles.
+On donne : OA = 6 cm, OB = 9 cm, OC = 4 cm et AC = 5 cm.
+1) Justifier pourquoi les rapports OA/OB, OC/OD et AC/BD sont égaux.
+2) Calculer avec précision la longueur OD.
+3) Calculer la longueur BD au millimètre près.`,
+    officialAnswerKey: `CORRIGÉ TYPE OFFICIEL DU PROFESSEUR :
+
+EXERCICE 1 :
+1) Développement de E :
+E = (3x - 5)² - (2x + 1)(3x - 5)
+= (9x² - 30x + 25) - (6x² - 10x + 3x - 5)
+= 9x² - 30x + 25 - (6x² - 7x - 5)
+= 9x² - 30x + 25 - 6x² + 7x + 5
+= 3x² - 23x + 30.
+
+2) Factorisation de E :
+Le facteur commun est (3x - 5) :
+E = (3x - 5) [ (3x - 5) - (2x + 1) ]
+= (3x - 5) ( 3x - 5 - 2x - 1 )
+= (3x - 5)(x - 6).
+
+3) Résolution de l'équation produit nul (3x - 5)(x - 6) = 0 :
+Un produit de facteurs est nul si et seulement si l'un des facteurs est nul.
+Soit 3x - 5 = 0  =>  3x = 5  =>  x = 5/3
+Soit x - 6 = 0   =>  x = 6
+L'ensemble des solutions dans ℝ est S = { 5/3 ; 6 }.
+
+EXERCICE 2 :
+1) Justification Thalès :
+Les points A, O, B d'une part, et C, O, D d'autre part, sont alignés dans cet ordre sur deux droites sécantes en O.
+Puisque les droites (AC) et (BD) sont parallèles, d'après le théorème de Thalès :
+OA / OB = OC / OD = AC / BD.
+
+2) Calcul de OD :
+On a OA / OB = OC / OD
+=> 6 / 9 = 4 / OD
+=> OD = (9 × 4) / 6 = 36 / 6 = 6 cm.
+Conclusion : OD = 6 cm.
+
+3) Calcul de BD :
+On a OA / OB = AC / BD
+=> 6 / 9 = 5 / BD
+=> BD = (9 × 5) / 6 = 45 / 6 = 7,5 cm.
+Conclusion : BD = 7,5 cm.`,
+    gradingScale: `BARÈME DÉTAILLÉ DE NOTATION (/20) :
+
+EXERCICE 1 (8 points) :
+• Question 1 (Développement) : 3 points
+  - Identité remarquable correcte (9x² - 30x + 25) : 1 pt
+  - Développement double distributivité correct : 1 pt
+  - Résultat final ordonné 3x² - 23x + 30 : 1 pt
+• Question 2 (Factorisation) : 3 points
+  - Repérage du facteur commun (3x - 5) : 1 pt
+  - Réduction de l'expression entre crochets : 1 pt
+  - Forme factorisée finale (3x - 5)(x - 6) : 1 pt
+• Question 3 (Équation produit-nul) : 2 points
+  - Énoncé de la propriété du produit nul : 0.5 pt
+  - Solutions trouvées (5/3 et 6) : 1.5 pt
+
+EXERCICE 2 (12 points) :
+• Question 1 (Justification) : 3 points
+  - Mention des alignements et du parallélisme : 1.5 pt
+  - Égalité des 3 rapports de Thalès posée : 1.5 pt
+• Question 2 (Calcul de OD) : 4.5 points
+  - Choix des rapports pertinents : 1.5 pt
+  - Produit en croix et calcul : 2 pts
+  - Résultat OD = 6 cm avec unité : 1 pt
+• Question 3 (Calcul de BD) : 4.5 points
+  - Égalité des rapports : 1.5 pt
+  - Calcul : 2 pts
+  - Résultat BD = 7,5 cm avec unité : 1 pt`,
+    teacherAiInstructions: "Consignes de clémence du professeur : Être bienveillant et indulgent avec les élèves. Reconnaître et valoriser chaque démarche de réponse et amorce de calcul (ex: repérage du facteur commun, écriture de l'égalité des rapports de Thalès). Même si une erreur d'inattention survient dans les calculs intermédiaires ou si l'unité est omise, accorder au moins 50% des points de la question pour la démarche. Encourager chaleureusement l'élève pour son travail de recherche.",
+    totalPoints: 20,
+    createdAt: "2026-09-24T18:00:00Z",
+    status: "ACTIF",
+    directorApprovalStatus: "APPROUVE",
+    directorNotes: "Sujet bien calibré pour les candidats au BEPC. Barème équitable et consignes de clémence pour l'IA approuvées par la Direction des Études.",
+    directorApprovedAt: "2026-09-24T19:00:00Z",
+    directorApprovedBy: "Direction Pédagogique",
+    submissions: [
+      {
+        id: "sub-qw-1-std1",
+        quizId: "qw-1",
+        studentId: "std-1",
+        studentName: "Marc-Aurele DIALLO",
+        parentPhone: "+225 07 11 22 33",
+        submissionType: "DIRECT",
+        directAnswer: `Voici mes réponses pour le devoir du weekend :
+Exercice 1 :
+1) E = 9x² - 30x + 25 - (6x² - 7x - 5) = 3x² - 23x + 30.
+2) Facteur commun (3x-5) : E = (3x - 5)(3x - 5 - 2x - 1) = (3x - 5)(x - 6).
+3) 3x - 5 = 0 => x = 5/3 ou x - 6 = 0 => x = 6. Donc S = {5/3 ; 6}.
+
+Exercice 2 :
+1) Les droites (AC) et (BD) sont parallèles et coupées par deux sécantes en O, donc OA/OB = OC/OD = AC/BD.
+2) 6/9 = 4/OD => OD = (9 * 4) / 6 = 6 cm.
+3) 6/9 = 5/BD => BD = (9 * 5) / 6 = 7.5 cm.`,
+        submittedAt: "2026-09-25T08:30:00Z",
+        status: "CORRIGE",
+        selfAssessedScore: 20,
+        aiScore: 19.5,
+        aiFeedback: "Remarquable copie ! Tous les calculs algébriques et géométriques sont rigoureusement menés et conformes au corrigé officiel.",
+        aiObservations: "L'élève a bien respecté l'ensemble des étapes de développement et la factorisation par facteur commun. Pour Thalès, l'alignement et le parallélisme sont correctement rappelés.",
+        aiStrengths: [
+          "Identité remarquable et réduction de E parfaitement maîtrisées",
+          "Propriété de l'équation produit-nul clairement formulée avec les solutions exactes",
+          "Égalité des 3 rapports de Thalès posée sans ambiguïté",
+          "Calculs de OD et BD exacts avec unités (cm)"
+        ],
+        aiAreasForImprovement: [
+          "Penser à encadrer la solution finale pour faciliter la relecture rapide",
+          "Rédiger une brève phrase conclusive pour clore le problème de géométrie"
+        ],
+        aiBreakdown: "Exercice 1 : 8/8 pts (Dev 3/3, Fact 3/3, Eq 2/2) | Exercice 2 : 11.5/12 pts (Justif 3/3, OD 4.5/4.5, BD 4/4.5 - omission légère de la phrase réponse)",
+        aiEvaluatedAt: "2026-09-25T08:30:15Z",
+        teacherScore: 19.5,
+        teacherFeedback: "Excellent travail Marc-Aurèle ! Raisonnement très rigoureux et étapes soignées. Félicitations.",
+        reviewedAt: "2026-09-25T09:15:00Z"
+      }
+    ]
+  },
+  {
+    id: "qw-2",
+    schoolId: "sch-temple",
+    title: "Quiz Week CM2 : Conjugaison des Temps Composés & Accords",
+    classId: "cls-cm2",
+    className: "CM2 (Classe d'Examen CEP)",
+    subjectId: "sbj-prim-fr",
+    subjectName: "Français & Expression Écrite",
+    teacherId: "tch-p7",
+    teacherName: "Mme Jeanne AKPOVI",
+    teacherPhone: "+229 95 12 34 56",
+    weekendTargetDate: "Weekend du 26-27 Septembre 2026",
+    deadline: "Dimanche 27 Septembre à 19h00",
+    instructions: "Chers parents et chers candidats au CEP, effectuez ces exercices de grammaire et conjugaison pendant le weekend. L'élève doit travailler seul dans un premier temps. Renvoyez votre travail (photo de la copie du cahier d'exercices ou réponse directe saisie ci-dessous) pour débloquer la correction et vérifier les accords.",
+    content: `EXERCICE 1 (10 points) : Règle d'accord du participe passé
+Complétez les phrases en accordant correctement le participe passé entre parenthèses :
+1) Les fleurs que nous avons (cueillir) ________ sont magnifiques.
+2) Elles sont (partir) ________ très tôt ce matin pour le marché.
+3) Les enfants ont (manger) ________ tous les mangues mûres.
+4) Les lettres que le maître a (écrire) ________ sont arrivées à l'école.
+5) La pluie est (tomber) ________ avec abondance sur le village.
+
+EXERCICE 2 (10 points) : Conjugaison au Plus-que-Parfait
+Conjuguez les verbes entre parenthèses au plus-que-parfait de l'indicatif :
+1) Avant la récréation, les élèves (terminer) __________________ leur récitation.
+2) Le directeur (avertir) __________________ tous les parents d'élèves.
+3) Nous (partir) __________________ avant le coucher du soleil.
+4) Tu (apprendre) __________________ ta leçon d'histoire avec sérieux.
+5) Les oiseaux (s'envoler) __________________ vers le grand fromager.`,
+    officialAnswerKey: `CORRIGÉ TYPE OFFICIEL DU PROFESSEUR :
+
+EXERCICE 1 :
+1) Les fleurs que nous avons cueillies sont magnifiques. (Le COD "que", mis pour "les fleurs" féminin pluriel, est placé avant l'auxiliaire avoir -> accord "ies").
+2) Elles sont parties très tôt ce matin. (Auxiliaire être -> accord avec le sujet "Elles" féminin pluriel -> "ies").
+3) Les enfants ont mangé toutes les mangues mûres. (Auxiliaire avoir et COD placé après -> pas d'accord -> "é").
+4) Les lettres que le maître a écrites sont arrivées. (COD "que" mis pour "les lettres" féminin pluriel placé avant -> "ites").
+5) La pluie est tombée avec abondance. (Auxiliaire être -> accord avec le sujet "La pluie" féminin singulier -> "ée").
+
+EXERCICE 2 :
+1) Avant la récréation, les élèves avaient terminé leur récitation.
+2) Le directeur avait averti tous les parents d'élèves.
+3) Nous étions partis avant le coucher du soleil.
+4) Tu avais appris ta leçon d'histoire avec sérieux.
+5) Les oiseaux s'étaient envolés vers le grand fromager.`,
+    gradingScale: `BARÈME DÉTAILLÉ (/20) :
+• Exercice 1 (10 points) : 2 points par phrase correctement accordée (1 pt pour le radical, 1 pt pour la terminaison exacte).
+• Exercice 2 (10 points) : 2 points par phrase correctement conjuguée au plus-que-parfait (1 pt pour le choix et la forme de l'auxiliaire, 1 pt pour le participe passé).`,
+    teacherAiInstructions: "Consignes de clémence du professeur : Reconnaître les approches et la compréhension globale. Si l'élève a identifié le bon temps ou la bonne terminaison sans le radical exact, ou l'inverse, accorder au moins 1 point sur 2. Être encourageant et souligner les acquis de l'élève.",
+    totalPoints: 20,
+    createdAt: "2026-09-24T17:30:00Z",
+    status: "ACTIF",
+    directorApprovalStatus: "EN_ATTENTE",
+    directorNotes: "",
+    submissions: []
+  }
+];
+
+
 
 

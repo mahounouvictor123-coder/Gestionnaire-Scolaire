@@ -64,6 +64,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     currentUser,
     currentSchool,
     examPapers,
+    quizWeeks,
     updateSettings,
     updateSchool,
     directorNotifications,
@@ -129,6 +130,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const pendingTeacherExams = (examPapers || []).filter(p => !!(p.teacherName || p.teacherId) && (!p.status || p.status === 'EN_ATTENTE')).length;
 
+  const schoolQuizWeeks = React.useMemo(() => {
+    return (quizWeeks || []).filter(q => !q.schoolId || q.schoolId === currentSchool?.id);
+  }, [quizWeeks, currentSchool?.id]);
+
+  const totalQuizSubmissionsCount = React.useMemo(() => {
+    return schoolQuizWeeks.reduce((acc, q) => acc + (q.submissions ? q.submissions.length : 0), 0);
+  }, [schoolQuizWeeks]);
+
+  const pendingVisaQuizWeeks = React.useMemo(() => {
+    return schoolQuizWeeks.filter(q => !q.directorApprovalStatus || q.directorApprovalStatus === 'EN_ATTENTE');
+  }, [schoolQuizWeeks]);
+
   const getSubAppUrl = (subapp: 'parent' | 'teacher') => {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';
     const schoolParam = currentSchool?.id || 'school-1';
@@ -156,7 +169,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   });
 
   const primaryStudentsList = students.filter(s => s.level === 'PRIMAIRE' || s.level === 'MATERNELLE');
-  const secondaryStudentsList = students.filter(s => s.level === 'COLLEGE' || s.level === 'LYCEE' || s.level === 'UNIVERSITE' || s.level === 'FORMATION');
+  const secondaryStudentsList = students.filter(s => s.level === 'COLLEGE' || s.level === 'LYCEE' || s.level === 'FORMATION');
 
   // Metrics depending on active cycle
   const displayStudentsCount = selectedCycle === 'PRIMAIRE' 
@@ -192,7 +205,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     PRIMAIRE: students.filter(s => s.level === 'PRIMAIRE').length,
     COLLEGE: students.filter(s => s.level === 'COLLEGE').length,
     LYCEE: students.filter(s => s.level === 'LYCEE').length,
-    UNIVERSITE: students.filter(s => s.level === 'UNIVERSITE').length,
     FORMATION: students.filter(s => s.level === 'FORMATION').length
   };
 
@@ -201,7 +213,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const currentStaffConfig = staffConfigs.find(s => s.role === currentUser?.role) || defaultStaffRolePermissions.find(d => d.role === currentUser?.role);
   const isStaffRestricted = currentUser?.role && ['CENSEUR', 'SURVEILLANT', 'COMPTABLE', 'SECRETAIRE'].includes(currentUser.role);
   const allowedViewsList = currentStaffConfig?.allowedViews?.includes('*')
-    ? ['dashboard', 'students', 'scan-roster', 'classes', 'subjects', 'grades', 'report-cards', 'attendance', 'timetable', 'exams', 'epreuves', 'teachers', 'documents', 'communication', 'accounting', 'payments', 'canteen', 'transport', 'library', 'parent-complaints', 'ai-studio']
+    ? ['dashboard', 'students', 'scan-roster', 'classes', 'subjects', 'grades', 'report-cards', 'attendance', 'timetable', 'exams', 'epreuves', 'quiz-week', 'teachers', 'documents', 'communication', 'accounting', 'payments', 'canteen', 'transport', 'library', 'parent-complaints', 'ai-studio']
     : (currentStaffConfig?.allowedViews || []);
 
   const isViewAllowed = (viewKey: string) => {
@@ -456,6 +468,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <span className="font-extrabold text-xs text-white truncate">Épreuves Word IA</span>
                 </div>
                 <ArrowRight className="h-3.5 w-3.5 text-indigo-400 group-hover:translate-x-1 transition-transform shrink-0" />
+              </button>
+            )}
+
+            {isViewAllowed('quiz-week') && (
+              <button
+                onClick={() => onNavigate('quiz-week')}
+                className="p-3 rounded-xl bg-gradient-to-r from-indigo-900/90 to-purple-900/90 hover:from-indigo-800 hover:to-purple-800 border border-indigo-500/40 text-left transition-all flex items-center justify-between group cursor-pointer shadow-md"
+              >
+                <div className="flex items-center space-x-2 truncate">
+                  <Sparkles className="h-4 w-4 text-amber-300 shrink-0 animate-pulse" />
+                  <span className="font-extrabold text-xs text-white truncate">Supervision Quiz Week</span>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-amber-300 group-hover:translate-x-1 transition-transform shrink-0" />
               </button>
             )}
 
@@ -788,6 +813,87 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* BOÎTE D'ANNONCES OFFICIELLES & MESSAGES PRIVÉS AUX PARENTS */}
       <OfficialAnnouncementsBox onNavigateToParentApp={() => window.open(getSubAppUrl('parent'), '_blank')} />
         </>
+      )}
+
+      {/* FENÊTRE & CONTRÔLE DES QUIZ WEEK DU WEEK-END PAR LE CHEF D'ÉTABLISSEMENT */}
+      {isViewAllowed('quiz-week') && (
+        <div className="rounded-3xl p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 border-2 border-indigo-500/40 text-white shadow-2xl space-y-5 relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mt-8 -mr-8 w-60 h-60 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-indigo-800/60 pb-4 relative z-10">
+            <div className="flex items-center space-x-3.5">
+              <div className="p-3.5 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-amber-500 text-white shadow-lg shadow-indigo-600/30">
+                <Sparkles className="h-7 w-7 text-white animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 uppercase tracking-wider">
+                    ESPACE DIRECTION
+                  </span>
+                  <span className="text-xs text-indigo-300 font-bold">Contrôle Pédagogique des Enseignants</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white mt-0.5 tracking-tight flex items-center gap-2">
+                  <span>Devoirs Quiz Week du Week-end</span>
+                </h2>
+              </div>
+            </div>
+
+            <button
+              onClick={() => onNavigate('quiz-week')}
+              className="flex items-center space-x-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-xs sm:text-sm shadow-xl shadow-indigo-900/40 transition-all transform hover:scale-[1.02] cursor-pointer self-start md:self-auto shrink-0"
+            >
+              <ShieldCheck className="h-4 w-4 text-amber-300" />
+              <span>Ouvrir la Fenêtre Quiz Week & Contrôle</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 relative z-10">
+            <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                Devoirs Programmés
+              </span>
+              <span className="text-xl sm:text-2xl font-black text-white mt-1 block">
+                {schoolQuizWeeks.length}
+              </span>
+              <span className="text-[10px] text-indigo-300">Ce week-end</span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                Visas Direction
+              </span>
+              <span className="text-xl sm:text-2xl font-black text-emerald-400 mt-1 block">
+                {schoolQuizWeeks.filter(q => q.directorApprovalStatus === 'APPROUVE').length}
+              </span>
+              <span className="text-[10px] text-amber-300">{pendingVisaQuizWeeks.length} en attente</span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                Copies d'Élèves Reçues
+              </span>
+              <span className="text-xl sm:text-2xl font-black text-amber-300 mt-1 block">
+                {totalQuizSubmissionsCount}
+              </span>
+              <span className="text-[10px] text-slate-400">Évaluées par IA & prof</span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                Évaluation IA Clémente
+              </span>
+              <span className="text-xs sm:text-sm font-black text-emerald-300 mt-1.5 block">
+                ✨ Activée
+              </span>
+              <span className="text-[10px] text-slate-400">Approches valorisées</span>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-300 leading-relaxed max-w-4xl relative z-10">
+            💡 <strong>Supervision du Chef d'Établissement :</strong> Chaque professeur dépose son devoir de week-end avec l'épreuve (texte ou photo scannée), le corrigé type officiel, le barème et ses consignes de bienveillance pour l'IA. La Direction contrôle la rigueur académique, valide les visas et s'assure que chaque classe a son devoir actif.
+          </p>
+        </div>
       )}
 
       {/* DUAL WORKSPACES SELECTION HUB: ESPACE DIRECTION & ESPACE SECRÉTARIAT (Visible for Director) */}
@@ -1317,7 +1423,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                {selectedCycle === 'PRIMAIRE' ? 'Écoliers Primaire' : selectedCycle === 'SECONDAIRE' ? 'Élèves Secondaire' : 'Total Élèves'}
+                {selectedCycle === 'PRIMAIRE' ? 'Écoliers Primaire' : selectedCycle === 'SECONDAIRE' ? 'Élèves Secondaire' : 'Total Apprenants'}
               </p>
               <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-1">{displayStudentsCount}</h3>
               <p className="text-[11px] text-emerald-600 font-bold mt-1 flex items-center space-x-1">
@@ -1338,7 +1444,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                {selectedCycle === 'PRIMAIRE' ? 'Maîtres & Maîtresses' : selectedCycle === 'SECONDAIRE' ? 'Professeurs' : 'Enseignants'}
+                {selectedCycle === 'PRIMAIRE' ? 'Maîtres & Maîtresses' : selectedCycle === 'SECONDAIRE' ? 'Professeurs' : 'Corps Enseignant'}
               </p>
               <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-1">{displayTeachersCount}</h3>
               <p className="text-[11px] text-slate-500 font-medium mt-1">
@@ -1360,7 +1466,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </p>
               <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-1">{displayClassesCount}</h3>
               <p className="text-[11px] text-slate-500 font-medium mt-1">
-                {selectedCycle === 'PRIMAIRE' ? 'Maternelle au CM2' : selectedCycle === 'SECONDAIRE' ? '6ème à la Terminale' : 'Maternelle à la Terminale'}
+                {selectedCycle === 'PRIMAIRE' ? 'Maternelle au CM2' : selectedCycle === 'SECONDAIRE' ? '6ème à la Terminale' : 'Maternelle au Secondaire'}
               </p>
             </div>
             <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
@@ -1434,7 +1540,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="p-2.5 rounded-lg bg-white/80 dark:bg-slate-900/80 border border-emerald-100 dark:border-emerald-900">
                   <p className="text-[10px] text-slate-500 font-bold">Secondaire / Autre</p>
                   <p className="text-xl font-black text-blue-700 dark:text-blue-400">
-                    {levelCounts.COLLEGE + levelCounts.LYCEE + levelCounts.UNIVERSITE + levelCounts.FORMATION} Élèves
+                    {levelCounts.COLLEGE + levelCounts.LYCEE + levelCounts.FORMATION} Élèves
                   </p>
                   <p className="text-[9px] text-slate-400 font-medium">Collège, Lycée & Pro</p>
                 </div>

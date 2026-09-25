@@ -39,7 +39,7 @@ export const GradesView: React.FC = () => {
     if (activeCycleTab === 'PRIMAIRE') return c.level === 'PRIMAIRE';
     if (activeCycleTab === 'MATERNELLE') return c.level === 'MATERNELLE';
     if (activeCycleTab === 'COLLEGE') return c.level === 'COLLEGE';
-    if (activeCycleTab === 'LYCEE') return c.level === 'LYCEE' || c.level === 'UNIVERSITE' || c.level === 'FORMATION';
+    if (activeCycleTab === 'LYCEE') return c.level === 'LYCEE' || c.level === 'FORMATION';
     return true;
   });
 
@@ -55,7 +55,7 @@ export const GradesView: React.FC = () => {
     } else if (activeCycleTab === 'COLLEGE') {
       matchesCycle = gradeClass?.level === 'COLLEGE';
     } else if (activeCycleTab === 'LYCEE') {
-      matchesCycle = gradeClass?.level === 'LYCEE' || gradeClass?.level === 'UNIVERSITE' || gradeClass?.level === 'FORMATION';
+      matchesCycle = gradeClass?.level === 'LYCEE' || gradeClass?.level === 'FORMATION';
     }
 
     const matchesClass = classFilter === 'ALL' || g.classId === classFilter;
@@ -87,7 +87,7 @@ export const GradesView: React.FC = () => {
 
   const lyceeGradesCount = grades.filter(g => {
     const c = classes.find(cl => cl.id === g.classId);
-    return c?.level === 'LYCEE' || c?.level === 'UNIVERSITE';
+    return c?.level === 'LYCEE';
   }).length;
 
   return (
@@ -206,7 +206,7 @@ export const GradesView: React.FC = () => {
           }`}
         >
           <Layers className="h-4 w-4 shrink-0" />
-          <span>🏛️ TOUTES LES NOTES ({grades.length})</span>
+          <span>🌐 TOUTES LES NOTES ({grades.length})</span>
         </button>
       </div>
 

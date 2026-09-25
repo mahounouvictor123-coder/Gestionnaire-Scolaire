@@ -609,7 +609,6 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                   <option value="MATERNELLE">🧸 MATERNELLE ({classes.filter(c => c.level === 'MATERNELLE').length} classes)</option>
                   <option value="COLLEGE">🏫 COLLÈGE ({classes.filter(c => c.level === 'COLLEGE').length} classes)</option>
                   <option value="LYCEE">🎓 LYCÉE ({classes.filter(c => c.level === 'LYCEE').length} classes)</option>
-                  <option value="UNIVERSITE">🏛️ UNIVERSITÉ ({classes.filter(c => c.level === 'UNIVERSITE').length} classes)</option>
                   <option value="FORMATION">⚙️ FORMATION PRO ({classes.filter(c => c.level === 'FORMATION').length} classes)</option>
                 </select>
               </div>

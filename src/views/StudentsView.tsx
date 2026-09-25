@@ -207,7 +207,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ onNavigateToScanRost
   const countPrimaire = students.filter(s => s.level === 'PRIMAIRE').length;
   const countMaternelle = students.filter(s => s.level === 'MATERNELLE').length;
   const countCollege = students.filter(s => s.level === 'COLLEGE').length;
-  const countLycee = students.filter(s => s.level === 'LYCEE' || s.level === 'UNIVERSITE').length;
+  const countLycee = students.filter(s => s.level === 'LYCEE').length;
   const activeAppStudentsCount = students.filter(s => isParentActive(s.parentPhone)).length;
 
   const allVisibleSelected = filteredStudents.length > 0 && filteredStudents.every(s => selectedStudentIds.includes(s.id));
@@ -228,6 +228,16 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ onNavigateToScanRost
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {selectedStudentIds.length > 0 && (
+            <button
+              onClick={() => setIsBulkDeleteModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white font-extrabold text-xs sm:text-sm flex items-center space-x-2 shadow-lg shadow-rose-600/30 transition-all transform hover:scale-[1.02] cursor-pointer animate-pulse"
+            >
+              <Trash2 className="h-4 w-4 text-white" />
+              <span>Supprimer ({selectedStudentIds.length}) sélectionnés</span>
+            </button>
+          )}
+
           <button
             onClick={() => {
               setAddModalMode('BULK_PASTE');
@@ -387,7 +397,6 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ onNavigateToScanRost
             <option value="MATERNELLE">🧸 Maternelle</option>
             <option value="COLLEGE">🏫 Collège</option>
             <option value="LYCEE">🎓 Lycée</option>
-            <option value="UNIVERSITE">🏛️ Université</option>
             <option value="FORMATION">🔧 Formation Pro</option>
           </select>
 

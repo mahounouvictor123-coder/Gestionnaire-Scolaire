@@ -248,7 +248,9 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500"
           >
             {classes.map(c => (
-              <option key={c.id} value={c.id}>{c.name} ({c.level}) — {c.studentCount || 0} élèves</option>
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.level}) — {c.studentCount || 0} élèves
+              </option>
             ))}
           </select>
         </div>
@@ -472,10 +474,10 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
 
                         {/* Total Points */}
                         <td className="p-3.5 text-center font-bold text-slate-700 dark:text-slate-300">
-                          {rankItem.totalWeightedPoints.toFixed(2)} pts
+                          <span>{rankItem.totalWeightedPoints.toFixed(2)} pts</span>
                         </td>
 
-                        {/* Mention */}
+                        {/* Mention / Status */}
                         <td className="p-3.5 text-center">
                           <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
                             rankItem.overallAverage >= 14

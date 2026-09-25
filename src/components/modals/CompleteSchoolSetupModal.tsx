@@ -512,7 +512,6 @@ export function CompleteSchoolSetupModal({
                       <option value="PRIMAIRE">Primaire</option>
                       <option value="COLLEGE">Collège</option>
                       <option value="LYCEE">Lycée</option>
-                      <option value="UNIVERSITE">Université / Supérieur</option>
                     </select>
                   </div>
 

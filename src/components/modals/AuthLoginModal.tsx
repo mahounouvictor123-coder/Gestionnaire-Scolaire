@@ -32,7 +32,8 @@ export const AuthLoginModal: React.FC<AuthLoginModalProps> = ({
     currentSchoolId,
     switchSchool,
     loginUser,
-    switchRole
+    switchRole,
+    hasCreatedSchool
   } = useApp();
 
   const [emailInput, setEmailInput] = useState('');
@@ -287,8 +288,8 @@ export const AuthLoginModal: React.FC<AuthLoginModalProps> = ({
 
               </form>
 
-              {/* CREATE MY SCHOOL EXPLICIT CALLOUT */}
-              {onOpenCreateSchoolModal && (
+              {/* CREATE MY SCHOOL EXPLICIT CALLOUT - Only show if no school created yet */}
+              {onOpenCreateSchoolModal && !hasCreatedSchool && (
                 <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
                   <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-900 border border-emerald-500/40 text-white space-y-3 shadow-lg">
                     <div className="flex items-center space-x-2">
@@ -353,8 +354,8 @@ export const AuthLoginModal: React.FC<AuthLoginModalProps> = ({
             </div>
           </div>
 
-          {/* Create school prompt */}
-          {onOpenCreateSchoolModal && (
+          {/* Create school prompt - Only show if no school created yet */}
+          {onOpenCreateSchoolModal && !hasCreatedSchool && (
             <div className="pt-2 text-center">
               <p className="text-xs text-slate-500">
                 Votre établissement n'est pas encore enregistré ?{' '}

@@ -265,8 +265,10 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
               <div className="inline-block bg-blue-900 text-white font-black text-sm px-4 py-1.5 rounded-lg uppercase tracking-wider shadow-sm">
                 {activeTemplate.headerTitle || `BULLETIN TRIMESTRE ${trimester}`}
               </div>
-              <p className="text-xs font-bold text-slate-700 mt-2">Année Scolaire : {settings.academicYear}</p>
-              <p className="text-[11px] font-extrabold text-purple-800 mt-0.5">Trimestre {trimester}</p>
+              <p className="text-xs font-bold text-slate-700 mt-2">Année Académique : {settings.academicYear}</p>
+              <p className="text-[11px] font-extrabold text-indigo-800 mt-0.5">
+                Trimestre {trimester}
+              </p>
             </div>
           </div>
 
@@ -290,7 +292,9 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                 <Trophy className="h-4 w-4 text-amber-500 inline" />
                 <span>RANG : {studentRankData.rank}</span>
               </p>
-              <p className="text-slate-600 font-semibold text-[11px]">sur {classRankSummary.totalStudents} élèves</p>
+              <p className="text-slate-600 font-semibold text-[11px]">
+                sur {classRankSummary.totalStudents} élèves
+              </p>
             </div>
 
             <div>
@@ -319,7 +323,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                 studentRankData.subjectResults.map((item, idx) => (
                   <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                     <td className="p-2 border border-slate-300 font-bold text-slate-900">
-                      {item.subject.name}
+                      <div>{item.subject.name}</div>
                     </td>
                     {activeTemplate.columns.showCoefficients && (
                       <td className="p-2 border border-slate-300 text-center font-semibold">

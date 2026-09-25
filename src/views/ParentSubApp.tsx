@@ -57,6 +57,7 @@ import {
 } from 'lucide-react';
 import { ParentAdvertisingShowcase } from '../components/ParentAdvertisingShowcase';
 import { ParentExamPapersTab } from '../components/ParentExamPapersTab';
+import { ParentQuizWeekTab } from '../components/ParentQuizWeekTab';
 
 interface ParentSubAppProps {
   onReturnToPlatform?: () => void;
@@ -79,7 +80,8 @@ export const ParentSubApp: React.FC<ParentSubAppProps> = ({ onReturnToPlatform }
     markAnnouncementAsReadByParent,
     parentActivations,
     verifyAndClaimReceiptCode,
-    examPapers
+    examPapers,
+    quizWeeks
   } = useApp();
 
   // Dynamic PWA branding update with School Name
@@ -278,7 +280,7 @@ export const ParentSubApp: React.FC<ParentSubAppProps> = ({ onReturnToPlatform }
   }, [students, classes]);
 
   // Modals & UI States
-  const [activeTab, setActiveTab] = useState<'notes' | 'epreuves' | 'messages' | 'scolarite' | 'dialogue'>('notes');
+  const [activeTab, setActiveTab] = useState<'notes' | 'epreuves' | 'quiz-week' | 'messages' | 'scolarite' | 'dialogue'>('notes');
   const [selectedTrimester, setSelectedTrimester] = useState<number>(settings.currentTrimester || 1);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [isBulletinModalOpen, setIsBulletinModalOpen] = useState(false);
@@ -319,6 +321,14 @@ export const ParentSubApp: React.FC<ParentSubAppProps> = ({ onReturnToPlatform }
              (paperClassId === 'ALL');
     }).length;
   }, [examPapers, currentStudent, currentStudentClass]);
+
+  const childQuizWeeksCount = useMemo(() => {
+    if (!currentStudent || !currentStudent.classId) return 0;
+    return quizWeeks.filter(qw => {
+      if (qw.schoolId && qw.schoolId !== currentSchool.id) return false;
+      return qw.classId === currentStudent.classId;
+    }).length;
+  }, [quizWeeks, currentStudent, currentSchool.id]);
 
   const studentGrades = useMemo(() => {
     if (!currentStudent) return [];
@@ -1278,8 +1288,8 @@ export const ParentSubApp: React.FC<ParentSubAppProps> = ({ onReturnToPlatform }
           schoolName={currentSchool.name}
         />
 
-        {/* 5 Core Navigation Tabs */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-sm">
+        {/* 6 Core Navigation Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-sm">
           
           <button
             onClick={() => setActiveTab('notes')}
@@ -1303,10 +1313,28 @@ export const ParentSubApp: React.FC<ParentSubAppProps> = ({ onReturnToPlatform }
             }`}
           >
             <FileText className="w-4 h-4 text-amber-400" />
-            <span className="truncate">Épreuves & Archives</span>
+            <span className="truncate">Épreuves</span>
             {childExamPapersCount > 0 && (
               <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-400 text-slate-950 ml-1 shrink-0">
                 {childExamPapersCount}
+              </span>
+            )}
+          </button>
+
+          {/* TAB: QUIZ WEEK */}
+          <button
+            onClick={() => setActiveTab('quiz-week')}
+            className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center space-x-1.5 transition-all relative cursor-pointer ${
+              activeTab === 'quiz-week'
+                ? 'bg-gradient-to-r from-amber-500 to-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-yellow-300" />
+            <span className="truncate">Quiz Week</span>
+            {childQuizWeeksCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-400 text-slate-950 ml-1 shrink-0">
+                {childQuizWeeksCount}
               </span>
             )}
           </button>
@@ -1347,14 +1375,14 @@ export const ParentSubApp: React.FC<ParentSubAppProps> = ({ onReturnToPlatform }
           {/* TAB: AUDIOS & COMPLAINTS */}
           <button
             onClick={() => setActiveTab('dialogue')}
-            className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center space-x-1.5 transition-all relative cursor-pointer col-span-2 sm:col-span-1 ${
+            className={`py-2.5 rounded-xl font-black text-xs flex items-center justify-center space-x-1.5 transition-all relative cursor-pointer ${
               activeTab === 'dialogue'
                 ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Mic className="w-4 h-4 text-emerald-400" />
-            <span>Audios & Plaintes</span>
+            <span>Dialogue Direct</span>
             {mySentComplaints.some(c => c.schoolReply) && (
               <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-emerald-500 text-white ml-1">
                 Réponse
@@ -1844,6 +1872,17 @@ export const ParentSubApp: React.FC<ParentSubAppProps> = ({ onReturnToPlatform }
             examPapers={examPapers}
             settings={settings}
             currentSchool={currentSchool}
+          />
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB: QUIZ WEEK-END EXERCICES & CORRIGÉS TYPE                              */}
+        {/* ========================================================================= */}
+        {activeTab === 'quiz-week' && (
+          <ParentQuizWeekTab
+            authenticatedChildren={authenticatedChildren}
+            selectedChildId={activeStudentId}
+            onSelectChild={setActiveStudentId}
           />
         )}
 

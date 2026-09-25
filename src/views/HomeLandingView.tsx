@@ -50,7 +50,9 @@ export const HomeLandingView: React.FC<HomeLandingViewProps> = ({
   onOpenCampaignModal,
   onOpenAiModal
 }) => {
-  const { schools } = useApp();
+  const { schools, hasCreatedSchool, currentUser } = useApp();
+  const isPromoter = (currentUser?.email?.toLowerCase().trim() === 'mahounouvictor123@gmail.com') || 
+    (typeof window !== 'undefined' && localStorage.getItem('GESTIONNAIRE_PROMOTER_AUTH') === 'true');
 
   return (
     <div className="space-y-10 pb-12">
@@ -78,20 +80,22 @@ export const HomeLandingView: React.FC<HomeLandingViewProps> = ({
           </p>
 
           <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap">
-            <button
-              onClick={onOpenCreateSchoolModal}
-              className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm sm:text-base shadow-xl shadow-emerald-500/20 transition-all hover:scale-105 flex items-center justify-center gap-3 cursor-pointer"
-            >
-              <PlusCircle className="w-6 h-6" />
-              <span>CRÉER MON ÉCOLE</span>
-            </button>
+            {(!hasCreatedSchool || isPromoter) && (
+              <button
+                onClick={onOpenCreateSchoolModal}
+                className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-sm sm:text-base shadow-xl shadow-emerald-500/20 transition-all hover:scale-105 flex items-center justify-center gap-3 cursor-pointer"
+              >
+                <PlusCircle className="w-6 h-6" />
+                <span>CRÉER MON ÉCOLE</span>
+              </button>
+            )}
 
             <button
               onClick={() => onNavigate('dashboard')}
               className="w-full sm:w-auto px-8 py-4 rounded-2xl bg-slate-800/90 hover:bg-slate-800 text-white border border-slate-700 font-extrabold text-sm sm:text-base transition-all hover:scale-105 flex items-center justify-center gap-3 cursor-pointer"
             >
               <Building2 className="w-5 h-5 text-indigo-400" />
-              <span>Accéder à l'Espace École ({schools.length})</span>
+              <span>{hasCreatedSchool ? "Accéder à Mon Espace École" : `Accéder à l'Espace École (${schools.length})`}</span>
             </button>
 
             {onOpenAiModal && (
@@ -302,13 +306,15 @@ export const HomeLandingView: React.FC<HomeLandingViewProps> = ({
             </p>
           </div>
 
-          <button
-            onClick={onOpenCreateSchoolModal}
-            className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all shadow-md shrink-0"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Créer mon Établissement maintenant</span>
-          </button>
+          {(!hasCreatedSchool || isPromoter) && (
+            <button
+              onClick={onOpenCreateSchoolModal}
+              className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all shadow-md shrink-0"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Créer mon Établissement maintenant</span>
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -67,7 +67,8 @@ export const Header: React.FC<HeaderProps> = ({
     updateSettings,
     resetToDefaultData,
     isAuthenticated,
-    logoutUser
+    logoutUser,
+    hasCreatedSchool
   } = useApp();
 
   const { gmailUser, signOutGoogle } = useGoogleAuth();
@@ -342,16 +343,18 @@ export const Header: React.FC<HeaderProps> = ({
 
                   {/* Actions Footer */}
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-700 space-y-2">
-                    <button
-                      onClick={() => {
-                        setShowSchoolDropdown(false);
-                        onOpenCreateSchoolModal();
-                      }}
-                      className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700 text-white font-black text-xs flex items-center justify-center space-x-2 shadow-sm transition-all cursor-pointer"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>CRÉER UNE NOUVELLE ÉCOLE</span>
-                    </button>
+                    {isPromoter && (
+                      <button
+                        onClick={() => {
+                          setShowSchoolDropdown(false);
+                          onOpenCreateSchoolModal();
+                        }}
+                        className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700 text-white font-black text-xs flex items-center justify-center space-x-2 shadow-sm transition-all cursor-pointer"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>CRÉER UNE NOUVELLE ÉCOLE</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => {
@@ -409,27 +412,16 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Prominent "CRÉER MON ÉCOLE" Button */}
-            <button
-              onClick={onOpenCreateSchoolModal}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm transition-all transform hover:scale-[1.02] active:scale-[0.98]"
-              title="Enregistrer un nouvel établissement"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">CRÉER MON ÉCOLE</span>
-              <span className="sm:hidden">+ ÉCOLE</span>
-            </button>
-
-            {/* Boîte de Contrôle Master des Écoles (Accessible UNIQUEMENT pour mahounouvictor123@gmail.com) */}
-            {isPromoter && (
+            {/* Prominent "CRÉER MON ÉCOLE" Button - Masqué chez l'école et dès qu'une école a été créée */}
+            {(!hasCreatedSchool && activeView === 'landing') && (
               <button
-                onClick={() => onOpenControlBox ? onOpenControlBox() : (onNavigate && onNavigate('control-box'))}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-800 hover:from-purple-600 hover:to-indigo-600 text-white font-black text-xs shadow-md border border-purple-500/40 transition-all transform hover:scale-[1.03] active:scale-95 cursor-pointer"
-                title="Boîte de contrôle à distance de toutes les écoles (mahounouvictor123@gmail.com)"
+                onClick={onOpenCreateSchoolModal}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-sm transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                title="Enregistrer un nouvel établissement"
               >
-                <Crown className="h-3.5 w-3.5 text-amber-300 animate-pulse" />
-                <span className="hidden sm:inline">Boîte Contrôle Écoles</span>
-                <span className="sm:hidden">Boîte</span>
+                <Plus className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">CRÉER MON ÉCOLE</span>
+                <span className="sm:hidden">+ ÉCOLE</span>
               </button>
             )}
 

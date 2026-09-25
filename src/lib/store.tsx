@@ -31,7 +31,9 @@ import {
   RegistrationCampaign,
   OfficialAnnouncement,
   ParentActivationRecord,
-  DirectorParentActivationNotification
+  DirectorParentActivationNotification,
+  QuizWeek,
+  QuizWeekSubmission
 } from '../types';
 import { initialSchools } from '../data/initialSchools';
 import { generateValidPassword } from './passwordUtils';
@@ -77,6 +79,7 @@ import {
   initialParentComplaints,
   initialExamPapers,
   initialArchivedReportCards,
+  initialQuizWeeks,
   initialSubscriptionPlans,
   initialSchoolSubscription,
   initialSubscriptionInvoices,
@@ -143,6 +146,8 @@ interface AppContextType {
   isSchoolDeleted: (schoolIdOrCode: string) => boolean;
   isSchoolBlocked: (schoolIdOrCode: string) => boolean;
   isPermanentlyRevokedSchool: (schoolOrIdOrName: School | string | undefined | null) => boolean;
+  hasCreatedSchool: boolean;
+  setHasCreatedSchool: (created: boolean) => void;
 
   currentUser: User;
   setCurrentUser: (user: User) => void;
@@ -206,6 +211,14 @@ interface AppContextType {
   addExamPaper: (paper: Omit<ExamPaper, 'id' | 'createdAt'>) => ExamPaper;
   updateExamPaper: (paper: ExamPaper) => void;
   deleteExamPaper: (id: string) => void;
+
+  quizWeeks: QuizWeek[];
+  addQuizWeek: (quiz: Omit<QuizWeek, 'id' | 'createdAt' | 'submissions'>) => QuizWeek;
+  updateQuizWeek: (quiz: QuizWeek) => void;
+  deleteQuizWeek: (id: string) => void;
+  submitQuizWeekAnswer: (quizId: string, submission: Omit<QuizWeekSubmission, 'id' | 'submittedAt' | 'status'>) => QuizWeekSubmission;
+  gradeQuizWeekSubmission: (quizId: string, submissionId: string, score: number, feedback: string) => void;
+  updateQuizWeekSubmissionAiEvaluation: (quizId: string, submissionId: string, aiData: Partial<QuizWeekSubmission>) => void;
 
   archivedReportCards: ArchivedReportCard[];
   archiveReportCard: (card: Omit<ArchivedReportCard, 'id' | 'printedAt'>) => ArchivedReportCard;
@@ -477,6 +490,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Unlocked Schools Session state
+  const [hasCreatedSchool, setHasCreatedSchoolState] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('has_created_school') === 'true' || !!localStorage.getItem('user_created_school_id');
+    }
+    return false;
+  });
+
+  const setHasCreatedSchool = (created: boolean) => {
+    setHasCreatedSchoolState(created);
+    if (typeof window !== 'undefined') {
+      if (created) {
+        localStorage.setItem('has_created_school', 'true');
+      } else {
+        localStorage.removeItem('has_created_school');
+        localStorage.removeItem('user_created_school_id');
+      }
+    }
+  };
+
   const [unlockedSchoolIds, setUnlockedSchoolIds] = useState<string[]>(() => {
     const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_UNLOCKED_SCHOOLS`);
     if (saved) {
@@ -818,6 +850,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [timetable, setTimetable] = useState<TimetableSlot[]>(() => loadScopedData('TIMETABLE', initialTimetable));
   const [exams, setExams] = useState<Exam[]>(() => loadScopedData('EXAMS', initialExams));
   const [examPapers, setExamPapers] = useState<ExamPaper[]>(() => loadScopedData('EXAM_PAPERS', initialExamPapers));
+  const [quizWeeks, setQuizWeeks] = useState<QuizWeek[]>(() => loadScopedData('QUIZ_WEEKS', initialQuizWeeks));
   const [archivedReportCards, setArchivedReportCards] = useState<ArchivedReportCard[]>(() => loadScopedData('ARCHIVED_REPORT_CARDS', initialArchivedReportCards));
   const [homework, setHomework] = useState<Homework[]>(() => loadScopedData('HOMEWORK', initialHomework));
   const [books, setBooks] = useState<Book[]>(() => loadScopedData('BOOKS', initialBooks));
@@ -1530,6 +1563,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     handleCloudUpdate('TIMETABLE', setTimetable);
     handleCloudUpdate('EXAMS', setExams);
     handleCloudUpdate('EXAM_PAPERS', setExamPapers);
+    handleCloudUpdate('QUIZ_WEEKS', setQuizWeeks);
     handleCloudUpdate('ARCHIVED_REPORT_CARDS', setArchivedReportCards);
     handleCloudUpdate('HOMEWORK', setHomework);
     handleCloudUpdate('BOOKS', setBooks);
@@ -1723,6 +1757,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTimetable(getTargetScoped('TIMETABLE', initialTimetable));
     setExams(getTargetScoped('EXAMS', initialExams));
     setExamPapers(getTargetScoped('EXAM_PAPERS', initialExamPapers));
+    setQuizWeeks(getTargetScoped('QUIZ_WEEKS', initialQuizWeeks));
     setArchivedReportCards(getTargetScoped('ARCHIVED_REPORT_CARDS', initialArchivedReportCards));
     setHomework(getTargetScoped('HOMEWORK', initialHomework));
     setBooks(getTargetScoped('BOOKS', initialBooks));
@@ -1860,6 +1895,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     syncToCloud(currentSchoolId, 'EXAM_PAPERS', examPapers);
   }, [examPapers, currentSchoolId]);
+
+  useEffect(() => {
+    localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_QUIZ_WEEKS`, JSON.stringify(quizWeeks));
+    if (isRemoteUpdateRef.current['QUIZ_WEEKS']) {
+      isRemoteUpdateRef.current['QUIZ_WEEKS'] = false;
+      return;
+    }
+    syncToCloud(currentSchoolId, 'QUIZ_WEEKS', quizWeeks);
+  }, [quizWeeks, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_ARCHIVED_REPORT_CARDS`, JSON.stringify(archivedReportCards));
@@ -2113,6 +2157,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Automatically unlock the newly created school for its creator
     setUnlockedSchoolIds(prev => [...prev, newId]);
+    setHasCreatedSchool(true);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('has_created_school', 'true');
+      localStorage.setItem('user_created_school_id', newId);
+    }
 
     // If populateSampleData, seed sample classes & subjects
     if (populateSampleData) {
@@ -2779,6 +2828,95 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setExamPapers(prev => prev.filter(p => p.id !== id));
   };
 
+  const addQuizWeek = (quiz: Omit<QuizWeek, 'id' | 'createdAt' | 'submissions'>): QuizWeek => {
+    const newQuiz: QuizWeek = {
+      ...quiz,
+      id: `qw-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+      submissions: []
+    };
+    setQuizWeeks(prev => [newQuiz, ...prev]);
+    return newQuiz;
+  };
+
+  const updateQuizWeek = (quiz: QuizWeek) => {
+    setQuizWeeks(prev => prev.map(q => q.id === quiz.id ? quiz : q));
+  };
+
+  const deleteQuizWeek = (id: string) => {
+    setQuizWeeks(prev => prev.filter(q => q.id !== id));
+  };
+
+  const submitQuizWeekAnswer = (quizId: string, submission: Omit<QuizWeekSubmission, 'id' | 'submittedAt' | 'status'>): QuizWeekSubmission => {
+    const newSub: QuizWeekSubmission = {
+      ...submission,
+      id: `sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      submittedAt: new Date().toISOString(),
+      status: 'SOUMIS'
+    };
+
+    let resolvedSub = newSub;
+
+    setQuizWeeks(prev => prev.map(q => {
+      if (q.id !== quizId) return q;
+      const currentSubs = q.submissions || [];
+      const existingIdx = currentSubs.findIndex(s => s.studentId === submission.studentId);
+      let updatedSubs = [...currentSubs];
+      if (existingIdx >= 0) {
+        resolvedSub = {
+          ...updatedSubs[existingIdx],
+          ...newSub,
+          id: updatedSubs[existingIdx].id // Keep previous ID if existed
+        };
+        updatedSubs[existingIdx] = resolvedSub;
+      } else {
+        updatedSubs.push(newSub);
+      }
+      return {
+        ...q,
+        submissions: updatedSubs
+      };
+    }));
+
+    return resolvedSub;
+  };
+
+  const gradeQuizWeekSubmission = (quizId: string, submissionId: string, score: number, feedback: string) => {
+    setQuizWeeks(prev => prev.map(q => {
+      if (q.id !== quizId) return q;
+      return {
+        ...q,
+        submissions: (q.submissions || []).map(s => {
+          if (s.id !== submissionId) return s;
+          return {
+            ...s,
+            teacherScore: score,
+            teacherFeedback: feedback,
+            status: 'CORRIGE',
+            reviewedAt: new Date().toISOString()
+          };
+        })
+      };
+    }));
+  };
+
+  const updateQuizWeekSubmissionAiEvaluation = (quizId: string, submissionId: string, aiData: Partial<QuizWeekSubmission>) => {
+    setQuizWeeks(prev => prev.map(q => {
+      if (q.id !== quizId) return q;
+      return {
+        ...q,
+        submissions: (q.submissions || []).map(s => {
+          if (s.id !== submissionId) return s;
+          return {
+            ...s,
+            ...aiData,
+            aiEvaluatedAt: aiData.aiEvaluatedAt || new Date().toISOString()
+          };
+        })
+      };
+    }));
+  };
+
   const archiveReportCard = (card: Omit<ArchivedReportCard, 'id' | 'printedAt'>): ArchivedReportCard => {
     const existingIndex = archivedReportCards.findIndex(
       a => a.studentId === card.studentId &&
@@ -3286,6 +3424,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAttendance(initialAttendance);
     setTimetable(initialTimetable);
     setExams(initialExams);
+    setExamPapers(initialExamPapers);
+    setQuizWeeks(initialQuizWeeks);
     setHomework(initialHomework);
     setBooks(initialBooks);
     setCommunications(initialCommunications);
@@ -3315,6 +3455,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isSchoolDeleted,
         isSchoolBlocked,
         isPermanentlyRevokedSchool,
+        hasCreatedSchool,
+        setHasCreatedSchool,
 
         currentUser,
         setCurrentUser,
@@ -3378,6 +3520,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addExamPaper,
         updateExamPaper,
         deleteExamPaper,
+
+        quizWeeks,
+        addQuizWeek,
+        updateQuizWeek,
+        deleteQuizWeek,
+        submitQuizWeekAnswer,
+        gradeQuizWeekSubmission,
+        updateQuizWeekSubmissionAiEvaluation,
 
         archivedReportCards,
         archiveReportCard,

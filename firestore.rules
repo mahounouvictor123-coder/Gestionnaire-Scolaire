@@ -56,6 +56,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Weekend Quizzes & Submissions
+    match /schools/{schoolId}/quiz_weeks/{quizWeekId} {
+      allow read, write: if true;
+    }
+
     // System Registry & Global School Catalog
     match /system/{docId} {
       allow read, write: if true;

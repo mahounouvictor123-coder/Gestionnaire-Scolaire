@@ -49,6 +49,7 @@ import { TeacherSubApp } from './views/TeacherSubApp';
 import { ParentComplaintsInboxView } from './views/ParentComplaintsInboxView';
 import { PromoterSchoolsControlBoxModal } from './components/modals/PromoterSchoolsControlBoxModal';
 import { SuperPromoteurControlBoxView } from './views/SuperPromoteurControlBoxView';
+import { DirectorQuizWeekSupervisionView } from './views/DirectorQuizWeekSupervisionView';
 import { SchoolAccessBarrierScreen } from './components/SchoolAccessBarrierScreen';
 
 const isSuperPromoteurRoute = (): boolean => {
@@ -205,7 +206,11 @@ function MainApp() {
     if ((activeView === 'promoter-admin' || activeView === 'schools-hub') && !isPromoter) {
       setActiveView('dashboard');
     }
-  }, [activeView, isPromoter]);
+    // Strict requirement: boîte contrôle école must never appear in the dashboard of a created school
+    if (activeView === 'dashboard' || hasCreatedSchool) {
+      setIsControlBoxOpen(false);
+    }
+  }, [activeView, isPromoter, hasCreatedSchool]);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isCreateSchoolModalOpen, setIsCreateSchoolModalOpen] = useState(false);
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
@@ -500,6 +505,9 @@ function MainApp() {
         return <ExamsView onNavigate={setActiveView} />;
       case 'epreuves':
         return <EspaceEpreuvesView onNavigate={setActiveView} />;
+      case 'quiz-week':
+      case 'quiz-weeks':
+        return <DirectorQuizWeekSupervisionView onNavigate={setActiveView} />;
       case 'library':
         return <LibraryView />;
       case 'canteen':
@@ -768,7 +776,7 @@ function MainApp() {
         onOpenCreateSchoolModal={handleOpenCreateSchoolModal}
         onOpenCampaignModal={() => setIsCampaignModalOpen(true)}
         onOpenLoginModal={handleOpenLoginModal}
-        onOpenControlBox={() => setIsControlBoxOpen(true)}
+        onOpenControlBox={(!hasCreatedSchool && activeView !== 'dashboard' && isPromoter) ? () => setIsControlBoxOpen(true) : undefined}
       />
 
       {/* Main Layout Body */}
@@ -778,7 +786,7 @@ function MainApp() {
         <Sidebar
           activeView={activeView}
           setActiveView={setActiveView}
-          onOpenControlBox={() => setIsControlBoxOpen(true)}
+          onOpenControlBox={(!hasCreatedSchool && activeView !== 'dashboard' && isPromoter) ? () => setIsControlBoxOpen(true) : undefined}
         />
 
         {/* Content Canvas */}
@@ -837,7 +845,7 @@ function MainApp() {
 
       {/* Promoter Master Schools Remote Control Box Modal */}
       <PromoterSchoolsControlBoxModal
-        isOpen={isControlBoxOpen}
+        isOpen={isControlBoxOpen && !hasCreatedSchool && activeView !== 'dashboard' && isPromoter && !currentSchool?.isUserCreated}
         onClose={() => setIsControlBoxOpen(false)}
         onNavigate={setActiveView}
         onOpenCreateSchoolModal={handleOpenCreateSchoolModal}

@@ -67,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
     { id: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard, category: 'Pôle Accueil' },
     
     // 🏢 ESPACE DIRECTION
+    { id: 'quiz-week', label: 'Supervision Quiz Week', icon: Sparkles, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'CENSEUR', 'ENSEIGNANT'], badge: 'Contrôle IA', category: '🏢 ESPACE DIRECTION' },
     { id: 'accounting', label: 'Comptabilité & Caisse', icon: Wallet, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'COMPTABLE'], category: '🏢 ESPACE DIRECTION' },
     { id: 'payments', label: 'Frais de Scolarité', icon: CreditCard, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'COMPTABLE', 'PARENT'], category: '🏢 ESPACE DIRECTION' },
     { id: 'subscriptions', label: "Plans d'Abonnement", icon: Zap, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'COMPTABLE'], badge: 'SaaS Pro', category: '🏢 ESPACE DIRECTION' },
@@ -210,25 +211,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
           );
         })}
       </nav>
-
-      {/* Exclusive Master Box Button for Promoter ONLY */}
-      {isPromoter && (
-        <div className="p-3 border-t border-slate-800">
-          <button
-            onClick={() => onOpenControlBox ? onOpenControlBox() : setActiveView('control-box')}
-            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-black text-xs flex items-center justify-between shadow-lg shadow-purple-900/40 transition-all cursor-pointer group"
-            title="Boîte de contrôle à distance de toutes les écoles (mahounouvictor123@gmail.com)"
-          >
-            <div className="flex items-center space-x-2">
-              <Crown className="h-4 w-4 text-amber-300 group-hover:scale-110 transition-transform" />
-              <span>Boîte Contrôle Écoles</span>
-            </div>
-            <span className="text-[10px] bg-purple-900/70 px-1.5 py-0.5 rounded text-purple-200 border border-purple-500/30">
-              Master
-            </span>
-          </button>
-        </div>
-      )}
 
       {/* Footer info */}
       <div className="p-3 border-t border-slate-800/80 space-y-2">

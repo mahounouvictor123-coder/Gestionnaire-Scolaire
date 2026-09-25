@@ -90,7 +90,7 @@ export const AddGradeModal: React.FC<AddGradeModalProps> = ({ isOpen, onClose })
     if (activeLevel === 'PRIMAIRE') return sb.level === 'PRIMAIRE';
     if (activeLevel === 'MATERNELLE') return sb.level === 'MATERNELLE';
     if (activeLevel === 'COLLEGE') return sb.level === 'COLLEGE' || sb.level === 'LYCEE';
-    if (activeLevel === 'LYCEE') return sb.level === 'LYCEE' || sb.level === 'COLLEGE' || sb.level === 'UNIVERSITE';
+    if (activeLevel === 'LYCEE') return sb.level === 'LYCEE' || sb.level === 'COLLEGE';
     return true;
   });
 

@@ -43,7 +43,7 @@ export const SubjectsView: React.FC = () => {
     } else if (activeCycleTab === 'COLLEGE') {
       matchesCycle = sb.level === 'COLLEGE';
     } else if (activeCycleTab === 'LYCEE') {
-      matchesCycle = sb.level === 'LYCEE' || sb.level === 'UNIVERSITE' || sb.level === 'FORMATION';
+      matchesCycle = sb.level === 'LYCEE' || sb.level === 'FORMATION';
     }
 
     const matchesCategory = selectedCategory === 'ALL' || sb.category === selectedCategory;
@@ -63,7 +63,7 @@ export const SubjectsView: React.FC = () => {
       code: code || name.substring(0, 4).toUpperCase(),
       coefficient: parseInt(coefficient) || 2,
       level,
-      category
+      category,
     });
 
     setName('');
@@ -96,7 +96,7 @@ export const SubjectsView: React.FC = () => {
   const primarySubjectsCount = subjects.filter(s => s.level === 'PRIMAIRE').length;
   const maternelleSubjectsCount = subjects.filter(s => s.level === 'MATERNELLE').length;
   const collegeSubjectsCount = subjects.filter(s => s.level === 'COLLEGE').length;
-  const lyceeSubjectsCount = subjects.filter(s => s.level === 'LYCEE' || s.level === 'UNIVERSITE').length;
+  const lyceeSubjectsCount = subjects.filter(s => s.level === 'LYCEE').length;
 
   return (
     <div className="space-y-6">
@@ -120,12 +120,12 @@ export const SubjectsView: React.FC = () => {
             className="px-3.5 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:hover:bg-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 font-extrabold text-xs flex items-center space-x-2 transition-all cursor-pointer shadow-xs"
           >
             <Sparkles className="h-4 w-4 text-amber-600 shrink-0" />
-            <span>✨ 7 Matières Officielles Primaire</span>
+            <span>✨ 7 Matières Primaire</span>
           </button>
 
           <button
             onClick={() => {
-              setLevel(activeCycleTab === 'PRIMAIRE' ? 'PRIMAIRE' : activeCycleTab === 'MATERNELLE' ? 'MATERNELLE' : 'COLLEGE');
+              setLevel(activeCycleTab === 'PRIMAIRE' ? 'PRIMAIRE' : activeCycleTab === 'MATERNELLE' ? 'MATERNELLE' : activeCycleTab === 'LYCEE' ? 'LYCEE' : 'COLLEGE');
               setShowAdd(!showAdd);
             }}
             className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm flex items-center space-x-2 shadow-md transition-all shrink-0 cursor-pointer"
@@ -203,7 +203,7 @@ export const SubjectsView: React.FC = () => {
           }`}
         >
           <Layers className="h-4 w-4 shrink-0" />
-          <span>🏛️ TOUTES ({subjects.length})</span>
+          <span>🌐 TOUTES ({subjects.length})</span>
         </button>
       </div>
 
@@ -318,7 +318,6 @@ export const SubjectsView: React.FC = () => {
                 <option value="MATERNELLE">🧸 Maternelle</option>
                 <option value="COLLEGE">🏫 Collège (6ème à 3ème)</option>
                 <option value="LYCEE">🎓 Lycée (2nde à Tle)</option>
-                <option value="UNIVERSITE">🏛️ Université / Supérieur</option>
                 <option value="FORMATION">🔧 Formation Pro</option>
               </select>
             </div>
@@ -330,11 +329,11 @@ export const SubjectsView: React.FC = () => {
                 onChange={e => setCategory(e.target.value as any)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold"
               >
-                <option value="LITTERAIRE">Lettres, Langues & Humanités (CE, Lecture, Français...)</option>
-                <option value="SCIENTIFIQUE">Sciences, Calcul & Technologie (Maths, EST, PC, SVT...)</option>
+                <option value="LITTERAIRE">Lettres, Langues & Humanités (CE, Lecture, Français, Droit...)</option>
+                <option value="SCIENTIFIQUE">Sciences, Calcul & Technologie (Maths, EST, Algo, Stats...)</option>
                 <option value="LANGUE">Langues Vivantes (Anglais, Espagnol, Allemand...)</option>
                 <option value="DIVERS">Arts, Sport & Éveil (EA, Sport, Musique...)</option>
-                <option value="TECHNIQUE">Disciplines Techniques & Gestion (Comptabilité, Économie...)</option>
+                <option value="TECHNIQUE">Disciplines Techniques & Gestion (Comptabilité, Web, Systèmes...)</option>
               </select>
             </div>
           </div>
@@ -436,11 +435,13 @@ export const SubjectsView: React.FC = () => {
                     </td>
 
                     <td className="p-3.5 font-semibold text-slate-600 dark:text-slate-400">
-                      {sb.category === 'LITTERAIRE' ? 'Lettres & Humanités' :
-                       sb.category === 'SCIENTIFIQUE' ? 'Sciences & Technologie' :
-                       sb.category === 'LANGUE' ? 'Langues' :
-                       sb.category === 'DIVERS' ? 'Arts & Sport' :
-                       sb.category === 'TECHNIQUE' ? 'Technique & Gestion' : sb.category}
+                      <div>
+                        {sb.category === 'LITTERAIRE' ? 'Lettres & Humanités' :
+                         sb.category === 'SCIENTIFIQUE' ? 'Sciences & Technologie' :
+                         sb.category === 'LANGUE' ? 'Langues' :
+                         sb.category === 'DIVERS' ? 'Arts & Sport' :
+                         sb.category === 'TECHNIQUE' ? 'Technique & Gestion' : sb.category}
+                      </div>
                     </td>
 
                     <td className="p-3.5 text-center">

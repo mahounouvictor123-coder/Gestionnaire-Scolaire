@@ -56,7 +56,7 @@ export const EditGradeModal: React.FC<EditGradeModalProps> = ({ isOpen, onClose,
     if (currentLevel === 'PRIMAIRE') return sb.level === 'PRIMAIRE';
     if (currentLevel === 'MATERNELLE') return sb.level === 'MATERNELLE';
     if (currentLevel === 'COLLEGE') return sb.level === 'COLLEGE' || sb.level === 'LYCEE';
-    if (currentLevel === 'LYCEE') return sb.level === 'LYCEE' || sb.level === 'COLLEGE' || sb.level === 'UNIVERSITE';
+    if (currentLevel === 'LYCEE') return sb.level === 'LYCEE' || sb.level === 'COLLEGE';
     return true;
   });
 

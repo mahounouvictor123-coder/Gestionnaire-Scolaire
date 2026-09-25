@@ -48,6 +48,23 @@
         "average": { "type": "number" }
       },
       "required": ["id", "studentId"]
+    },
+    "QuizWeek": {
+      "title": "QuizWeek",
+      "description": "Weekend quiz assignment with exercises, answer key and grading scale sent by teachers to students",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "schoolId": { "type": "string" },
+        "classId": { "type": "string" },
+        "subjectName": { "type": "string" },
+        "officialAnswerKey": { "type": "string" },
+        "gradingScale": { "type": "string" },
+        "totalPoints": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "classId", "officialAnswerKey"]
     }
   },
   "firestore": {
@@ -58,6 +75,10 @@
     "/schools/{schoolId}/data/{dataType}": {
       "schema": { "$ref": "#/entities/SchoolData" },
       "description": "Cloud storage and backups for school records"
+    },
+    "/schools/{schoolId}/quiz_weeks/{quizWeekId}": {
+      "schema": { "$ref": "#/entities/QuizWeek" },
+      "description": "Weekend quiz exercises, answer key, grading scale and submissions"
     },
     "/students/{studentId}": {
       "schema": { "$ref": "#/entities/Student" },

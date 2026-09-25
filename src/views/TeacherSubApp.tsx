@@ -25,10 +25,12 @@ import {
   Send,
   Award,
   LogOut,
-  FileUp
+  FileUp,
+  Zap
 } from 'lucide-react';
 import { TeacherAuthGate } from '../components/TeacherAuthGate';
 import { TeacherExamSubmissionTab } from '../components/TeacherExamSubmissionTab';
+import { TeacherQuizWeekTab } from '../components/TeacherQuizWeekTab';
 
 interface TeacherSubAppProps {
   onReturnToPlatform?: () => void;
@@ -73,8 +75,8 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
     return teachers.find(t => t.id === selectedTeacherId);
   }, [teachers, selectedTeacherId]);
 
-  // View mode: 'entry' (saisie rapide), 'history' (mes saisies & modifications 3 jours) or 'epreuves' (dépôt épreuves)
-  const [viewMode, setViewMode] = useState<'entry' | 'history' | 'epreuves'>('entry');
+  // View mode: 'entry' (saisie rapide), 'history' (mes saisies & modifications 3 jours), 'epreuves' (dépôt épreuves) or 'quiz-week' (exercices & corrigés week-end)
+  const [viewMode, setViewMode] = useState<'entry' | 'history' | 'epreuves' | 'quiz-week'>('entry');
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [isSavedSuccess, setIsSavedSuccess] = useState(false);
 
@@ -411,8 +413,8 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-5 w-full flex-1 space-y-5">
         
-        {/* Navigation Mode Switcher (3 Tabs) */}
-        <div className="grid grid-cols-3 gap-2 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-sm">
+        {/* Navigation Mode Switcher (4 Tabs) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-sm">
           
           <button
             onClick={() => setViewMode('entry')}
@@ -423,7 +425,7 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
             }`}
           >
             <BookOpen className="w-4 h-4" />
-            <span className="truncate">Saisie des Notes</span>
+            <span className="truncate">Saisie Notes</span>
           </button>
 
           <button
@@ -447,7 +449,19 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
             }`}
           >
             <FileUp className="w-4 h-4 text-amber-300" />
-            <span className="truncate">Épreuves & Évaluations</span>
+            <span className="truncate">Épreuves</span>
+          </button>
+
+          <button
+            onClick={() => setViewMode('quiz-week')}
+            className={`py-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center space-x-1.5 transition-all cursor-pointer ${
+              viewMode === 'quiz-week'
+                ? 'bg-gradient-to-r from-amber-500 to-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-yellow-300" />
+            <span className="truncate">Quiz Week</span>
           </button>
 
         </div>
@@ -800,6 +814,11 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
         {/* VIEW MODE 3: EXAM & EVALUATIONS SUBMISSION */}
         {viewMode === 'epreuves' && (
           <TeacherExamSubmissionTab currentTeacher={currentTeacher} />
+        )}
+
+        {/* VIEW MODE 4: QUIZ WEEK-END EXERCISES & CORRIGES */}
+        {viewMode === 'quiz-week' && (
+          <TeacherQuizWeekTab currentTeacher={currentTeacher} />
         )}
 
       </main>

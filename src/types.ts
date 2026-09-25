@@ -38,7 +38,7 @@ export interface User {
   classId?: string; // If student or main teacher
 }
 
-export type SchoolLevel = 'MATERNELLE' | 'PRIMAIRE' | 'COLLEGE' | 'LYCEE' | 'UNIVERSITE' | 'FORMATION';
+export type SchoolLevel = 'MATERNELLE' | 'PRIMAIRE' | 'COLLEGE' | 'LYCEE' | 'FORMATION';
 
 export interface TuitionTranche {
   id: string;
@@ -121,7 +121,7 @@ export interface Grade {
   studentId: string;
   subjectId: string;
   classId: string;
-  trimester: 1 | 2 | 3 | number;
+  trimester: 1 | 2 | 3;
   examType: ExamType;
   mark: number;
   maxMark?: number;
@@ -735,6 +735,68 @@ export interface DirectorParentActivationNotification {
   createdAt: string;
   isRead: boolean;
 }
+
+export interface QuizWeekSubmission {
+  id: string;
+  quizId: string;
+  studentId: string;
+  studentName: string;
+  parentPhone?: string;
+  submissionType: 'SCAN' | 'DIRECT';
+  directAnswer?: string;
+  scannedFileUrl?: string;
+  scannedFileName?: string;
+  submittedAt: string;
+  status: 'SOUMIS' | 'CORRIGE';
+  selfAssessedScore?: number;
+  teacherScore?: number;
+  teacherFeedback?: string;
+  reviewedAt?: string;
+
+  // Évaluation automatique par IA Gemini selon le corrigé type et le barème
+  aiScore?: number;
+  aiFeedback?: string;
+  aiObservations?: string;
+  aiStrengths?: string[];
+  aiAreasForImprovement?: string[];
+  aiBreakdown?: string;
+  aiEvaluatedAt?: string;
+}
+
+export interface QuizWeek {
+  id: string;
+  schoolId: string;
+  title: string;
+  classId: string;
+  className: string;
+  subjectId: string;
+  subjectName: string;
+  teacherId: string;
+  teacherName: string;
+  teacherPhone?: string;
+  weekendTargetDate: string;
+  deadline: string;
+  instructions: string;
+  content: string;
+  attachedExerciseFileUrl?: string;
+  attachedExerciseFileName?: string;
+  officialAnswerKey: string;
+  attachedAnswerKeyFileUrl?: string;
+  attachedAnswerKeyFileName?: string;
+  gradingScale: string;
+  teacherAiInstructions?: string; // Consignes & suggestions du professeur à l'IA (clémence, valorisation des approches de réponses, barème d'indulgence)
+  totalPoints: number;
+  createdAt: string;
+  status: 'ACTIF' | 'CLOTURE';
+  submissions: QuizWeekSubmission[];
+
+  // Contrôle & Supervision de Direction par le Chef d'Établissement
+  directorApprovalStatus?: 'APPROUVE' | 'EN_ATTENTE' | 'A_REVOIR';
+  directorNotes?: string;
+  directorApprovedAt?: string;
+  directorApprovedBy?: string;
+}
+
 
 
 

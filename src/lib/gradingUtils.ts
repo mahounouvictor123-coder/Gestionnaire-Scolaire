@@ -21,7 +21,7 @@ export interface StudentRankResult {
   overallAverage: number;
   rank: string; // e.g., "1er", "2ème", "3ème ex-aequo", "12ème"
   numericRank: number; // 1, 2, 3...
-  mention: string; // "TABLEAU D'HONNEUR", "ENCOURAGEMENTS", "ADMIS", "RATTRAPAGE", etc.
+  mention: string; // "TABLEAU D'HONNEUR", "ENCOURAGEMENTS", "ADMIS", etc.
   generalAppreciation: string;
 }
 
