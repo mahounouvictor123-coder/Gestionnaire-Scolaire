@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../lib/store';
 import { Teacher, QuizWeek, QuizWeekSubmission } from '../types';
+import { clientFetch } from '../services/clientFetch.ts';
 import {
   FileText,
   Upload,
@@ -340,7 +341,7 @@ CORRIGÉ EXERCICE 2 (10 points) :
         ? customInstructions
         : (reviewModalAiInstructions || quiz.teacherAiInstructions);
 
-      const response = await fetch('/api/ai/grade-quiz-week', {
+      const response = await clientFetch('/api/ai/grade-quiz-week', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

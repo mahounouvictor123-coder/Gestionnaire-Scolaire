@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../lib/store';
 import { Grade, ExamType } from '../../types';
+import { clientFetch } from '../../services/clientFetch.ts';
 import {
   ScanLine,
   Upload,
@@ -149,7 +150,7 @@ TYPE D'ÉVALUATION : Devoir N°1 | COEFF : 2
         examType: examType
       };
 
-      const res = await fetch('/api/ai/scan-grades', {
+      const res = await clientFetch('/api/ai/scan-grades', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyPayload)

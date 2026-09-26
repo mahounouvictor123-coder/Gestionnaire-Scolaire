@@ -18,6 +18,7 @@ import {
   Check
 } from 'lucide-react';
 import { cleanAndFormatMathText } from './ExamContentRenderer';
+import { clientFetch } from '../services/clientFetch.ts';
 
 export interface ExamPaperData {
   title: string;
@@ -168,7 +169,7 @@ export const AIExamCopilotChat: React.FC<AIExamCopilotChatProps> = ({
     setLastActionSuccess(null);
 
     try {
-      const response = await fetch('/api/ai/modify-exam-paper', {
+      const response = await clientFetch('/api/ai/modify-exam-paper', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../lib/store';
 import { findStudentByQuery, buildStudentDossier } from '../lib/studentDossierHelper';
+import { clientFetch } from '../services/clientFetch.ts';
 import {
   X,
   Sparkles,
@@ -249,7 +250,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({ isOpen, onCl
         }
       };
 
-      const res = await fetch('/api/ai/platform-assistant', {
+      const res = await clientFetch('/api/ai/platform-assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -468,7 +469,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({ isOpen, onCl
     const cls = classes.find(c => c.id === std?.classId);
 
     try {
-      const res = await fetch('/api/ai/appreciation', {
+      const res = await clientFetch('/api/ai/appreciation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -503,7 +504,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({ isOpen, onCl
 
     const std = students[0];
     try {
-      const res = await fetch('/api/ai/parent-assistant', {
+      const res = await clientFetch('/api/ai/parent-assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -533,7 +534,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({ isOpen, onCl
     const stdGrades = grades.filter(g => g.studentId === analyzingStudentId);
 
     try {
-      const res = await fetch('/api/ai/analyze-student', {
+      const res = await clientFetch('/api/ai/analyze-student', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -575,7 +576,7 @@ export const AIAssistantModal: React.FC<AIAssistantModalProps> = ({ isOpen, onCl
     const totalRem = payments.reduce((acc, p) => acc + p.remainingBalance, 0);
 
     try {
-      const res = await fetch('/api/ai/director-decision', {
+      const res = await clientFetch('/api/ai/director-decision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

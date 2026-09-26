@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../lib/store';
 import { Student, SchoolClass, Grade, Subject } from '../../types';
 import { buildStudentBulletinAccessUrl } from '../../lib/urlUtils';
+import { clientFetch } from '../../services/clientFetch.ts';
 import {
   X,
   Sparkles,
@@ -224,7 +225,7 @@ _La Direction & l'Équipe Pédagogique_`;
     try {
       const baseUrl = window.location.origin;
 
-      const res = await fetch('/api/ai/grades-bulletin-assistant', {
+      const res = await clientFetch('/api/ai/grades-bulletin-assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

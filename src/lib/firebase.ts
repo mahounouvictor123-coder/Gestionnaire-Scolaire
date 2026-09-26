@@ -151,16 +151,7 @@ export const syncToCloud = async (schoolId: string, dataType: string, data: any)
     console.warn(`[Firestore Cloud Backup] (${dataType}):`, e);
   }
 
-  // 2. Secondary Real-Time Server Broadcast (Directeur, Censeur, Surveillant, Secrétaire)
-  try {
-    fetch(`/api/sync/${encodeURIComponent(schoolId)}/${encodeURIComponent(dataType)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ payload: data, updatedAt: timestamp })
-    }).catch(() => {});
-  } catch (e) {}
-
-  // 3. Instant Same-Browser Inter-Tab Sync via BroadcastChannel
+  // 2. Instant Same-Browser Inter-Tab Sync via BroadcastChannel
   try {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       const bc = new BroadcastChannel('edumanage_realtime_sync');
@@ -173,7 +164,7 @@ export const syncToCloud = async (schoolId: string, dataType: string, data: any)
 export const loadFromCloud = async (schoolId: string, dataType: string) => {
   if (!schoolId) return null;
 
-  // 1. Attempt Firestore First
+  // 1. Attempt Firestore
   try {
     const docRef = doc(db, "schools", schoolId, "data", dataType);
     const snap = await getDoc(docRef);
@@ -183,17 +174,6 @@ export const loadFromCloud = async (schoolId: string, dataType: string) => {
   } catch (e) {
     console.warn(`[Firestore Cloud Restore] (${dataType}):`, e);
   }
-
-  // 2. Fallback to Server Sync Store
-  try {
-    const res = await fetch(`/api/sync/${encodeURIComponent(schoolId)}/${encodeURIComponent(dataType)}`);
-    if (res.ok) {
-      const json = await res.json();
-      if (json && json.payload) {
-        return json.payload;
-      }
-    }
-  } catch (e) {}
 
   return null;
 };
@@ -240,31 +220,6 @@ export const subscribeToCloud = (schoolId: string, dataType: string, callback: (
         bc.removeEventListener('message', handleBcMessage);
         bc.close();
       });
-    }
-  } catch (e) {}
-
-  // 3. Server SSE / Fallback Polling Listener
-  try {
-    if (typeof window !== 'undefined' && 'EventSource' in window) {
-      const es = new EventSource(`/api/sync/events?schoolId=${encodeURIComponent(schoolId)}`);
-      es.onmessage = (event) => {
-        if (isCleanedUp) return;
-        try {
-          const data = JSON.parse(event.data);
-          if (data && data.schoolId === schoolId && data.dataType === dataType) {
-            // Fetch updated data from server
-            fetch(`/api/sync/${encodeURIComponent(schoolId)}/${encodeURIComponent(dataType)}`)
-              .then(res => res.json())
-              .then(json => {
-                if (json && json.payload && !isCleanedUp) {
-                  callback(json.payload);
-                }
-              })
-              .catch(() => {});
-          }
-        } catch (err) {}
-      };
-      cleanups.push(() => es.close());
     }
   } catch (e) {}
 

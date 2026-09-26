@@ -3,6 +3,7 @@ import { useApp } from '../../lib/store';
 import { ExamPaper, ExamType } from '../../types';
 import { AIExamCopilotChat } from '../AIExamCopilotChat';
 import { ExamContentRenderer, cleanAndFormatMathText, parseSquareRoots } from '../ExamContentRenderer';
+import { clientFetch } from '../../services/clientFetch.ts';
 import {
   FileText,
   Upload,
@@ -523,7 +524,7 @@ Le périmètre clôturé vaut exactement 100 mètres.
         includeHeader: withHeader
       };
 
-      const res = await fetch('/api/ai/scan-exam-paper', {
+      const res = await clientFetch('/api/ai/scan-exam-paper', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -580,7 +581,7 @@ Le périmètre clôturé vaut exactement 100 mètres.
     setSyncStatusMessage("Vérification minutieuse et réalignement avec l'image scannée...");
 
     try {
-      const res = await fetch('/api/ai/sync-exam-paper', {
+      const res = await clientFetch('/api/ai/sync-exam-paper', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

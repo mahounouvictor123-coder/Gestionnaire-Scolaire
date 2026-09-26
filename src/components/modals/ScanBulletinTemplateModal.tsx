@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../lib/store';
 import { BulletinTemplate } from '../../types';
 import { defaultBulletinTemplate } from '../../lib/gradingUtils';
+import { clientFetch } from '../../services/clientFetch.ts';
 import {
   FileCheck,
   X,
@@ -134,7 +135,7 @@ export const ScanBulletinTemplateModal: React.FC<ScanBulletinTemplateModalProps>
     setAnalysisDone(false);
 
     try {
-      const res = await fetch('/api/ai/scan-bulletin-template', {
+      const res = await clientFetch('/api/ai/scan-bulletin-template', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageData: imageUrl })

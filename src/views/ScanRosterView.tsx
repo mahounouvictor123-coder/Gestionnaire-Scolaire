@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../lib/store';
 import { Student } from '../types';
+import { clientFetch } from '../services/clientFetch.ts';
 import {
   ScanLine,
   Upload,
@@ -125,7 +126,7 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
         targetClassName: currentClass?.name || 'Classe Sélectionnée'
       };
 
-      const res = await fetch('/api/ai/scan-roster', {
+      const res = await clientFetch('/api/ai/scan-roster', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyPayload)

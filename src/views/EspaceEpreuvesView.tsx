@@ -5,6 +5,7 @@ import { ScanExamPaperModal } from '../components/modals/ScanExamPaperModal';
 import { ExamHeaderConfigModal } from '../components/modals/ExamHeaderConfigModal';
 import { AIExamCopilotChat } from '../components/AIExamCopilotChat';
 import { ExamContentRenderer, cleanAndFormatMathText, parseSquareRoots } from '../components/ExamContentRenderer';
+import { clientFetch } from '../services/clientFetch.ts';
 import {
   FileText,
   Sparkles,
@@ -93,7 +94,7 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
     setSyncStatusMessage("Synchronisation et réalignement avec l'image scannée...");
 
     try {
-      const res = await fetch('/api/ai/sync-exam-paper', {
+      const res = await clientFetch('/api/ai/sync-exam-paper', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

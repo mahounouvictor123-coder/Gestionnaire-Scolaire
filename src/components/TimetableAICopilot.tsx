@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../lib/store';
 import { TimetableSlot } from '../types';
+import { clientFetch } from '../services/clientFetch.ts';
 import {
   Sparkles,
   Send,
@@ -126,7 +127,7 @@ export const TimetableAICopilot: React.FC<TimetableAICopilotProps> = ({
         text: m.text
       }));
 
-      const response = await fetch('/api/ai/modify-timetable', {
+      const response = await clientFetch('/api/ai/modify-timetable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

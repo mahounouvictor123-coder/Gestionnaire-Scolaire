@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../lib/store';
 import { Student } from '../../types';
 import { X, Send, Sparkles, MessageCircle, Smartphone, Mail, Copy, Check, RefreshCw, AlertTriangle, ShieldCheck, DollarSign } from 'lucide-react';
+import { clientFetch } from '../../services/clientFetch.ts';
 
 interface AIReminderModalProps {
   isOpen: boolean;
@@ -41,7 +42,7 @@ export const AIReminderModal: React.FC<AIReminderModalProps> = ({
     setIsGenerating(true);
 
     try {
-      const response = await fetch('/api/ai/fee-reminder', {
+      const response = await clientFetch('/api/ai/fee-reminder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

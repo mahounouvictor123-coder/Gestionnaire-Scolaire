@@ -91,6 +91,8 @@ function MainApp() {
     (gmailUser?.email?.toLowerCase().trim() === 'mahounouvictor123@gmail.com') ||
     (typeof window !== 'undefined' && localStorage.getItem('GESTIONNAIRE_PROMOTER_AUTH') === 'true');
 
+  const hasCreatedSchool = Boolean(currentSchool?.isUserCreated);
+
   const [isControlBoxOpen, setIsControlBoxOpen] = useState(false);
 
   // Security Lock Gate for Staff Role Links (Censeur, Surveillant, Comptable, Secrétaire)

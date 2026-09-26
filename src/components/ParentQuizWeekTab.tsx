@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../lib/store';
 import { Student, QuizWeek, QuizWeekSubmission } from '../types';
+import { clientFetch } from '../services/clientFetch.ts';
 import {
   FileText,
   Upload,
@@ -32,7 +33,8 @@ import {
   Target,
   ThumbsUp,
   TrendingUp,
-  BookOpen
+  BookOpen,
+  X
 } from 'lucide-react';
 
 interface ParentQuizWeekTabProps {
@@ -117,7 +119,7 @@ export const ParentQuizWeekTab: React.FC<ParentQuizWeekTabProps> = ({
     setIsAiEvaluatingMap(prev => ({ ...prev, [quiz.id]: true }));
 
     try {
-      const response = await fetch('/api/ai/grade-quiz-week', {
+      const response = await clientFetch('/api/ai/grade-quiz-week', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

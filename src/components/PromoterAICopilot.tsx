@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../lib/store';
+import { clientFetch } from '../services/clientFetch.ts';
 import {
   Sparkles,
   Send,
@@ -153,7 +154,7 @@ export const PromoterAICopilot: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/ai/promoter-command', {
+      const response = await clientFetch('/api/ai/promoter-command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../lib/store';
 import { SchoolLevel, Student } from '../../types';
 import { StudentPhotoPicker, getDefaultAvatar } from '../StudentPhotoPicker';
+import { clientFetch } from '../../services/clientFetch.ts';
 import { 
   X, 
   UserPlus, 
@@ -328,7 +329,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
     setAiSuccessMessage(null);
 
     try {
-      const res = await fetch('/api/ai/scan-roster', {
+      const res = await clientFetch('/api/ai/scan-roster', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

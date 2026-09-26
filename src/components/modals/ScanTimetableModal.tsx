@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../lib/store';
 import { TimetableSlot } from '../../types';
+import { clientFetch } from '../../services/clientFetch.ts';
 import {
   ScanLine,
   Upload,
@@ -170,7 +171,7 @@ SAMEDI :
     try {
       const targetClassObj = classes.find(c => c.id === selectedClassId);
 
-      const response = await fetch('/api/ai/scan-timetable', {
+      const response = await clientFetch('/api/ai/scan-timetable', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

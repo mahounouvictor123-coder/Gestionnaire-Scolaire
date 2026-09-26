@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { clientFetch } from '../services/clientFetch.ts';
 import {
   Sparkles,
   Bot,
@@ -199,7 +200,7 @@ export const HomeAIAssistantWidget: React.FC<HomeAIAssistantWidgetProps> = ({
         }
       };
 
-      const res = await fetch('/api/ai/platform-assistant', {
+      const res = await clientFetch('/api/ai/platform-assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

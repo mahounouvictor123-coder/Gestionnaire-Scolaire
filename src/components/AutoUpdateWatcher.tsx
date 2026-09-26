@@ -9,6 +9,7 @@ import {
   X,
   Radio
 } from 'lucide-react';
+import { clientFetch } from '../services/clientFetch.ts';
 
 interface AppVersionInfo {
   version: string;
@@ -30,7 +31,7 @@ export const AutoUpdateWatcher: React.FC = () => {
   // Check version from server
   const checkAppVersion = useCallback(async () => {
     try {
-      const response = await fetch(`/api/app-version?t=${Date.now()}`, {
+      const response = await clientFetch(`/api/app-version?t=${Date.now()}`, {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache',
