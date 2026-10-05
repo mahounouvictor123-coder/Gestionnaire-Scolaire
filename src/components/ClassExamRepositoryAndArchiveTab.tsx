@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../lib/store';
 import { ExamPaper, ExamType, SchoolClass } from '../types';
 import { exportExamPaperToWord, downloadAttachedTeacherFile } from '../lib/examExportUtils';
@@ -30,7 +30,9 @@ import {
   Upload,
   UserCheck,
   Building,
-  GraduationCap
+  GraduationCap,
+  RefreshCw,
+  Send
 } from 'lucide-react';
 
 interface ClassExamRepositoryAndArchiveTabProps {
@@ -51,8 +53,30 @@ export const ClassExamRepositoryAndArchiveTab: React.FC<ClassExamRepositoryAndAr
     currentSchool,
     addExamPaper,
     updateExamPaper,
-    deleteExamPaper
+    deleteExamPaper,
+    refreshExamPapersFromCloud
   } = useApp();
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [inboxFilter, setInboxFilter] = useState<'ALL' | 'PENDING' | 'VALIDE' | 'IMPRIME'>('ALL');
+  const [isInboxExpanded, setIsInboxExpanded] = useState<boolean>(true);
+
+  // Auto-refresh from cloud on mount and focus
+  useEffect(() => {
+    refreshExamPapersFromCloud();
+    const handleFocus = () => refreshExamPapersFromCloud();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshExamPapersFromCloud();
+    setTimeout(() => {
+      setIsRefreshing(false);
+      showNotice("✓ Liste des épreuves synchronisée avec le Cloud et les professeurs.");
+    }, 600);
+  };
 
   // Filters
   const [selectedClassId, setSelectedClassId] = useState<string>('ALL');
@@ -90,8 +114,25 @@ export const ClassExamRepositoryAndArchiveTab: React.FC<ClassExamRepositoryAndAr
 
   // Only consider papers from teachers or explicitly tagged as teacher submissions
   const allTeacherPapers = useMemo(() => {
-    return examPapers.filter(p => !!(p.teacherName || p.teacherId || p.teacherPhone || p.submissionNotes || p.attachedFileName));
+    return examPapers.filter(p => !!(p.teacherName || p.teacherId || p.teacherPhone || p.submissionNotes || p.attachedFileName || p.sentToSchool || p.sentToParents));
   }, [examPapers]);
+
+  // Sorted list of recent submissions for the top reception feed
+  const recentTeacherSubmissions = useMemo(() => {
+    let list = [...allTeacherPapers];
+    if (inboxFilter === 'PENDING') {
+      list = list.filter(p => (!p.status || p.status === 'EN_ATTENTE') && !p.isArchived);
+    } else if (inboxFilter === 'VALIDE') {
+      list = list.filter(p => p.status === 'VALIDE' && !p.isArchived);
+    } else if (inboxFilter === 'IMPRIME') {
+      list = list.filter(p => p.status === 'IMPRIME' && !p.isArchived);
+    }
+    return list.sort((a, b) => {
+      const dateA = a.createdAt || '';
+      const dateB = b.createdAt || '';
+      return dateB.localeCompare(dateA);
+    });
+  }, [allTeacherPapers, inboxFilter]);
 
   // General counts
   const totalTeacherPapers = allTeacherPapers.length;
@@ -322,6 +363,17 @@ export const ClassExamRepositoryAndArchiveTab: React.FC<ClassExamRepositoryAndAr
         <div className="flex flex-wrap items-center gap-3 shrink-0">
           <button
             type="button"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center space-x-2 backdrop-blur-sm border border-white/10 transition-all cursor-pointer disabled:opacity-50"
+            title="Synchroniser et récupérer immédiatement les épreuves envoyées par les professeurs"
+          >
+            <RefreshCw className={`h-4 w-4 text-emerald-300 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'Synchronisation...' : 'Actualiser Réceptions'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsDepositModalOpen(true)}
             className="px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center space-x-2 transition-all transform hover:-translate-y-0.5 cursor-pointer"
           >
@@ -396,6 +448,258 @@ export const ClassExamRepositoryAndArchiveTab: React.FC<ClassExamRepositoryAndAr
           <p className="text-2xl font-black text-purple-600 dark:text-purple-400 mt-1">{archivedCount}</p>
           <p className="text-[10px] text-slate-500">Préservées par classe</p>
         </div>
+      </div>
+
+      {/* SECTION 1: BOÎTE DE RÉCEPTION DIRECTE DES ENSEIGNANTS */}
+      <div className="p-5 sm:p-6 rounded-3xl bg-white dark:bg-slate-900 border-2 border-indigo-200 dark:border-indigo-900/60 shadow-lg space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white shadow-md">
+              <Send className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2 flex-wrap gap-1">
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  Boîte de Réception : Épreuves Déposées par les Professeurs
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                  {allTeacherPapers.length} reçue{allTeacherPapers.length > 1 ? 's' : ''}
+                </span>
+                {pendingCount > 0 && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-400 text-slate-950 animate-pulse">
+                    {pendingCount} à valider pour tirage
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Centralisation en temps réel des épreuves transmises depuis l'application enseignant (téléchargement Word, validation et impression directe).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 flex-wrap gap-2">
+            <div className="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs">
+              <button
+                type="button"
+                onClick={() => setInboxFilter('ALL')}
+                className={`px-2.5 py-1 rounded-lg font-black transition-all cursor-pointer ${
+                  inboxFilter === 'ALL'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                Toutes ({allTeacherPapers.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboxFilter('PENDING')}
+                className={`px-2.5 py-1 rounded-lg font-black transition-all cursor-pointer ${
+                  inboxFilter === 'PENDING'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                À Valider ({pendingCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setInboxFilter('VALIDE')}
+                className={`px-2.5 py-1 rounded-lg font-black transition-all cursor-pointer ${
+                  inboxFilter === 'VALIDE'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                Validées ({validatedCount})
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsInboxExpanded(prev => !prev)}
+              className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold flex items-center space-x-1 cursor-pointer"
+            >
+              {isInboxExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+
+        {isInboxExpanded && (
+          <>
+            {recentTeacherSubmissions.length === 0 ? (
+              <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-800 space-y-2">
+                <FileCheck className="h-8 w-8 text-indigo-400 mx-auto" />
+                <p className="text-xs font-black text-slate-700 dark:text-slate-300">
+                  {inboxFilter === 'PENDING'
+                    ? "Aucune épreuve en attente de validation."
+                    : "Aucune épreuve trouvée dans cette sélection."}
+                </p>
+                <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                  Dès qu'un enseignant clique sur « Envoyer » dans son espace professeur, le sujet s'affiche instantanément ici avec son texte formaté et ses pièces jointes Word ou PDF.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleManualRefresh}
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black shadow cursor-pointer mt-2"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>Actualiser les réceptions</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {recentTeacherSubmissions.slice(0, 8).map(paper => {
+                  const isArchived = paper.isArchived || paper.status === 'ARCHIVE';
+                  return (
+                    <div
+                      key={`inbox-${paper.id}`}
+                      className="p-4 sm:p-5 rounded-2xl border-2 border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/20 dark:bg-slate-900/90 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-3"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between flex-wrap gap-1.5">
+                          <div className="flex items-center space-x-1.5 flex-wrap gap-1">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-indigo-600 text-white shadow-sm">
+                              {paper.subjectName}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-500/30">
+                              🎓 {paper.className}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                              Trimestre {paper.trimester || 1}
+                            </span>
+                          </div>
+
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                            paper.status === 'VALIDE'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-500/30'
+                              : paper.status === 'IMPRIME'
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-500/30'
+                              : 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-500/30 animate-pulse'
+                          }`}>
+                            {paper.status === 'VALIDE' ? '✓ Validée pour tirage' :
+                             paper.status === 'IMPRIME' ? '🖨️ Tirée / Imprimée' :
+                             '⏳ En attente validation'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="text-sm font-black text-slate-900 dark:text-white leading-snug">
+                            {paper.title}
+                          </h4>
+                          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap gap-1">
+                            <span className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center space-x-1">
+                              <span>👨‍🏫 Prof. {paper.teacherName || 'Enseignant'}</span>
+                              {paper.teacherPhone && <span className="opacity-80 font-mono">({paper.teacherPhone})</span>}
+                            </span>
+                            <span className="text-[11px] flex items-center space-x-1">
+                              <Calendar className="h-3 w-3" />
+                              <span>Reçu le {paper.createdAt || 'Récemment'}</span>
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Copies and Notes Info */}
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-[11px] space-y-1">
+                          <div className="flex items-center justify-between font-bold">
+                            <span className="text-emerald-700 dark:text-emerald-300 flex items-center space-x-1">
+                              <Printer className="h-3.5 w-3.5" />
+                              <span>{paper.numberOfCopiesRequested ? `${paper.numberOfCopiesRequested} exemplaires demandés` : 'Tirage standard demandé'}</span>
+                            </span>
+                            {paper.examDate && (
+                              <span className="text-slate-600 dark:text-slate-400">
+                                Date prévue : <strong>{paper.examDate}</strong>
+                              </span>
+                            )}
+                          </div>
+                          {paper.submissionNotes && (
+                            <p className="text-slate-600 dark:text-slate-300 italic">
+                              « {paper.submissionNotes} »
+                            </p>
+                          )}
+                          {paper.attachedFileName && (
+                            <div className="pt-1 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                              <span className="text-indigo-600 dark:text-indigo-300 font-bold truncate flex items-center space-x-1">
+                                <FileText className="h-3 w-3 shrink-0" />
+                                <span className="truncate">Document joint : {paper.attachedFileName}</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => downloadAttachedTeacherFile(paper)}
+                                className="px-2 py-0.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px] shrink-0 ml-2 cursor-pointer"
+                              >
+                                Télécharger original
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-1.5">
+                        <div className="flex items-center space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => onPreviewPaper(paper)}
+                            className="px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 text-xs font-black flex items-center space-x-1 transition-all cursor-pointer"
+                            title="Aperçu formaté en page Word"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            <span>Aperçu</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => exportExamPaperToWord(paper, settings, currentSchool)}
+                            className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center space-x-1 shadow-sm transition-all cursor-pointer"
+                            title="Télécharger directement en document Word (.doc) avec l'en-tête officiel"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            <span>Word (.doc)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => onDirectPrint(paper)}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-black flex items-center space-x-1 transition-all cursor-pointer"
+                            title="Imprimer directement"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            <span>Imprimer</span>
+                          </button>
+                        </div>
+
+                        <div className="flex items-center space-x-1">
+                          {paper.status !== 'VALIDE' && paper.status !== 'IMPRIME' && (
+                            <button
+                              type="button"
+                              onClick={() => handleValidatePaper(paper)}
+                              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center space-x-1 shadow-sm transition-all cursor-pointer"
+                              title="Valider l'épreuve pour tirage officiel"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              <span>Valider Tirage</span>
+                            </button>
+                          )}
+                          {paper.status === 'VALIDE' && (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkPrinted(paper)}
+                              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center space-x-1 transition-all cursor-pointer"
+                              title="Marquer comme tirée / imprimée"
+                            >
+                              <Printer className="h-3.5 w-3.5" />
+                              <span>Marquer Tirée</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* FILTER & CLASS BAR */}

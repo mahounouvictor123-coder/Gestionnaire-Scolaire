@@ -53,7 +53,11 @@ import {
   syncDeletedSchoolsToCloud,
   subscribeToDeletedSchools,
   getUserDataByEmailFromFirestore,
-  saveUserDataByEmailToFirestore
+  saveUserDataByEmailToFirestore,
+  syncExamPaperToCloud,
+  deleteExamPaperFromCloud,
+  loadExamPapersFromCloud,
+  subscribeToExamPapers
 } from './firebase';
 import {
   demoUsers,
@@ -211,6 +215,7 @@ interface AppContextType {
   addExamPaper: (paper: Omit<ExamPaper, 'id' | 'createdAt'>) => ExamPaper;
   updateExamPaper: (paper: ExamPaper) => void;
   deleteExamPaper: (id: string) => void;
+  refreshExamPapersFromCloud: () => Promise<void>;
 
   quizWeeks: QuizWeek[];
   addQuizWeek: (quiz: Omit<QuizWeek, 'id' | 'createdAt' | 'submissions'>) => QuizWeek;
@@ -1562,7 +1567,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     handleCloudUpdate('ATTENDANCE', setAttendance);
     handleCloudUpdate('TIMETABLE', setTimetable);
     handleCloudUpdate('EXAMS', setExams);
-    handleCloudUpdate('EXAM_PAPERS', setExamPapers);
+
+    // Dedicated resilient subscription for teacher exam papers
+    loadExamPapersFromCloud(currentSchoolId).then((cloudPapers) => {
+      if (Array.isArray(cloudPapers) && cloudPapers.length > 0) {
+        hasLoadedCloudRef.current['EXAM_PAPERS'] = true;
+        isRemoteUpdateRef.current['EXAM_PAPERS'] = true;
+        setExamPapers(prev => {
+          const map = new Map<string, ExamPaper>();
+          prev.forEach(p => map.set(p.id, p));
+          cloudPapers.forEach(p => map.set(p.id, p));
+          const merged = Array.from(map.values());
+          try {
+            localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_EXAM_PAPERS`, JSON.stringify(merged));
+          } catch (e) {}
+          return merged;
+        });
+      }
+    }).catch(() => {});
+
+    unsubs.push(subscribeToExamPapers(currentSchoolId, (cloudPapers) => {
+      if (Array.isArray(cloudPapers) && cloudPapers.length > 0) {
+        hasLoadedCloudRef.current['EXAM_PAPERS'] = true;
+        isRemoteUpdateRef.current['EXAM_PAPERS'] = true;
+        setExamPapers(prev => {
+          const map = new Map<string, ExamPaper>();
+          prev.forEach(p => map.set(p.id, p));
+          cloudPapers.forEach(p => map.set(p.id, p));
+          const merged = Array.from(map.values()).sort((a, b) => {
+            const dateA = a.createdAt || '';
+            const dateB = b.createdAt || '';
+            return dateB.localeCompare(dateA);
+          });
+          try {
+            localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_EXAM_PAPERS`, JSON.stringify(merged));
+          } catch (e) {}
+          return merged;
+        });
+      }
+    }));
+
     handleCloudUpdate('QUIZ_WEEKS', setQuizWeeks);
     handleCloudUpdate('ARCHIVED_REPORT_CARDS', setArchivedReportCards);
     handleCloudUpdate('HOMEWORK', setHomework);
@@ -2811,21 +2855,88 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addExamPaper = (paper: Omit<ExamPaper, 'id' | 'createdAt'>): ExamPaper => {
+    const targetSchoolId = paper.schoolId || currentSchoolId;
     const newPaper: ExamPaper = {
       ...paper,
-      id: `expaper-${Date.now()}`,
-      createdAt: new Date().toISOString().split('T')[0]
+      id: `expaper-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: new Date().toISOString().split('T')[0],
+      schoolId: targetSchoolId
     };
-    setExamPapers(prev => [newPaper, ...prev]);
+
+    setExamPapers(prev => {
+      const updated = [newPaper, ...prev.filter(p => p.id !== newPaper.id)];
+      try {
+        localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${targetSchoolId}_EXAM_PAPERS`, JSON.stringify(updated));
+      } catch (err) {
+        console.warn('LocalStorage Quota Warning on EXAM_PAPERS:', err);
+      }
+      return updated;
+    });
+
+    // 1. Direct subcollection write to Firestore: /schools/{schoolId}/exam_papers/{paperId}
+    // and instant BroadcastChannel dispatch (zero risk of 1MB document size limit)
+    syncExamPaperToCloud(targetSchoolId, newPaper);
+
+    // 2. Also keep aggregate dataset synced
+    syncToCloud(targetSchoolId, 'EXAM_PAPERS', [newPaper, ...examPapers.filter(p => p.id !== newPaper.id)]);
+
     return newPaper;
   };
 
   const updateExamPaper = (paper: ExamPaper) => {
-    setExamPapers(prev => prev.map(p => p.id === paper.id ? paper : p));
+    const targetSchoolId = paper.schoolId || currentSchoolId;
+    setExamPapers(prev => {
+      const updated = prev.map(p => p.id === paper.id ? paper : p);
+      try {
+        localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${targetSchoolId}_EXAM_PAPERS`, JSON.stringify(updated));
+      } catch (err) {
+        console.warn('LocalStorage Quota Warning on EXAM_PAPERS update:', err);
+      }
+      return updated;
+    });
+
+    syncExamPaperToCloud(targetSchoolId, paper);
+    syncToCloud(targetSchoolId, 'EXAM_PAPERS', examPapers.map(p => p.id === paper.id ? paper : p));
   };
 
   const deleteExamPaper = (id: string) => {
-    setExamPapers(prev => prev.filter(p => p.id !== id));
+    const target = examPapers.find(p => p.id === id);
+    const targetSchoolId = target?.schoolId || currentSchoolId;
+    setExamPapers(prev => {
+      const updated = prev.filter(p => p.id !== id);
+      try {
+        localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${targetSchoolId}_EXAM_PAPERS`, JSON.stringify(updated));
+      } catch (err) {}
+      return updated;
+    });
+
+    deleteExamPaperFromCloud(targetSchoolId, id);
+    syncToCloud(targetSchoolId, 'EXAM_PAPERS', examPapers.filter(p => p.id !== id));
+  };
+
+  const refreshExamPapersFromCloud = async () => {
+    if (!currentSchoolId) return;
+    try {
+      const cloudData = await loadExamPapersFromCloud(currentSchoolId);
+      if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
+        setExamPapers(prev => {
+          const map = new Map<string, ExamPaper>();
+          prev.forEach(p => map.set(p.id, p));
+          cloudData.forEach(p => map.set(p.id, p));
+          const merged = Array.from(map.values()).sort((a, b) => {
+            const dateA = a.createdAt || '';
+            const dateB = b.createdAt || '';
+            return dateB.localeCompare(dateA);
+          });
+          try {
+            localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_EXAM_PAPERS`, JSON.stringify(merged));
+          } catch (e) {}
+          return merged;
+        });
+      }
+    } catch (e) {
+      console.warn('refreshExamPapersFromCloud error:', e);
+    }
   };
 
   const addQuizWeek = (quiz: Omit<QuizWeek, 'id' | 'createdAt' | 'submissions'>): QuizWeek => {
@@ -3080,7 +3191,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deliveryCount: Math.floor(Math.random() * 200) + 50,
       status: 'LIVRE'
     };
-    setCommunications(prev => [newMsg, ...prev]);
+    setCommunications(prev => {
+      const updated = [newMsg, ...prev];
+      try {
+        localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_COMMUNICATIONS`, JSON.stringify(updated));
+      } catch (err) {}
+      syncToCloud(currentSchoolId, 'COMMUNICATIONS', updated);
+      return updated;
+    });
   };
 
   // Parent Complaints & Audio / Photo Messages
@@ -3520,6 +3638,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addExamPaper,
         updateExamPaper,
         deleteExamPaper,
+        refreshExamPapersFromCloud,
 
         quizWeeks,
         addQuizWeek,

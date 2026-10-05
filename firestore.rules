@@ -61,6 +61,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Teacher Exam Papers & Direct Submissions to Word Platform
+    match /schools/{schoolId}/exam_papers/{paperId} {
+      allow read, write: if true;
+    }
+
     // System Registry & Global School Catalog
     match /system/{docId} {
       allow read, write: if true;

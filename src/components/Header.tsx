@@ -5,6 +5,7 @@ import { SchoolLogo } from './SchoolLogo';
 import { InstallPwaModal } from './InstallPwaModal';
 import { SubAppsShareModal } from './modals/SubAppsShareModal';
 import { buildDirectSchoolAccessUrl } from '../lib/urlUtils';
+import { triggerAutoInstall, isDesktopPC } from '../lib/pwaInstallManager';
 import {
   Sparkles,
   Sun,
@@ -22,6 +23,7 @@ import {
   LogIn,
   LogOut,
   Smartphone,
+  Monitor,
   Lock,
   Unlock,
   KeyRound,
@@ -80,6 +82,17 @@ export const Header: React.FC<HeaderProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showPwaModal, setShowPwaModal] = useState(false);
   const [showSubAppsModal, setShowSubAppsModal] = useState(false);
+
+  const isPC = isDesktopPC();
+
+  const handleAppInstall = async () => {
+    // Tentative d'installation automatique directe sur PC (Chrome / Edge / Brave)
+    const res = await triggerAutoInstall();
+    if (res.success && res.outcome === 'accepted') {
+      return;
+    }
+    setShowPwaModal(true);
+  };
 
   const isPromoter = (currentUser?.email?.toLowerCase().trim() === 'mahounouvictor123@gmail.com') || 
     (gmailUser?.email?.toLowerCase().trim() === 'mahounouvictor123@gmail.com') ||
@@ -425,14 +438,18 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* PWA Install / Home Screen Button */}
+            {/* PWA Install / Home Screen Button (Installation PC et Mobile avec logo) */}
             <button
-              onClick={() => setShowPwaModal(true)}
+              onClick={handleAppInstall}
               className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md transition-all transform hover:scale-[1.03] active:scale-95 cursor-pointer"
-              title="Ajouter à l'écran d'accueil comme une application native"
+              title={isPC ? "Ajouter l'application sur l'écran de votre PC (Bureau & Barre des tâches) avec son logo" : "Ajouter à l'écran d'accueil de votre smartphone"}
             >
-              <Smartphone className="h-3.5 w-3.5 text-emerald-200" />
-              <span className="hidden lg:inline">Écran d'Accueil</span>
+              {isPC ? (
+                <Monitor className="h-3.5 w-3.5 text-emerald-200" />
+              ) : (
+                <Smartphone className="h-3.5 w-3.5 text-emerald-200" />
+              )}
+              <span className="hidden lg:inline">{isPC ? "Installer l'App PC" : "Écran d'Accueil"}</span>
               <span className="lg:hidden">App</span>
             </button>
 
@@ -620,7 +637,11 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      <InstallPwaModal isOpen={showPwaModal} onClose={() => setShowPwaModal(false)} />
+      <InstallPwaModal
+        isOpen={showPwaModal}
+        onClose={() => setShowPwaModal(false)}
+        appName={currentSchool?.name || settings.schoolName || 'GESTIONNAIRE SCOLAIRE'}
+      />
       
       <SubAppsShareModal
         isOpen={showSubAppsModal}

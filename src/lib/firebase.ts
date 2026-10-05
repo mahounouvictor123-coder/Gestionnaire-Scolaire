@@ -1,5 +1,14 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "firebase/firestore";
+import { 
+  getFirestore, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  onSnapshot, 
+  collection, 
+  getDocs, 
+  deleteDoc 
+} from "firebase/firestore";
 import {
   getAuth,
   GoogleAuthProvider,
@@ -290,5 +299,187 @@ export const subscribeToDeletedSchools = (callback: (deletedIds: string[]) => vo
     return () => {};
   }
 };
+
+// ==========================================
+// DEDICATED TEACHER EXAM PAPERS CLOUD SYNC
+// (Ensures exam papers uploaded by teachers from their app
+// appear instantly on the main platform with zero 1MB overflow)
+// ==========================================
+
+export const syncExamPaperToCloud = async (schoolId: string, paper: any) => {
+  if (!schoolId || !paper?.id) return;
+  const timestamp = new Date().toISOString();
+
+  // 1. Direct document write to dedicated subcollection
+  try {
+    const docRef = doc(db, "schools", schoolId, "exam_papers", paper.id);
+    await setDoc(docRef, { ...paper, updatedAt: timestamp }, { merge: true });
+  } catch (e) {
+    console.warn(`[Firestore Exam Paper Sync Error] (${paper.id}):`, e);
+  }
+
+  // 2. BroadcastChannel immediate local tab propagation
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('edumanage_realtime_sync');
+      bc.postMessage({ schoolId, dataType: 'EXAM_PAPER_SINGLE', payload: paper, updatedAt: timestamp });
+      bc.close();
+    }
+  } catch (e) {}
+};
+
+export const deleteExamPaperFromCloud = async (schoolId: string, paperId: string) => {
+  if (!schoolId || !paperId) return;
+  try {
+    const docRef = doc(db, "schools", schoolId, "exam_papers", paperId);
+    await deleteDoc(docRef);
+  } catch (e) {
+    console.warn(`[Firestore Exam Paper Delete Error] (${paperId}):`, e);
+  }
+
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('edumanage_realtime_sync');
+      bc.postMessage({ schoolId, dataType: 'EXAM_PAPER_DELETED', payload: { id: paperId }, updatedAt: new Date().toISOString() });
+      bc.close();
+    }
+  } catch (e) {}
+};
+
+export const loadExamPapersFromCloud = async (schoolId: string): Promise<any[]> => {
+  if (!schoolId) return [];
+  const papersMap = new Map<string, any>();
+
+  // A. Load from dedicated subcollection (primary, high reliability)
+  try {
+    const colRef = collection(db, "schools", schoolId, "exam_papers");
+    const snap = await getDocs(colRef);
+    snap.forEach((d) => {
+      const data = d.data();
+      if (data && (data.id || d.id)) {
+        papersMap.set(data.id || d.id, { id: d.id, ...data });
+      }
+    });
+  } catch (e) {
+    console.warn("[Firestore loadExamPapers subcollection error]:", e);
+  }
+
+  // B. Load from legacy aggregate document (fallback/merge)
+  try {
+    const legacyDocRef = doc(db, "schools", schoolId, "data", "EXAM_PAPERS");
+    const legacySnap = await getDoc(legacyDocRef);
+    if (legacySnap.exists() && legacySnap.data()?.payload) {
+      const legacyPapers = JSON.parse(legacySnap.data().payload);
+      if (Array.isArray(legacyPapers)) {
+        legacyPapers.forEach((p: any) => {
+          if (p && p.id && !papersMap.has(p.id)) {
+            papersMap.set(p.id, p);
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("[Firestore loadExamPapers legacy error]:", e);
+  }
+
+  return Array.from(papersMap.values());
+};
+
+export const subscribeToExamPapers = (schoolId: string, callback: (papers: any[]) => void) => {
+  if (!schoolId) return () => {};
+  let isCleanedUp = false;
+  const cleanups: (() => void)[] = [];
+  const papersMap = new Map<string, any>();
+
+  const emitMerged = () => {
+    if (isCleanedUp) return;
+    const sorted = Array.from(papersMap.values()).sort((a, b) => {
+      const dateA = a.createdAt || a.updatedAt || '';
+      const dateB = b.createdAt || b.updatedAt || '';
+      return dateB.localeCompare(dateA);
+    });
+    callback(sorted);
+  };
+
+  // 1. Listen to individual exam_papers subcollection
+  try {
+    const colRef = collection(db, "schools", schoolId, "exam_papers");
+    const unsubCol = onSnapshot(colRef, (snap) => {
+      if (isCleanedUp) return;
+      snap.docChanges().forEach((change) => {
+        const id = change.doc.id;
+        if (change.type === 'removed') {
+          papersMap.delete(id);
+        } else {
+          papersMap.set(id, { id, ...change.doc.data() });
+        }
+      });
+      emitMerged();
+    }, (err) => {
+      console.warn("[Firestore Exam Papers Listener Warning]:", err);
+    });
+    cleanups.push(unsubCol);
+  } catch (e) {
+    console.warn("[Firestore Exam Papers Sub Error]:", e);
+  }
+
+  // 2. Listen to aggregate EXAM_PAPERS document
+  try {
+    const aggDocRef = doc(db, "schools", schoolId, "data", "EXAM_PAPERS");
+    const unsubAgg = onSnapshot(aggDocRef, (snap) => {
+      if (isCleanedUp) return;
+      if (snap.exists() && snap.data()?.payload) {
+        try {
+          const arr = JSON.parse(snap.data().payload);
+          if (Array.isArray(arr)) {
+            arr.forEach((p: any) => {
+              if (p?.id && !papersMap.has(p.id)) {
+                papersMap.set(p.id, p);
+              }
+            });
+            emitMerged();
+          }
+        } catch (e) {}
+      }
+    }, () => {});
+    cleanups.push(unsubAgg);
+  } catch (e) {}
+
+  // 3. BroadcastChannel listener (instant same-device sync between teacher sub-app and main platform)
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('edumanage_realtime_sync');
+      const handleBc = (evt: MessageEvent) => {
+        if (isCleanedUp) return;
+        const msg = evt.data;
+        if (msg && msg.schoolId === schoolId) {
+          if (msg.dataType === 'EXAM_PAPER_SINGLE' && msg.payload?.id) {
+            papersMap.set(msg.payload.id, msg.payload);
+            emitMerged();
+          } else if (msg.dataType === 'EXAM_PAPER_DELETED' && msg.payload?.id) {
+            papersMap.delete(msg.payload.id);
+            emitMerged();
+          } else if (msg.dataType === 'EXAM_PAPERS' && Array.isArray(msg.payload)) {
+            msg.payload.forEach((p: any) => {
+              if (p?.id) papersMap.set(p.id, p);
+            });
+            emitMerged();
+          }
+        }
+      };
+      bc.addEventListener('message', handleBc);
+      cleanups.push(() => {
+        bc.removeEventListener('message', handleBc);
+        bc.close();
+      });
+    }
+  } catch (e) {}
+
+  return () => {
+    isCleanedUp = true;
+    cleanups.forEach(fn => fn());
+  };
+};
+
 
 

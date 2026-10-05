@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../lib/store';
+import { triggerAutoInstall, isDesktopPC } from '../lib/pwaInstallManager';
 import {
   ShieldAlert,
   Zap,
@@ -12,6 +13,7 @@ import {
   Check,
   Calendar,
   Smartphone,
+  Monitor,
   CreditCard,
   Wallet,
   ArrowRight,
@@ -69,6 +71,13 @@ export const SuperPromoteurControlBoxView: React.FC<SuperPromoteurControlBoxView
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const isPC = isDesktopPC();
+
+  const handleAppInstall = async () => {
+    const res = await triggerAutoInstall();
+    if (res.success && res.outcome === 'accepted') return;
+    setIsInstallModalOpen(true);
+  };
 
   // Direct secret URL for standalone access
   const directSuperPromoteurUrl = useMemo(() => {
@@ -295,12 +304,12 @@ export const SuperPromoteurControlBoxView: React.FC<SuperPromoteurControlBoxView
           <div className="flex items-center space-x-1.5 sm:space-x-2.5">
             {/* Install to Screen */}
             <button
-              onClick={() => setIsInstallModalOpen(true)}
+              onClick={handleAppInstall}
               className="hidden sm:flex px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-md shadow-purple-900/40 items-center gap-1.5 transition-all cursor-pointer"
-              title="Ajouter comme application sur votre écran d'accueil"
+              title={isPC ? "Ajouter l'application sur l'écran de votre PC (Bureau) avec son logo" : "Ajouter comme application sur votre écran d'accueil"}
             >
-              <Smartphone className="h-3.5 w-3.5 text-amber-300" />
-              <span>Installer</span>
+              {isPC ? <Monitor className="h-3.5 w-3.5 text-amber-300" /> : <Smartphone className="h-3.5 w-3.5 text-amber-300" />}
+              <span>{isPC ? "Installer sur PC" : "Installer"}</span>
             </button>
 
             {/* Direct Link Copier */}

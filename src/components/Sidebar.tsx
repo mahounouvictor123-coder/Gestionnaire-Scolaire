@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../lib/store';
 import { useGoogleAuth } from './GoogleAuthGate';
 import { SchoolLogo } from './SchoolLogo';
@@ -30,9 +30,14 @@ import {
   Zap,
   Home,
   Crown,
-  Mic
+  Mic,
+  Monitor,
+  Download,
+  Smartphone
 } from 'lucide-react';
 import { UserRole } from '../types';
+import { InstallPwaModal } from './InstallPwaModal';
+import { triggerAutoInstall, isDesktopPC, isAppInstalled } from '../lib/pwaInstallManager';
 
 interface SidebarProps {
   activeView: string;
@@ -60,6 +65,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
   const unreadComplaintsCount = (parentComplaints || []).filter(
     c => !c.read && (!c.schoolId || c.schoolId === currentSchool.id)
   ).length;
+
+  const [showInstallModal, setShowInstallModal] = useState(false);
+  const isPC = isDesktopPC();
+  const installed = isAppInstalled();
+
+  const handleSidebarAppInstall = async () => {
+    const res = await triggerAutoInstall();
+    if (res.success && res.outcome === 'accepted') return;
+    setShowInstallModal(true);
+  };
 
   const navItems: NavItem[] = [
     // Pôle Accueil
@@ -212,6 +227,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
         })}
       </nav>
 
+      {/* Bouton d'installation sur PC / Mobile avec logo */}
+      {!installed && (
+        <div className="p-3 border-t border-slate-800/80">
+          <button
+            onClick={handleSidebarAppInstall}
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-gradient-to-r from-emerald-950/80 via-teal-950/60 to-slate-900 border border-emerald-500/30 hover:border-emerald-400 text-emerald-300 hover:text-white text-xs font-bold transition-all shadow-md group cursor-pointer"
+            title={isPC ? "Installer l'application sur votre PC (Bureau & Barre des tâches) avec son logo" : "Ajouter à l'écran d'accueil"}
+          >
+            <div className="flex items-center space-x-2 truncate">
+              {isPC ? (
+                <Monitor className="h-4 w-4 text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
+              ) : (
+                <Smartphone className="h-4 w-4 text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
+              )}
+              <span className="truncate">{isPC ? "Installer l'App PC" : "Installer l'App"}</span>
+            </div>
+            <Download className="h-3.5 w-3.5 text-emerald-400 shrink-0 group-hover:translate-y-0.5 transition-transform" />
+          </button>
+        </div>
+      )}
+
       {/* Footer info */}
       <div className="p-3 border-t border-slate-800/80 space-y-2">
         <div className="flex items-center justify-between text-[11px] text-slate-500 px-1 pt-1">
@@ -219,6 +255,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
           <span className="text-emerald-500 font-medium">● En ligne</span>
         </div>
       </div>
+
+      <InstallPwaModal
+        isOpen={showInstallModal}
+        onClose={() => setShowInstallModal(false)}
+        appName={settings.schoolName || 'GESTIONNAIRE SCOLAIRE'}
+      />
     </aside>
   );
 };

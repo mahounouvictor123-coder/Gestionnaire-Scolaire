@@ -47,8 +47,18 @@ interface EspaceEpreuvesViewProps {
 }
 
 export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNavigate }) => {
-  const { examPapers, classes, subjects, settings, currentSchool, deleteExamPaper, updateExamPaper } = useApp();
+  const { 
+    examPapers, 
+    classes, 
+    subjects, 
+    settings, 
+    currentSchool, 
+    deleteExamPaper, 
+    updateExamPaper,
+    refreshExamPapersFromCloud 
+  } = useApp();
 
+  const [isRefreshingCloud, setIsRefreshingCloud] = useState(false);
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [scanModalInitialTab, setScanModalInitialTab] = useState<'IMAGE' | 'TEXT' | 'DEMO'>('IMAGE');
   const [isHeaderConfigOpen, setIsHeaderConfigOpen] = useState(false);
@@ -64,6 +74,22 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
   const [isSynchronizing, setIsSynchronizing] = useState(false);
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
+
+  // Auto-refresh from cloud on mount and when tab/window regains focus
+  useEffect(() => {
+    refreshExamPapersFromCloud();
+    const handleFocus = () => {
+      refreshExamPapersFromCloud();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  const handleManualCloudRefresh = async () => {
+    setIsRefreshingCloud(true);
+    await refreshExamPapersFromCloud();
+    setTimeout(() => setIsRefreshingCloud(false), 600);
+  };
 
   const handleDirectPrint = (paper: ExamPaper) => {
     setActivePreviewPaper(paper);
@@ -133,8 +159,12 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
   // Filter papers
   const filteredPapers = examPapers.filter(paper => {
     const matchesClass = selectedClassFilter === 'ALL' || paper.classId === selectedClassFilter || paper.className === selectedClassFilter;
-    const matchesType = selectedTypeFilter === 'ALL' || paper.examType === selectedTypeFilter;
-    const isFromTeacher = !!(paper.teacherName || paper.teacherId || paper.teacherPhone);
+    const matchesType = selectedTypeFilter === 'ALL' || 
+      (selectedTypeFilter === 'DEVOIR' && (paper.examType === 'DEVOIR' || paper.examType === 'DEVOIR_1' || paper.examType === 'DEVOIR_2')) ||
+      (selectedTypeFilter === 'COMPOSITION' && (paper.examType === 'COMPOSITION' || paper.examType.startsWith('COMPOSITION'))) ||
+      (selectedTypeFilter === 'INTERRO' && (paper.examType === 'INTERRO' || paper.examType.startsWith('INTERRO'))) ||
+      paper.examType === selectedTypeFilter;
+    const isFromTeacher = !!(paper.teacherName || paper.teacherId || paper.teacherPhone || paper.sentToSchool || paper.sentToParents || paper.submissionNotes || paper.attachedFileName);
     const matchesOrigin = originFilter === 'ALL' || (originFilter === 'TEACHERS' && isFromTeacher) || (originFilter === 'ADMIN' && !isFromTeacher);
     const matchesSearch = paper.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           paper.subjectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -144,9 +174,9 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
     return matchesClass && matchesType && matchesOrigin && matchesSearch;
   });
 
-  const teacherPapersCount = examPapers.filter(p => !!(p.teacherName || p.teacherId || p.teacherPhone)).length;
-  const pendingTeacherPapersCount = examPapers.filter(p => !!(p.teacherName || p.teacherId) && (!p.status || p.status === 'EN_ATTENTE')).length;
-  const adminPapersCount = examPapers.length - teacherPapersCount;
+  const teacherPapersCount = examPapers.filter(p => !!(p.teacherName || p.teacherId || p.teacherPhone || p.sentToSchool || p.sentToParents || p.submissionNotes || p.attachedFileName)).length;
+  const pendingTeacherPapersCount = examPapers.filter(p => !!(p.teacherName || p.teacherId || p.sentToSchool) && (!p.status || p.status === 'EN_ATTENTE')).length;
+  const adminPapersCount = Math.max(0, examPapers.length - teacherPapersCount);
 
   // Export any paper directly to Word (.doc)
   const exportToWord = (paper: ExamPaper) => {
@@ -315,6 +345,16 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
           </div>
 
           <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <button
+              onClick={handleManualCloudRefresh}
+              disabled={isRefreshingCloud}
+              className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center space-x-2 backdrop-blur-sm border border-white/10 transition-all cursor-pointer disabled:opacity-50"
+              title="Synchroniser et récupérer immédiatement les épreuves envoyées par les professeurs"
+            >
+              <RefreshCw className={`h-4 w-4 text-emerald-300 ${isRefreshingCloud ? 'animate-spin' : ''}`} />
+              <span>{isRefreshingCloud ? 'Synchronisation...' : 'Actualiser Épreuves'}</span>
+            </button>
+
             <button
               onClick={() => setIsHeaderConfigOpen(true)}
               className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center space-x-2 backdrop-blur-sm border border-white/10 transition-all cursor-pointer"

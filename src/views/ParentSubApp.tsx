@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../lib/store';
 import { Student, SchoolClass, Grade, Payment, CommunicationMessage, ParentComplaintMessage, ParentComplaintCategory, OfficialAnnouncement } from '../types';
 import { updateDynamicPwaBranding, requestNotificationPermission, sendSystemNotification } from '../lib/pwaHelper';
+import { triggerAutoInstall, isDesktopPC } from '../lib/pwaInstallManager';
 import { PwaInstallGuideModalProps } from '../components/modals/PwaInstallGuideModal';
 import { PrintBulletinModal } from '../components/modals/PrintBulletinModal';
 import { PrintReceiptModal } from '../components/modals/PrintReceiptModal';
@@ -13,6 +14,7 @@ import {
   Bell, 
   BellRing, 
   Smartphone, 
+  Monitor, 
   Calendar, 
   CheckCircle2, 
   Clock, 
@@ -283,6 +285,13 @@ export const ParentSubApp: React.FC<ParentSubAppProps> = ({ onReturnToPlatform }
   const [activeTab, setActiveTab] = useState<'notes' | 'epreuves' | 'quiz-week' | 'messages' | 'scolarite' | 'dialogue'>('notes');
   const [selectedTrimester, setSelectedTrimester] = useState<number>(settings.currentTrimester || 1);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const isPC = isDesktopPC();
+
+  const handleAppInstall = async () => {
+    const res = await triggerAutoInstall();
+    if (res.success && res.outcome === 'accepted') return;
+    setIsInstallModalOpen(true);
+  };
   const [isBulletinModalOpen, setIsBulletinModalOpen] = useState(false);
   const [selectedReceiptForPrint, setSelectedReceiptForPrint] = useState<Payment | null>(null);
   const [isNotificationsEnabled, setIsNotificationsEnabled] = useState<boolean>(() => {

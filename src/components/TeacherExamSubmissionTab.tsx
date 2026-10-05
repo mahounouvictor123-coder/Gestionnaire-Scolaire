@@ -30,6 +30,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { exportExamPaperToWord } from '../lib/examExportUtils';
+import { compressExamImage } from '../lib/imageCompression';
 
 interface TeacherExamSubmissionTabProps {
   currentTeacher: Teacher;
@@ -130,7 +131,7 @@ export const TeacherExamSubmissionTab: React.FC<TeacherExamSubmissionTabProps> =
   };
 
   // Handle File Input (Word, PDF, Image)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -141,7 +142,6 @@ export const TeacherExamSubmissionTab: React.FC<TeacherExamSubmissionTabProps> =
     }
 
     setAttachedFileName(file.name);
-    setAttachedFileSize((file.size / (1024 * 1024)).toFixed(2) + ' Mo');
 
     // Detect type
     const lowerName = file.name.toLowerCase();
@@ -161,14 +161,34 @@ export const TeacherExamSubmissionTab: React.FC<TeacherExamSubmissionTabProps> =
       setTitle(cleanName);
     }
 
-    // Read to Base64
-    const reader = new FileReader();
-    reader.onload = (loadEvt) => {
-      const res = loadEvt.target?.result as string;
-      setAttachedFileUrl(res);
-      setErrorMessage(null);
-    };
-    reader.readAsDataURL(file);
+    // Process file: If image, compress it for fast and light Firestore sync (<120KB)
+    if (detectedType === 'IMAGE') {
+      try {
+        const { dataUrl, sizeKb } = await compressExamImage(file, 1400, 0.78);
+        setAttachedFileUrl(dataUrl);
+        setAttachedFileSize(`${sizeKb} Ko (Optimisé HD)`);
+        setErrorMessage(null);
+      } catch (err) {
+        // Fallback to raw data url
+        const reader = new FileReader();
+        reader.onload = (loadEvt) => {
+          const res = loadEvt.target?.result as string;
+          setAttachedFileUrl(res);
+          setAttachedFileSize((file.size / (1024 * 1024)).toFixed(2) + ' Mo');
+          setErrorMessage(null);
+        };
+        reader.readAsDataURL(file);
+      }
+    } else {
+      setAttachedFileSize((file.size / (1024 * 1024)).toFixed(2) + ' Mo');
+      const reader = new FileReader();
+      reader.onload = (loadEvt) => {
+        const res = loadEvt.target?.result as string;
+        setAttachedFileUrl(res);
+        setErrorMessage(null);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   // Quick insert snippet helper into written content
@@ -273,23 +293,25 @@ En utilisant vos connaissances mathématiques :
         examDate: examDate,
         includeHeader: true,
         isAvailableForStudents: isForParents,
-        sentToSchool: isForSchool,
+        sentToSchool: true, // Always true so it always appears in the main platform's Espace Épreuves Word IA
         sentToParents: isForParents
       });
 
       // 1. Notification to School Administration (Direction / Censeur)
-      if (isForSchool) {
-        addCommunication({
-          senderId: currentTeacher.id,
-          senderName: `Prof. ${currentTeacher.lastName} (${subjectName})`,
-          recipientGroup: 'ADMIN',
-          subject: `Tirage Épreuve demandé : ${title.trim()} (${finalClassName})`,
-          content: `Le professeur ${currentTeacher.firstName} ${currentTeacher.lastName} (Tél: ${currentTeacher.phone}) a déposé une épreuve de ${subjectName} pour la classe de ${finalClassName}. Date prévue : ${examDate} (${copiesRequested} exemplaires demandés). Disponible dans l'Espace Épreuves pour validation et tirage.`,
-          channels: ['SMS'],
-          sentAt: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
-          status: 'LIVRE'
-        });
-      }
+      addCommunication({
+        senderId: currentTeacher.id,
+        senderName: `Prof. ${currentTeacher.lastName} (${subjectName})`,
+        recipientGroup: 'ADMIN',
+        subject: isForSchool 
+          ? `Tirage Épreuve demandé : ${title.trim()} (${finalClassName})`
+          : `Épreuve Enseignant déposée : ${title.trim()} (${finalClassName})`,
+        content: isForSchool 
+          ? `Le professeur ${currentTeacher.firstName} ${currentTeacher.lastName} (Tél: ${currentTeacher.phone}) a déposé une épreuve de ${subjectName} pour la classe de ${finalClassName}. Date prévue : ${examDate} (${copiesRequested} exemplaires demandés). Disponible dans l'Espace Épreuves pour validation et tirage.`
+          : `Le professeur ${currentTeacher.firstName} ${currentTeacher.lastName} (Tél: ${currentTeacher.phone}) a mis à disposition une épreuve de révision pour la classe de ${finalClassName} : "${title.trim()}". Enregistrée dans l'Espace Épreuves.`,
+        channels: ['SMS'],
+        sentAt: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        status: 'LIVRE'
+      });
 
       // 2. Notification to Parents & Students of this class
       if (isForParents) {

@@ -4,10 +4,12 @@ import { SchoolClass, Subject, Teacher, Grade } from '../types';
 import { updateDynamicPwaBranding } from '../lib/pwaHelper';
 import { isGradeModifiable, getGradeDeadlineInfo } from '../lib/gradeUtils';
 import { PwaInstallGuideModalProps } from '../components/modals/PwaInstallGuideModal';
+import { triggerAutoInstall, isDesktopPC } from '../lib/pwaInstallManager';
 import { 
   GraduationCap, 
   BookOpen, 
   Smartphone, 
+  Monitor, 
   CheckCircle2, 
   Clock, 
   AlertCircle, 
@@ -78,6 +80,13 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
   // View mode: 'entry' (saisie rapide), 'history' (mes saisies & modifications 3 jours), 'epreuves' (dépôt épreuves) or 'quiz-week' (exercices & corrigés week-end)
   const [viewMode, setViewMode] = useState<'entry' | 'history' | 'epreuves' | 'quiz-week'>('entry');
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const isPC = isDesktopPC();
+
+  const handleAppInstall = async () => {
+    const res = await triggerAutoInstall();
+    if (res.success && res.outcome === 'accepted') return;
+    setIsInstallModalOpen(true);
+  };
   const [isSavedSuccess, setIsSavedSuccess] = useState(false);
 
   // Grade Entry Configuration States
@@ -345,11 +354,12 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
 
           <div className="flex items-center space-x-2 shrink-0">
             <button
-              onClick={() => setIsInstallModalOpen(true)}
+              onClick={handleAppInstall}
               className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center space-x-1.5 shadow cursor-pointer"
+              title={isPC ? "Ajouter l'application sur votre écran de PC (Bureau) avec son logo" : "Ajouter à l'écran d'accueil"}
             >
-              <Smartphone className="w-4 h-4" />
-              <span className="hidden sm:inline">Ajouter à l'écran</span>
+              {isPC ? <Monitor className="w-4 h-4 text-emerald-200" /> : <Smartphone className="w-4 h-4 text-emerald-200" />}
+              <span className="hidden sm:inline">{isPC ? "Installer sur PC" : "Ajouter à l'écran"}</span>
             </button>
 
             {onReturnToPlatform && (
