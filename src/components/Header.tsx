@@ -4,6 +4,7 @@ import { useGoogleAuth } from './GoogleAuthGate';
 import { SchoolLogo } from './SchoolLogo';
 import { InstallPwaModal } from './InstallPwaModal';
 import { SubAppsShareModal } from './modals/SubAppsShareModal';
+import { SchoolLogoImportModal } from './modals/SchoolLogoImportModal';
 import { buildDirectSchoolAccessUrl } from '../lib/urlUtils';
 import { triggerAutoInstall, isDesktopPC } from '../lib/pwaInstallManager';
 import {
@@ -32,7 +33,8 @@ import {
   CheckCircle2,
   LayoutDashboard,
   FileText,
-  FileCheck
+  FileCheck,
+  Image as ImageIcon
 } from 'lucide-react';
 import { UserRole } from '../types';
 
@@ -82,6 +84,7 @@ export const Header: React.FC<HeaderProps> = ({
   const [showNotifications, setShowNotifications] = useState(false);
   const [showPwaModal, setShowPwaModal] = useState(false);
   const [showSubAppsModal, setShowSubAppsModal] = useState(false);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
 
   const isPC = isDesktopPC();
 
@@ -372,6 +375,18 @@ export const Header: React.FC<HeaderProps> = ({
                     <button
                       onClick={() => {
                         setShowSchoolDropdown(false);
+                        setIsLogoModalOpen(true);
+                      }}
+                      className="w-full py-2 px-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-extrabold text-[11px] flex items-center justify-center space-x-1.5 transition-colors cursor-pointer border border-indigo-200 dark:border-indigo-800"
+                      title="Importer ou modifier le logo officiel qui figurera sur tous les bulletins et épreuves Word"
+                    >
+                      <ImageIcon className="h-3.5 w-3.5 text-indigo-500" />
+                      <span>Importer / Modifier le Logo</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowSchoolDropdown(false);
                         onNavigate && onNavigate('settings');
                       }}
                       className="w-full py-2 px-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 font-extrabold text-[11px] flex items-center justify-center space-x-1.5 transition-colors cursor-pointer"
@@ -437,6 +452,17 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="sm:hidden">+ ÉCOLE</span>
               </button>
             )}
+
+            {/* School Logo Quick Import Button */}
+            <button
+              type="button"
+              onClick={() => setIsLogoModalOpen(true)}
+              className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-black text-xs shadow-xs transition-all cursor-pointer"
+              title="Importer ou changer le logo officiel (affiché automatiquement sur tous les bulletins et épreuves Word)"
+            >
+              <ImageIcon className="h-3.5 w-3.5 text-indigo-500" />
+              <span className="hidden md:inline">Logo École</span>
+            </button>
 
             {/* PWA Install / Home Screen Button (Installation PC et Mobile avec logo) */}
             <button
@@ -652,6 +678,11 @@ export const Header: React.FC<HeaderProps> = ({
             onNavigate(appType === 'parent' ? 'parent-subapp' : 'teacher-subapp');
           }
         }}
+      />
+
+      <SchoolLogoImportModal
+        isOpen={isLogoModalOpen}
+        onClose={() => setIsLogoModalOpen(false)}
       />
     </header>
   );

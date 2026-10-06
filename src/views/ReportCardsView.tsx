@@ -5,6 +5,7 @@ import { PrintBulletinModal } from '../components/modals/PrintBulletinModal';
 import { ScanBulletinTemplateModal } from '../components/modals/ScanBulletinTemplateModal';
 import { SendBulletinParentModal } from '../components/modals/SendBulletinParentModal';
 import { AIGradesBulletinWhatsAppModal } from '../components/modals/AIGradesBulletinWhatsAppModal';
+import { SchoolLogoImportModal } from '../components/modals/SchoolLogoImportModal';
 import { calculateClassRanks, defaultBulletinTemplate } from '../lib/gradingUtils';
 import {
   FileCheck,
@@ -32,7 +33,8 @@ import {
   Smartphone,
   Send,
   Bot,
-  ArrowLeft
+  ArrowLeft,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface ReportCardsViewProps {
@@ -58,6 +60,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   const [selectedStudentForBulletin, setSelectedStudentForBulletin] = useState<Student | null>(null);
   const [isScanTemplateModalOpen, setIsScanTemplateModalOpen] = useState(false);
   const [showAiWhatsAppModal, setShowAiWhatsAppModal] = useState(false);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'CARDS' | 'RANKING_TABLE'>('RANKING_TABLE');
   const [bulkArchiveMessage, setBulkArchiveMessage] = useState<string>('');
 
@@ -173,6 +176,22 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
 
         {/* Action Buttons: Scan Bulletin Model & AI WhatsApp Dispatcher */}
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          <button
+            onClick={() => setIsLogoModalOpen(true)}
+            className="w-full md:w-auto px-3.5 py-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-extrabold text-xs border border-indigo-200 dark:border-indigo-800 shadow-sm flex items-center justify-center space-x-2 transition-all shrink-0 cursor-pointer"
+            title="Importer ou changer le logo officiel qui figurera automatiquement sur tous les bulletins et épreuves Word"
+          >
+            <ImageIcon className="h-4 w-4 text-indigo-500" />
+            <span>Logo École</span>
+            {(currentSchool?.logoUrl || settings.logoUrl) && (
+              <img
+                src={currentSchool?.logoUrl || settings.logoUrl}
+                alt="Logo"
+                className="w-4 h-4 object-contain rounded-md bg-white p-0.5 ml-0.5"
+              />
+            )}
+          </button>
+
           <button
             onClick={() => setShowAiWhatsAppModal(true)}
             className="w-full md:w-auto px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 hover:from-emerald-500 hover:to-indigo-600 text-white font-black text-xs shadow-lg shadow-emerald-600/20 flex items-center justify-center space-x-2 transition-all shrink-0 cursor-pointer hover:scale-105"
@@ -866,6 +885,13 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
         isOpen={showAiWhatsAppModal}
         onClose={() => setShowAiWhatsAppModal(false)}
         defaultClassId={selectedClassId}
+      />
+
+      {/* MODAL 5: School Logo Import Modal */}
+      <SchoolLogoImportModal
+        isOpen={isLogoModalOpen}
+        onClose={() => setIsLogoModalOpen(false)}
+        initialContext="BULLETIN"
       />
 
     </div>

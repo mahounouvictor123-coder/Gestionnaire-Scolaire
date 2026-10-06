@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Building, Layers, FileText, CheckCircle2 } from 'lucide-react';
 import { SchoolSettings } from '../types';
+import { useApp } from '../lib/store';
 
 interface ExamContentRendererProps {
   paper: {
@@ -268,7 +269,8 @@ export const ExamContentRenderer: React.FC<ExamContentRendererProps> = ({
     }
   }
 
-  const logoUrl = settings.examHeaderUrl || settings.logoUrl;
+  const { currentSchool } = useApp();
+  const logoUrl = settings.examHeaderUrl || settings.logoUrl || currentSchool?.logoUrl;
 
   return (
     <div className="space-y-8 font-serif text-slate-900 printable-exam-document">

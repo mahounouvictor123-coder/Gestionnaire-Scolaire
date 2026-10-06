@@ -2507,19 +2507,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateSettings = (newSet: Partial<SchoolSettings>) => {
     setSettings(prev => {
-      const next = { ...prev, ...newSet };
+      const targetLogo = newSet.logoUrl || (newSet.examHeaderUrl ? newSet.examHeaderUrl : prev.logoUrl);
+      const targetExamHeader = newSet.examHeaderUrl || (newSet.logoUrl ? newSet.logoUrl : prev.examHeaderUrl);
+
+      const next = { 
+        ...prev, 
+        ...newSet,
+        logoUrl: targetLogo,
+        examHeaderUrl: targetExamHeader
+      };
+
       // Save directly to localStorage for current school
       localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_SETTINGS`, JSON.stringify(next));
       syncToCloud(currentSchoolId, 'SETTINGS', next);
 
-      if (newSet.staffRolePermissions) {
-        setSchools(sPrev => {
-          const updated = sPrev.map(sch => sch.id === currentSchoolId ? { ...sch, staffRolePermissions: newSet.staffRolePermissions } : sch);
-          localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_SCHOOLS_REGISTRY`, JSON.stringify(updated));
-          syncSchoolsRegistryToCloud(updated);
-          return updated;
+      // Keep school registry synchronized with new logo, name, motto, signature, etc.
+      setSchools(sPrev => {
+        const updated = sPrev.map(sch => {
+          if (sch.id === currentSchoolId) {
+            return {
+              ...sch,
+              name: newSet.schoolName || sch.name,
+              motto: newSet.motto || sch.motto,
+              logoUrl: targetLogo || sch.logoUrl,
+              signatureUrl: newSet.signatureUrl || sch.signatureUrl,
+              staffRolePermissions: newSet.staffRolePermissions || sch.staffRolePermissions
+            };
+          }
+          return sch;
         });
-      }
+        localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_SCHOOLS_REGISTRY`, JSON.stringify(updated));
+        syncSchoolsRegistryToCloud(updated);
+        return updated;
+      });
+
       return next;
     });
   };

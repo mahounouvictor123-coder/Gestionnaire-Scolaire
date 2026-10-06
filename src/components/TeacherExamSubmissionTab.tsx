@@ -423,6 +423,14 @@ En utilisant vos connaissances mathématiques :
       <div className="p-5 rounded-3xl bg-gradient-to-r from-blue-950 via-slate-900 to-indigo-950 border border-blue-800/40 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-2 flex-wrap gap-1">
+            {(currentSchool?.logoUrl || settings.logoUrl) && (
+              <img
+                src={currentSchool?.logoUrl || settings.logoUrl}
+                alt="Logo École"
+                className="w-7 h-7 rounded-lg object-contain bg-white p-0.5 border border-white/20 shrink-0"
+                title="Logo officiel de l'école automatiquement inclus sur les épreuves Word (.doc) et bulletins"
+              />
+            )}
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500 text-slate-950">
               Espace Épreuves & Devoirs
             </span>

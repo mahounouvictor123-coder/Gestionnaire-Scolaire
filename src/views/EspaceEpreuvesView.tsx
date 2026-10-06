@@ -3,6 +3,7 @@ import { useApp } from '../lib/store';
 import { ExamPaper, ExamType } from '../types';
 import { ScanExamPaperModal } from '../components/modals/ScanExamPaperModal';
 import { ExamHeaderConfigModal } from '../components/modals/ExamHeaderConfigModal';
+import { SchoolLogoImportModal } from '../components/modals/SchoolLogoImportModal';
 import { AIExamCopilotChat } from '../components/AIExamCopilotChat';
 import { ExamContentRenderer, cleanAndFormatMathText, parseSquareRoots } from '../components/ExamContentRenderer';
 import { clientFetch } from '../services/clientFetch.ts';
@@ -37,7 +38,8 @@ import {
   GraduationCap,
   Archive,
   ArchiveRestore,
-  FileUp
+  FileUp,
+  Image as ImageIcon
 } from 'lucide-react';
 import { ClassExamRepositoryAndArchiveTab } from '../components/ClassExamRepositoryAndArchiveTab';
 import { exportExamPaperToWord, downloadAttachedTeacherFile } from '../lib/examExportUtils';
@@ -62,6 +64,7 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [scanModalInitialTab, setScanModalInitialTab] = useState<'IMAGE' | 'TEXT' | 'DEMO'>('IMAGE');
   const [isHeaderConfigOpen, setIsHeaderConfigOpen] = useState(false);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
 
   const [mainTab, setMainTab] = useState<'CLASS_ARCHIVES' | 'OCR_GENERATOR' | 'ALL_EXAMS'>('CLASS_ARCHIVES');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('ALL');
@@ -361,6 +364,22 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
             >
               <Building className="h-4 w-4 text-amber-300" />
               <span>En-Tête Officiel</span>
+            </button>
+
+            <button
+              onClick={() => setIsLogoModalOpen(true)}
+              className="px-4 py-3 rounded-2xl bg-indigo-600/80 hover:bg-indigo-600 text-white font-bold text-xs flex items-center space-x-2 backdrop-blur-sm border border-indigo-400/40 transition-all cursor-pointer shadow-md"
+              title="Importer ou changer le logo officiel qui figurera automatiquement sur toutes les épreuves Word (.doc) et les bulletins"
+            >
+              <ImageIcon className="h-4 w-4 text-amber-300" />
+              <span>Logo Épreuves (Word)</span>
+              {(settings.examHeaderUrl || settings.logoUrl || currentSchool?.logoUrl) && (
+                <img
+                  src={settings.examHeaderUrl || settings.logoUrl || currentSchool?.logoUrl}
+                  alt="Logo"
+                  className="w-5 h-5 object-contain rounded-md bg-white p-0.5 ml-1"
+                />
+              )}
             </button>
 
             <button
@@ -948,6 +967,16 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
                 </button>
 
                 <button
+                  type="button"
+                  onClick={() => setIsLogoModalOpen(true)}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-extrabold text-xs flex items-center space-x-1.5 cursor-pointer shadow-xs transition-colors"
+                  title="Importer ou changer le logo officiel figurant sur cette épreuve Word et sur les bulletins"
+                >
+                  <ImageIcon className="h-3.5 w-3.5 text-indigo-500" />
+                  <span>Logo Épreuve</span>
+                </button>
+
+                <button
                   onClick={() => exportExamPaperToWord(activePreviewPaper, settings, currentSchool)}
                   className="px-3.5 py-1.5 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center space-x-1.5 shadow-md cursor-pointer"
                   title="Télécharger l'épreuve formatée au format Word (.doc)"
@@ -1085,6 +1114,13 @@ export const EspaceEpreuvesView: React.FC<EspaceEpreuvesViewProps> = ({ onNaviga
       <ExamHeaderConfigModal
         isOpen={isHeaderConfigOpen}
         onClose={() => setIsHeaderConfigOpen(false)}
+      />
+
+      {/* SCHOOL LOGO IMPORT MODAL */}
+      <SchoolLogoImportModal
+        isOpen={isLogoModalOpen}
+        onClose={() => setIsLogoModalOpen(false)}
+        initialContext="EPREUVE"
       />
 
     </div>

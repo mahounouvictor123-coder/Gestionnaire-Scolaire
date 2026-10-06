@@ -380,15 +380,23 @@ export const StudentPortalView: React.FC = () => {
         
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
           <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-              <BookOpen className="h-6 w-6" />
-            </div>
+            {(currentSchool?.logoUrl || settings.logoUrl) ? (
+              <img
+                src={currentSchool?.logoUrl || settings.logoUrl}
+                alt="Logo"
+                className="w-12 h-12 rounded-xl object-contain bg-white border border-slate-200 dark:border-slate-700 p-0.5 shrink-0 shadow-xs"
+              />
+            ) : (
+              <div className="p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 shrink-0">
+                <BookOpen className="h-6 w-6" />
+              </div>
+            )}
             <div>
               <h2 className="text-lg font-black text-slate-900 dark:text-white">
                 Bulletin Trimestriel des Notes & Évaluations (Trimestre {selectedTrimester})
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Détail des notes obtenues par matière avec leurs coefficients officiels.
+                {currentSchool?.name || settings.schoolName} • Détail des notes obtenues par matière avec leurs coefficients officiels.
               </p>
             </div>
           </div>

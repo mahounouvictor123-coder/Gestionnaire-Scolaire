@@ -3,6 +3,8 @@ import { useApp } from '../lib/store';
 import { validateSchoolPassword } from '../lib/passwordUtils';
 import { SchoolLogo } from '../components/SchoolLogo';
 import { StaffAccessCodeManager } from '../components/StaffAccessCodeManager';
+import { SchoolLogoImportModal } from '../components/modals/SchoolLogoImportModal';
+import { compressExamImage } from '../lib/imageCompression';
 import { StaffRoleConfig } from '../types';
 import { defaultStaffRolePermissions } from '../data/initialData';
 import {
@@ -23,7 +25,8 @@ import {
   Edit2,
   Trash2,
   AlertTriangle,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -44,6 +47,7 @@ export const SettingsView: React.FC = () => {
   const [signatureUrl, setSignatureUrl] = useState(currentSchool?.signatureUrl || settings.signatureUrl);
   const [accessPassword, setAccessPassword] = useState(settings.accessPassword || currentSchool?.accessPassword || '12345678');
   const [confirmAccessPassword, setConfirmAccessPassword] = useState(settings.accessPassword || currentSchool?.accessPassword || '12345678');
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
 
   // Deletion modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -80,16 +84,21 @@ export const SettingsView: React.FC = () => {
   const logoInputRef = useRef<HTMLInputElement>(null);
   const signatureInputRef = useRef<HTMLInputElement>(null);
 
-  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          setLogoUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const { dataUrl } = await compressExamImage(file, 1200, 0.85);
+        setLogoUrl(dataUrl);
+      } catch {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          if (typeof reader.result === 'string') {
+            setLogoUrl(reader.result);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -139,6 +148,7 @@ export const SettingsView: React.FC = () => {
       email,
       currency,
       logoUrl,
+      examHeaderUrl: logoUrl,
       signatureUrl,
       accessPassword: accessPassword.trim(),
       staffRolePermissions: staffRoles
@@ -248,7 +258,7 @@ export const SettingsView: React.FC = () => {
             <div className="space-y-2 text-xs text-slate-600 dark:text-slate-300 max-w-md">
               <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">Authentification des Documents Scolaires</h3>
               <p>
-                Le nom <strong className="text-slate-900 dark:text-white">« {currentSchool?.name || settings.schoolName} »</strong>, le logo et la signature scannée ci-dessous sont apposés automatiquement sur tous les <strong className="text-slate-900 dark:text-white">reçus de paiement</strong>, <strong className="text-slate-900 dark:text-white">bulletins trimestriels</strong>, <strong className="text-slate-900 dark:text-white">certificats de scolarité</strong> et <strong className="text-slate-900 dark:text-white">cartes d'identité scolaires</strong>.
+                Le nom <strong className="text-slate-900 dark:text-white">« {currentSchool?.name || settings.schoolName} »</strong>, le logo et la signature scannée ci-dessous sont apposés automatiquement sur tous les <strong className="text-slate-900 dark:text-white">bulletins trimestriels</strong>, <strong className="text-slate-900 dark:text-white">épreuves d'examen Word (.doc)</strong>, <strong className="text-slate-900 dark:text-white">reçus de paiement</strong>, <strong className="text-slate-900 dark:text-white">certificats de scolarité</strong> et <strong className="text-slate-900 dark:text-white">cartes d'identité scolaires</strong>.
               </p>
             </div>
           </div>
@@ -264,7 +274,11 @@ export const SettingsView: React.FC = () => {
               </div>
 
               <div className="flex items-center space-x-4">
-                <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center overflow-hidden shrink-0">
+                <div 
+                  onClick={() => setIsLogoModalOpen(true)}
+                  className="w-20 h-20 rounded-2xl border-2 border-dashed border-indigo-400 dark:border-indigo-600 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center overflow-hidden shrink-0 cursor-pointer hover:border-indigo-600 transition-colors"
+                  title="Cliquer pour ouvrir l'assistant d'importation du logo"
+                >
                   {logoUrl ? (
                     <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
                   ) : (
@@ -273,6 +287,15 @@ export const SettingsView: React.FC = () => {
                 </div>
 
                 <div className="space-y-2 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsLogoModalOpen(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-xs flex items-center justify-center space-x-1.5 shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+                  >
+                    <Sparkles className="h-4 w-4 text-amber-300" />
+                    <span>Assistant Logo HD (Bulletins & Word)</span>
+                  </button>
+
                   <input
                     type="file"
                     ref={logoInputRef}
@@ -283,10 +306,10 @@ export const SettingsView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => logoInputRef.current?.click()}
-                    className="w-full py-2 px-3 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center justify-center space-x-1.5 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors cursor-pointer"
+                    className="w-full py-1.5 px-3 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold text-xs flex items-center justify-center space-x-1.5 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors cursor-pointer"
                   >
-                    <Upload className="h-4 w-4" />
-                    <span>Parcourir & Importer Logo</span>
+                    <Upload className="h-3.5 w-3.5" />
+                    <span>Parcourir une image (PC / Mobile)</span>
                   </button>
                 </div>
               </div>
@@ -650,6 +673,16 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* School Logo Import Modal */}
+      <SchoolLogoImportModal
+        isOpen={isLogoModalOpen}
+        onClose={() => {
+          setIsLogoModalOpen(false);
+          setLogoUrl(currentSchool?.logoUrl || settings.logoUrl);
+        }}
+        initialContext="GENERAL"
+      />
 
     </div>
   );

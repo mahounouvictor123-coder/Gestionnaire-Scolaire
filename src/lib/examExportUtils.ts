@@ -11,8 +11,9 @@ export function exportExamPaperToWord(
   currentSchool?: School | null
 ): void {
   const includeHeader = paper.includeHeader !== false;
-  const logoHtml = (includeHeader && (settings.examHeaderUrl || settings.logoUrl))
-    ? `<img src="${settings.examHeaderUrl || settings.logoUrl}" width="80" height="80" style="vertical-align:middle; margin:5px;"/>`
+  const effectiveLogo = settings.examHeaderUrl || settings.logoUrl || currentSchool?.logoUrl || '';
+  const logoHtml = (includeHeader && effectiveLogo)
+    ? `<img src="${effectiveLogo}" width="80" height="80" alt="Logo École" style="vertical-align:middle; margin:5px; max-width:85px; max-height:85px; object-fit:contain;"/>`
     : '';
 
   // Check if content has explicit Verso tag or a Problem/Exercice 3 section to break onto Page 2

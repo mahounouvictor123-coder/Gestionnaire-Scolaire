@@ -33,10 +33,12 @@ import {
   Mic,
   Monitor,
   Download,
-  Smartphone
+  Smartphone,
+  Camera
 } from 'lucide-react';
 import { UserRole } from '../types';
 import { InstallPwaModal } from './InstallPwaModal';
+import { SchoolLogoImportModal } from './modals/SchoolLogoImportModal';
 import { triggerAutoInstall, isDesktopPC, isAppInstalled } from '../lib/pwaInstallManager';
 
 interface SidebarProps {
@@ -67,6 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
   ).length;
 
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const isPC = isDesktopPC();
   const installed = isAppInstalled();
 
@@ -158,18 +161,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
       
       {/* Brand Logo Card in Sidebar */}
       <div 
-        onClick={() => setActiveView('dashboard')}
-        className="p-3 mx-3 mt-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center space-x-2.5 cursor-pointer hover:border-emerald-600 transition-colors group"
+        onClick={() => setIsLogoModalOpen(true)}
+        className="p-3 mx-3 mt-3 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between cursor-pointer hover:border-indigo-600 transition-colors group"
+        title="Cliquer pour importer ou modifier le logo officiel (bulletins & épreuves Word)"
       >
-        <SchoolLogo variant="badge" size="sm" />
-        <div className="leading-none truncate">
-          <p className="font-black text-xs text-white group-hover:text-emerald-400 transition-colors truncate">
-            {settings.schoolName || 'ÉTABLISSEMENT SCOLAIRE'}
-          </p>
-          <p className="text-[9px] font-bold text-emerald-400 mt-1 uppercase tracking-wider truncate">
-            {settings.motto || 'DISCIPLINE • TRAVAIL • RIGUEUR'}
-          </p>
+        <div className="flex items-center space-x-2.5 truncate">
+          <SchoolLogo variant="badge" size="sm" />
+          <div className="leading-none truncate">
+            <p className="font-black text-xs text-white group-hover:text-indigo-300 transition-colors truncate">
+              {settings.schoolName || 'ÉTABLISSEMENT SCOLAIRE'}
+            </p>
+            <p className="text-[9px] font-bold text-indigo-400 mt-1 uppercase tracking-wider truncate">
+              {settings.motto || 'DISCIPLINE • TRAVAIL • RIGUEUR'}
+            </p>
+          </div>
         </div>
+        <span className="p-1 rounded-lg bg-indigo-950 text-indigo-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          <Camera className="h-3 w-3" />
+        </span>
       </div>
 
       {/* Current Active Role Card */}
@@ -260,6 +269,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
         isOpen={showInstallModal}
         onClose={() => setShowInstallModal(false)}
         appName={settings.schoolName || 'GESTIONNAIRE SCOLAIRE'}
+      />
+
+      <SchoolLogoImportModal
+        isOpen={isLogoModalOpen}
+        onClose={() => setIsLogoModalOpen(false)}
       />
     </aside>
   );

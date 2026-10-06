@@ -3,7 +3,8 @@ import { useApp } from '../../lib/store';
 import { Student, SchoolClass } from '../../types';
 import { calculateClassRanks, defaultBulletinTemplate } from '../../lib/gradingUtils';
 import { SendBulletinParentModal } from './SendBulletinParentModal';
-import { X, Printer, Download, GraduationCap, CheckCircle2, Award, Trophy, PenTool, Upload, Eye, EyeOff, Sparkles, MessageCircle, Smartphone } from 'lucide-react';
+import { SchoolLogoImportModal } from './SchoolLogoImportModal';
+import { X, Printer, Download, GraduationCap, CheckCircle2, Award, Trophy, PenTool, Upload, Eye, EyeOff, Sparkles, MessageCircle, Smartphone, Image as ImageIcon, Camera } from 'lucide-react';
 
 const PRESET_SIGNATURES = [
   { name: 'Signature 1 (Encre Bleue)', url: 'https://images.unsplash.com/photo-1600132806370-bf17e65e942f?auto=format&fit=crop&q=80&w=200' },
@@ -30,6 +31,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
   const [showSignatureControls, setShowSignatureControls] = useState(false);
   const [showSignatureOnDoc, setShowSignatureOnDoc] = useState(true);
   const [isSendParentModalOpen, setIsSendParentModalOpen] = useState(false);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -138,8 +140,16 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
             <GraduationCap className="h-5 w-5 text-purple-400" />
             <span className="font-bold text-sm">Aperçu Officiel du Bulletin - {activeTemplate.templateName}</span>
             <button
+              onClick={() => setIsLogoModalOpen(true)}
+              className="ml-2 px-2.5 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 font-bold text-[11px] rounded-lg flex items-center space-x-1.5 transition-colors cursor-pointer"
+              title="Importer ou changer le logo officiel qui apparaît sur le bulletin et les épreuves Word"
+            >
+              <ImageIcon className="h-3.5 w-3.5 text-indigo-400" />
+              <span>🏫 Logo de l'École</span>
+            </button>
+            <button
               onClick={() => setShowSignatureControls(!showSignatureControls)}
-              className="ml-2 px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-[11px] rounded-lg flex items-center space-x-1 transition-colors"
+              className="ml-1 px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-[11px] rounded-lg flex items-center space-x-1 transition-colors"
             >
               <PenTool className="h-3.5 w-3.5 text-amber-400" />
               <span>🖋️ Signature Scannée</span>
@@ -246,11 +256,20 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
           {/* Header */}
           <div className="flex items-start justify-between border-b-2 border-blue-900 pb-4 mb-6">
             <div className="flex items-center space-x-4">
-              <img
-                src={currentSchool?.logoUrl || settings.logoUrl}
-                alt={currentSchool?.name || settings.schoolName}
-                className="h-20 w-20 object-cover rounded-xl ring-2 ring-blue-900/20"
-              />
+              <div 
+                className="relative group cursor-pointer shrink-0" 
+                onClick={() => setIsLogoModalOpen(true)}
+                title="Cliquer pour importer ou changer le logo officiel de l'école (affiché sur les bulletins et épreuves Word)"
+              >
+                <img
+                  src={currentSchool?.logoUrl || settings.logoUrl || '/icon.svg'}
+                  alt={currentSchool?.name || settings.schoolName}
+                  className="h-20 w-20 object-contain rounded-xl ring-2 ring-blue-900/20 bg-white p-1"
+                />
+                <span className="absolute -bottom-1 -right-1 p-1 bg-indigo-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity print:hidden shadow-md">
+                  <Camera className="h-2.5 w-2.5" />
+                </span>
+              </div>
               <div>
                 <h1 className="text-xl font-extrabold text-blue-900 uppercase tracking-tight">
                   {(settings.schoolName && settings.schoolName !== 'GESTIONNAIRE SCOLAIRE') ? settings.schoolName : (currentSchool?.name || 'ÉTABLISSEMENT SCOLAIRE')}
@@ -456,6 +475,13 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
           studentAppreciation={studentRankData.generalAppreciation}
         />
       )}
+
+      {/* School Logo Import Modal */}
+      <SchoolLogoImportModal
+        isOpen={isLogoModalOpen}
+        onClose={() => setIsLogoModalOpen(false)}
+        initialContext="BULLETIN"
+      />
     </div>
   );
 };
