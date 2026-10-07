@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../lib/store';
 import { Teacher, SchoolClass, Subject } from '../types';
+import { isPrimaryClass } from '../lib/schoolUtils';
 import { 
   GraduationCap, 
   UserPlus, 
@@ -30,6 +31,11 @@ export const TeacherAuthGate: React.FC<TeacherAuthGateProps> = ({
   // Mode: 'REGISTER' (s'inscrire) or 'LOGIN' (se connecter)
   const [authMode, setAuthMode] = useState<'REGISTER' | 'LOGIN'>('REGISTER');
 
+  // Filter out primary classes from secondary teacher registration
+  const secondaryClasses = useMemo(() => {
+    return classes.filter(c => !isPrimaryClass(c));
+  }, [classes]);
+
   // Registration Form State
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -37,8 +43,8 @@ export const TeacherAuthGate: React.FC<TeacherAuthGateProps> = ({
   const [customSubject, setCustomSubject] = useState('');
   const [phone, setPhone] = useState('');
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
-  const [cycle, setCycle] = useState<'PRIMAIRE' | 'COLLEGE' | 'LYCEE'>('COLLEGE');
-  const [teacherTitle, setTeacherTitle] = useState<'PROFESSEUR' | 'MAITRE' | 'MAITRESSE'>('PROFESSEUR');
+  const [cycle, setCycle] = useState<'COLLEGE' | 'LYCEE'>('COLLEGE');
+  const [teacherTitle, setTeacherTitle] = useState<'PROFESSEUR'>('PROFESSEUR');
   const [regError, setRegError] = useState<string | null>(null);
 
   // Login Form State
@@ -107,7 +113,7 @@ export const TeacherAuthGate: React.FC<TeacherAuthGateProps> = ({
       email: `${cleanLastName.toLowerCase()}.${cleanFirstName.toLowerCase().replace(/[^a-z0-9]/g, '')}@${currentSchool.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.educ`,
       phone: cleanPhone,
       subjects: [finalSubject],
-      classIds: selectedClassIds.length > 0 ? selectedClassIds : (classes[0] ? [classes[0].id] : []),
+      classIds: selectedClassIds.length > 0 ? selectedClassIds : (secondaryClasses[0] ? [secondaryClasses[0].id] : []),
       salary: 0,
       hireDate: new Date().toISOString().split('T')[0],
       status: 'ACTIF',
@@ -254,8 +260,6 @@ export const TeacherAuthGate: React.FC<TeacherAuthGateProps> = ({
                     className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:ring-2 focus:ring-indigo-500"
                   >
                     <option value="PROFESSEUR">M. / Mme le Professeur</option>
-                    <option value="MAITRE">Maître (Primaire)</option>
-                    <option value="MAITRESSE">Maîtresse (Primaire)</option>
                   </select>
                 </div>
 
@@ -268,7 +272,6 @@ export const TeacherAuthGate: React.FC<TeacherAuthGateProps> = ({
                   >
                     <option value="COLLEGE">Collège (6ème à 3ème)</option>
                     <option value="LYCEE">Lycée (2nde à Tle)</option>
-                    <option value="PRIMAIRE">Enseignement Primaire</option>
                   </select>
                 </div>
               </div>
@@ -370,14 +373,14 @@ export const TeacherAuthGate: React.FC<TeacherAuthGateProps> = ({
                 </p>
               </div>
 
-              {/* Classes enseignées (optionnel mais utile) */}
-              {classes.length > 0 && (
+              {/* Classes secondaires enseignées */}
+              {secondaryClasses.length > 0 && (
                 <div>
                   <label className="text-xs font-bold text-slate-300 block mb-1.5">
-                    Classes où vous intervenez :
+                    Classes où vous intervenez (Collège & Lycée) :
                   </label>
                   <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 rounded-xl bg-slate-950 border border-slate-800">
-                    {classes.map(c => {
+                    {secondaryClasses.map(c => {
                       const isSelected = selectedClassIds.includes(c.id);
                       return (
                         <button

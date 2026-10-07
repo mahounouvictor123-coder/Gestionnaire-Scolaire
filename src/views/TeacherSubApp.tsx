@@ -33,6 +33,7 @@ import {
 import { TeacherAuthGate } from '../components/TeacherAuthGate';
 import { TeacherExamSubmissionTab } from '../components/TeacherExamSubmissionTab';
 import { TeacherQuizWeekTab } from '../components/TeacherQuizWeekTab';
+import { isPrimaryClass } from '../lib/schoolUtils';
 
 interface TeacherSubAppProps {
   onReturnToPlatform?: () => void;
@@ -89,9 +90,15 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
   };
   const [isSavedSuccess, setIsSavedSuccess] = useState(false);
 
+  // Exclude primary classes from secondary teacher portal
+  const teacherClasses = useMemo(() => {
+    return classes.filter(c => !isPrimaryClass(c));
+  }, [classes]);
+
   // Grade Entry Configuration States
   const [selectedClassId, setSelectedClassId] = useState<string>(() => {
-    return classes[0]?.id || '';
+    const nonPrimary = classes.filter(c => !isPrimaryClass(c));
+    return nonPrimary[0]?.id || '';
   });
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(() => {
@@ -108,10 +115,18 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
         }
       }
       if (currentTeacher.classIds && currentTeacher.classIds.length > 0) {
-        setSelectedClassId(currentTeacher.classIds[0]);
+        const validClassId = currentTeacher.classIds.find(cId => {
+          const c = classes.find(item => item.id === cId);
+          return c && !isPrimaryClass(c);
+        });
+        if (validClassId) {
+          setSelectedClassId(validClassId);
+        } else if (teacherClasses[0]) {
+          setSelectedClassId(teacherClasses[0].id);
+        }
       }
     }
-  }, [currentTeacher, subjects]);
+  }, [currentTeacher, subjects, classes, teacherClasses]);
 
   const [trimester, setTrimester] = useState<number>(settings.currentTrimester || 1);
   const [examType, setExamType] = useState<any>('DEVOIR_1');
@@ -216,7 +231,7 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
     addBulkGrades(validGradesToSave);
 
     // Automatically send an in-app school communication broadcast for parents
-    const targetClass = classes.find(c => c.id === selectedClassId);
+    const targetClass = teacherClasses.find(c => c.id === selectedClassId);
     const targetSubject = subjects.find(s => s.id === selectedSubjectId);
     
     if (targetClass && targetSubject) {
@@ -510,7 +525,7 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
                     onChange={(e) => setSelectedClassId(e.target.value)}
                     className="w-full px-3 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-bold focus:ring-2 focus:ring-emerald-500"
                   >
-                    {classes.map(c => (
+                    {teacherClasses.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.name} ({c.level})
                       </option>

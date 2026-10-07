@@ -10,7 +10,8 @@ export function exportExamPaperToWord(
   settings: SchoolSettings,
   currentSchool?: School | null
 ): void {
-  const includeHeader = paper.includeHeader !== false;
+  const isTeacherPaper = !!(paper.teacherName || paper.teacherId);
+  const includeHeader = paper.includeHeader === true || (!isTeacherPaper && paper.includeHeader !== false);
   const effectiveLogo = settings.examHeaderUrl || settings.logoUrl || currentSchool?.logoUrl || '';
   const logoHtml = (includeHeader && effectiveLogo)
     ? `<img src="${effectiveLogo}" width="80" height="80" alt="Logo École" style="vertical-align:middle; margin:5px; max-width:85px; max-height:85px; object-fit:contain;"/>`
@@ -85,10 +86,26 @@ export function exportExamPaperToWord(
             <td>DURÉE : ${paper.duration.toUpperCase()}</td>
             <td>COEFFICIENT : ${paper.coefficient}</td>
           </tr>
+          ${paper.teacherName ? `
+          <tr>
+            <td colspan="2" style="background-color: #f8fafc;">
+              PROFESSEUR / AUTEUR : <strong>${paper.teacherName.startsWith('Prof.') || paper.teacherName.startsWith('M.') || paper.teacherName.startsWith('Mme') ? paper.teacherName : `Prof. ${paper.teacherName}`}</strong>
+            </td>
+          </tr>` : ''}
         </table>
 
         ${paper.instructions ? `<div class="instructions-box">CONSIGNES : ${paper.instructions}</div>` : ''}
-        ` : '';
+        ` : (isTeacherPaper ? `
+        <!-- EN-TÊTE PROFESSEUR EXCLUSIF (SANS EN-TÊTE ÉTABLISSEMENT) -->
+        <div style="border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; margin-bottom: 18px; font-family: 'Times New Roman', serif;">
+          <span style="font-size: 11pt; font-weight: bold; color: #1e3a8a;">
+            PROFESSEUR / AUTEUR DU SUJET : ${paper.teacherName ? (paper.teacherName.startsWith('Prof.') || paper.teacherName.startsWith('M.') || paper.teacherName.startsWith('Mme') ? paper.teacherName : `Prof. ${paper.teacherName}`) : 'Enseignant'}
+          </span>
+          <span style="float: right; font-size: 10pt; font-weight: bold; color: #475569;">
+            ${paper.subjectName.toUpperCase()} — CLASSE : ${paper.className.toUpperCase()}
+          </span>
+        </div>
+        ` : '');
 
   const wordDocumentHtml = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>

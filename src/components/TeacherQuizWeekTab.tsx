@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../lib/store';
 import { Teacher, QuizWeek, QuizWeekSubmission } from '../types';
 import { clientFetch } from '../services/clientFetch.ts';
+import { isPrimaryClass } from '../lib/schoolUtils';
 import {
   FileText,
   Upload,
@@ -77,13 +78,20 @@ export const TeacherQuizWeekTab: React.FC<TeacherQuizWeekTabProps> = ({ currentT
     addCommunication
   } = useApp();
 
+  // Filter out primary classes from secondary teacher space
+  const teacherClasses = useMemo(() => {
+    return classes.filter(c => !isPrimaryClass(c));
+  }, [classes]);
+
   // Creation Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string>(() => {
+    const nonPrimary = classes.filter(c => !isPrimaryClass(c));
     if (currentTeacher.classIds && currentTeacher.classIds.length > 0) {
-      return currentTeacher.classIds[0];
+      const match = currentTeacher.classIds.find(id => nonPrimary.some(c => c.id === id));
+      if (match) return match;
     }
-    return classes[0]?.id || '';
+    return nonPrimary[0]?.id || '';
   });
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(() => {
@@ -188,7 +196,7 @@ export const TeacherQuizWeekTab: React.FC<TeacherQuizWeekTabProps> = ({ currentT
 
   // Quick prompt generator for weekend exercises
   const handleLoadExerciseTemplate = () => {
-    const targetClass = classes.find(c => c.id === selectedClassId);
+    const targetClass = teacherClasses.find(c => c.id === selectedClassId);
     const targetSubject = subjects.find(s => s.id === selectedSubjectId);
     const subName = targetSubject ? targetSubject.name : 'Matière';
 
@@ -235,7 +243,7 @@ CORRIGÉ EXERCICE 2 (10 points) :
       return;
     }
 
-    const targetClass = classes.find(c => c.id === selectedClassId);
+    const targetClass = teacherClasses.find(c => c.id === selectedClassId);
     const targetSubject = subjects.find(s => s.id === selectedSubjectId);
 
     const newQuiz = addQuizWeek({
@@ -464,7 +472,7 @@ CORRIGÉ EXERCICE 2 (10 points) :
               className="py-1.5 px-3 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:outline-none focus:border-indigo-500"
             >
               <option value="ALL">Toutes mes classes</option>
-              {classes.map(c => (
+              {teacherClasses.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
@@ -954,7 +962,7 @@ CORRIGÉ EXERCICE 2 (10 points) :
                     className="w-full py-2.5 px-3 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs sm:text-sm font-bold focus:outline-none focus:border-indigo-500"
                     required
                   >
-                    {classes.map(c => (
+                    {teacherClasses.map(c => (
                       <option key={c.id} value={c.id}>{c.name}</option>
                     ))}
                   </select>

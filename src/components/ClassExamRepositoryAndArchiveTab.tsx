@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../lib/store';
 import { ExamPaper, ExamType, SchoolClass } from '../types';
 import { exportExamPaperToWord, downloadAttachedTeacherFile } from '../lib/examExportUtils';
+import { extractTextFromDocx } from '../lib/docxExtractor';
 import {
   FileText,
   FolderArchive,
@@ -287,7 +288,7 @@ export const ClassExamRepositoryAndArchiveTab: React.FC<ClassExamRepositoryAndAr
       attachedFileUrl: depositFileUrl || undefined,
       attachedFileName: depositFileName || undefined,
       attachedFileType: depositFileType,
-      includeHeader: true,
+      includeHeader: false, // Ne pas coller d'en-tête officiel sur les dépôts d'épreuves profs
       isArchived: false
     };
 
@@ -304,7 +305,7 @@ export const ClassExamRepositoryAndArchiveTab: React.FC<ClassExamRepositoryAndAr
   };
 
   // Handle file input for manual deposit
-  const handleDepositFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDepositFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -320,6 +321,17 @@ export const ClassExamRepositoryAndArchiveTab: React.FC<ClassExamRepositoryAndAr
 
     if (!depositTitle) {
       setDepositTitle(file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' '));
+    }
+
+    if (lower.endsWith('.docx')) {
+      try {
+        const text = await extractTextFromDocx(file);
+        if (text && text.trim()) {
+          setDepositContent(text.trim());
+        }
+      } catch (err) {
+        console.warn('Erreur extraction docx:', err);
+      }
     }
 
     const reader = new FileReader();

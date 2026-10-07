@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { Building, Layers, FileText, CheckCircle2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Building, Layers, FileText, CheckCircle2, Download, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { SchoolSettings } from '../types';
 import { useApp } from '../lib/store';
+import { extractTextFromDocxDataUrl } from '../lib/docxExtractor';
 
 interface ExamContentRendererProps {
   paper: {
@@ -13,6 +14,15 @@ interface ExamContentRendererProps {
     instructions?: string;
     content: string;
     academicYear?: string;
+    originalImageUrl?: string;
+    attachedFileUrl?: string;
+    attachedFileName?: string;
+    attachedFileType?: 'WORD' | 'PDF' | 'IMAGE';
+    teacherName?: string;
+    teacherId?: string;
+    teacherPhone?: string;
+    parentInstructions?: string;
+    includeHeader?: boolean;
   };
   settings: SchoolSettings;
   showVersoDivider?: boolean;
@@ -228,49 +238,87 @@ export const ExamContentRenderer: React.FC<ExamContentRendererProps> = ({
   paper,
   settings,
   showVersoDivider = true,
-  includeHeader = true
+  includeHeader
 }) => {
   const [forceVerso, setForceVerso] = useState<boolean>(false);
+  const [extractedContent, setExtractedContent] = useState<string>('');
+
+  const isTeacherPaper = !!(paper.teacherName || paper.teacherId);
+  // Strict rule: For teacher-submitted exams, NEVER glue school header unless explicitly set to true
+  const effectiveIncludeHeader = includeHeader !== undefined 
+    ? includeHeader 
+    : (paper.includeHeader === true || (!isTeacherPaper && paper.includeHeader !== false));
+
+  // Auto-extract content from attached docx if content is legacy placeholder or empty
+  useEffect(() => {
+    if (
+      paper.attachedFileUrl &&
+      (paper.content?.startsWith('Épreuve transmise sous forme de document joint') || !paper.content?.trim()) &&
+      (paper.attachedFileType === 'WORD' || paper.attachedFileName?.toLowerCase().endsWith('.docx') || paper.attachedFileUrl.includes('application/vnd.openxmlformats'))
+    ) {
+      extractTextFromDocxDataUrl(paper.attachedFileUrl).then((res) => {
+        if (res && res.trim()) {
+          setExtractedContent(res.trim());
+        }
+      });
+    }
+  }, [paper.content, paper.attachedFileUrl, paper.attachedFileType, paper.attachedFileName]);
+
+  const activeContent = extractedContent || paper.content || '';
 
   // Check if content specifies an explicit VERSO / PAGE 2 split
   const versoBreakRegex = /\[(?:---|\s)*(?:PAGE 2 \/ VERSO|VERSO|PAGE_BREAK|SAUT DE PAGE)(?:---|\s)*\]/i;
-  const hasExplicitVerso = versoBreakRegex.test(paper.content);
+  const hasExplicitVerso = versoBreakRegex.test(activeContent);
 
-  let page1Content = paper.content;
+  let page1Content = activeContent;
   let page2Content = '';
 
   if (hasExplicitVerso) {
-    const parts = paper.content.split(versoBreakRegex);
+    const parts = activeContent.split(versoBreakRegex);
     page1Content = parts[0] || '';
     page2Content = parts.slice(1).join('\n\n--- VERSO ---\n\n');
   } else if (forceVerso) {
     // Manually split if user toggled forceVerso
-    const problemMatch = paper.content.match(/\n(?=(?:PROBLÈME|SITUATION COMPLEXE|CORRIGÉ|EXERCICE 3|EXERCICE 4|EXERCICE 2))/i);
+    const problemMatch = activeContent.match(/\n(?=(?:PROBLÈME|SITUATION COMPLEXE|CORRIGÉ|EXERCICE 3|EXERCICE 4|EXERCICE 2))/i);
     if (problemMatch && problemMatch.index) {
-      page1Content = paper.content.substring(0, problemMatch.index);
-      page2Content = paper.content.substring(problemMatch.index);
+      page1Content = activeContent.substring(0, problemMatch.index);
+      page2Content = activeContent.substring(problemMatch.index);
     } else {
       // Split roughly at mid-point or place placeholder
-      const mid = Math.floor(paper.content.length / 2);
-      const splitIdx = paper.content.indexOf('\n\n', mid);
-      if (splitIdx !== -1 && splitIdx < paper.content.length - 20) {
-        page1Content = paper.content.substring(0, splitIdx);
-        page2Content = paper.content.substring(splitIdx);
+      const mid = Math.floor(activeContent.length / 2);
+      const splitIdx = activeContent.indexOf('\n\n', mid);
+      if (splitIdx !== -1 && splitIdx < activeContent.length - 20) {
+        page1Content = activeContent.substring(0, splitIdx);
+        page2Content = activeContent.substring(splitIdx);
       } else {
         page2Content = "PROBLÈME / SITUATION COMPLEXE (PAGE 2 - VERSO)\n\nVoici le cadre officiel du verso pour les exercices de la deuxième page.";
       }
     }
   } else {
     // If text is long (e.g. contains "PROBLÈME" or "SITUATION COMPLEXE"), auto-detect Verso split point
-    const problemMatch = paper.content.match(/\n(?=(?:PROBLÈME|SITUATION COMPLEXE|CORRIGÉ|EXERCICE 3|EXERCICE 4))/i);
+    const problemMatch = activeContent.match(/\n(?=(?:PROBLÈME|SITUATION COMPLEXE|CORRIGÉ|EXERCICE 3|EXERCICE 4))/i);
     if (problemMatch && problemMatch.index && problemMatch.index > 300) {
-      page1Content = paper.content.substring(0, problemMatch.index);
-      page2Content = paper.content.substring(problemMatch.index);
+      page1Content = activeContent.substring(0, problemMatch.index);
+      page2Content = activeContent.substring(problemMatch.index);
     }
   }
 
   const { currentSchool } = useApp();
   const logoUrl = settings.examHeaderUrl || settings.logoUrl || currentSchool?.logoUrl;
+
+  const isPdf = paper.attachedFileType === 'PDF' || 
+    paper.attachedFileName?.toLowerCase().endsWith('.pdf') || 
+    paper.attachedFileUrl?.startsWith('data:application/pdf');
+
+  const hasImage = !!(paper.originalImageUrl || (paper.attachedFileType === 'IMAGE' && paper.attachedFileUrl));
+
+  const isPlaceholderText = activeContent.startsWith('Épreuve transmise sous forme de document joint') ||
+    activeContent.startsWith('Épreuve originale transmise sous forme de document') ||
+    activeContent.startsWith('Épreuve originale scannée / photo');
+
+  const shouldRenderPage1Text = Boolean(
+    page1Content && (!isPlaceholderText || (!hasImage && !isPdf))
+  );
 
   return (
     <div className="space-y-8 font-serif text-slate-900 printable-exam-document">
@@ -281,7 +329,7 @@ export const ExamContentRenderer: React.FC<ExamContentRendererProps> = ({
           <Layers className="w-4 h-4 text-blue-600 flex-shrink-0" />
           <span className="font-medium text-slate-800 dark:text-slate-200">
             {page2Content
-              ? 'Page 2 (Verso) avec cadre officiel est active.'
+              ? 'Page 2 (Verso) est active.'
               : 'Épreuve affichée sur une seule page (Recto).'}
           </span>
         </div>
@@ -309,10 +357,10 @@ export const ExamContentRenderer: React.FC<ExamContentRendererProps> = ({
       </div>
 
       {/* ==================== RECTO (PAGE 1) ==================== */}
-      <div className={`bg-white p-6 sm:p-8 rounded-2xl ${includeHeader ? 'border-2 border-slate-900 shadow-md space-y-6' : 'space-y-4 shadow-sm'} page-recto`}>
+      <div className={`bg-white p-6 sm:p-8 rounded-2xl ${effectiveIncludeHeader ? 'border-2 border-slate-900 shadow-md space-y-6' : 'space-y-4 shadow-sm'} page-recto`}>
         
         {/* OFFICIAL SCHOOL HEADER (PAGE 1 ONLY - IF ENABLED) */}
-        {includeHeader && (
+        {effectiveIncludeHeader ? (
           <>
             <div className="border-b-2 border-slate-900 pb-4 grid grid-cols-12 gap-2 items-center text-center text-xs">
               
@@ -371,6 +419,11 @@ export const ExamContentRenderer: React.FC<ExamContentRendererProps> = ({
               <div className="p-2">
                 COEFFICIENT : <span className="font-extrabold">{paper.coefficient}</span>
               </div>
+              {paper.teacherName && (
+                <div className="col-span-2 p-2 bg-slate-50 border-t border-slate-900 text-xs font-bold font-sans">
+                  PROFESSEUR / AUTEUR : <span className="text-blue-900 uppercase font-black">{paper.teacherName.startsWith('Prof.') || paper.teacherName.startsWith('M.') || paper.teacherName.startsWith('Mme') ? paper.teacherName : `Prof. ${paper.teacherName}`}</span>
+                </div>
+              )}
             </div>
 
             {/* INSTRUCTIONS */}
@@ -380,13 +433,75 @@ export const ExamContentRenderer: React.FC<ExamContentRendererProps> = ({
               </div>
             )}
           </>
+        ) : (
+          /* SANS EN-TÊTE : PURE ÉPREUVE ORIGINALE DU PROFESSEUR */
+          isTeacherPaper && (
+            <div className="space-y-3 mb-4">
+              {/* Document Teacher Header Bar (Visible on screen and in print) */}
+              <div className="p-3 bg-slate-50 border border-slate-900 rounded-lg flex items-center justify-between text-xs font-sans print:border-slate-800">
+                <div>
+                  <span className="font-black text-slate-900 uppercase">PROFESSEUR / AUTEUR : </span>
+                  <span className="font-extrabold text-blue-900">
+                    {paper.teacherName?.startsWith('Prof.') || paper.teacherName?.startsWith('M.') || paper.teacherName?.startsWith('Mme') ? paper.teacherName : `Prof. ${paper.teacherName}`}
+                  </span>
+                  {paper.teacherPhone && (
+                    <span className="text-slate-600 text-[11px] ml-2 font-mono">({paper.teacherPhone})</span>
+                  )}
+                </div>
+                <div className="text-right text-[11px] font-bold text-slate-700">
+                  <span>{paper.subjectName} — {paper.className}</span>
+                  {paper.academicYear && <span className="ml-2 text-slate-500 font-normal">({paper.academicYear})</span>}
+                </div>
+              </div>
+
+              {/* Download original attached file button (screen only) */}
+              {paper.attachedFileUrl && (
+                <div className="print:hidden flex justify-end">
+                  <a
+                    href={paper.attachedFileUrl}
+                    download={paper.attachedFileName || `Epreuve_${paper.subjectName}`}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center space-x-1 cursor-pointer transition-colors shadow-sm"
+                  >
+                    <Download className="w-3 h-3 text-indigo-600" />
+                    <span>Télécharger le fichier original du professeur ({paper.attachedFileName || 'Fichier'})</span>
+                  </a>
+                </div>
+              )}
+            </div>
+          )
         )}
 
-        {/* PAGE 1 CONTENT (UNIQUEMENT LE TEXTE ET LES FIGURES SCANNÉES SI SANS EN-TÊTE) */}
-        <MathAndSvgContent content={page1Content} />
+        {/* AFFICHAGE SCANNÉ SI IMAGE */}
+        {hasImage && (
+          <div className="my-4 flex flex-col items-center justify-center p-2 bg-slate-50 border border-slate-200 rounded-xl">
+            <img
+              src={paper.originalImageUrl || paper.attachedFileUrl}
+              alt="Épreuve originale"
+              className="max-w-full rounded-lg shadow-sm"
+            />
+          </div>
+        )}
+
+        {/* AFFICHAGE INTÉGRAL PDF SI DOCUMENT PDF */}
+        {isPdf && paper.attachedFileUrl && (
+          <div className="my-4 space-y-2">
+            <div className="rounded-xl overflow-hidden border-2 border-slate-300 shadow-sm">
+              <iframe
+                src={paper.attachedFileUrl}
+                title="Épreuve PDF"
+                className="w-full h-[620px] bg-slate-900 border-0"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* CONTENU TEXTUEL / MATHÉMATIQUE / FIGURES SVG */}
+        {shouldRenderPage1Text && (
+          <MathAndSvgContent content={page1Content} />
+        )}
 
         {/* Footer Page 1 Notice */}
-        {page2Content && includeHeader && (
+        {page2Content && effectiveIncludeHeader && (
           <div className="pt-4 border-t border-dashed border-slate-300 text-right text-xs font-bold text-slate-500 italic">
             [ Tournez la page — Suite au verso ↗ ]
           </div>
@@ -396,9 +511,9 @@ export const ExamContentRenderer: React.FC<ExamContentRendererProps> = ({
       {/* ==================== VERSO (PAGE 2) ==================== */}
       {/* SANS CADRE NI BANDEAU ARTIFICIEL EN MODE SANS EN-TÊTE / VERSO PUR */}
       {page2Content && (
-        <div className={`bg-white p-6 sm:p-8 rounded-2xl ${includeHeader ? 'border-2 border-slate-900 shadow-md space-y-6' : 'space-y-4 shadow-sm'} page-verso print:pt-6 print:break-before-page`}>
+        <div className={`bg-white p-6 sm:p-8 rounded-2xl ${effectiveIncludeHeader ? 'border-2 border-slate-900 shadow-md space-y-6' : 'space-y-4 shadow-sm'} page-verso print:pt-6 print:break-before-page`}>
           {/* BANDEAU VERSO - UNIQUEMENT SI AVEC EN-TÊTE */}
-          {includeHeader && (
+          {effectiveIncludeHeader && (
             <div className="border-b-2 border-slate-900 pb-3 flex items-center justify-between text-xs font-black uppercase text-slate-900 font-sans">
               <div className="flex items-center space-x-2">
                 <span className="px-2.5 py-1 rounded bg-slate-900 text-white font-black text-xs tracking-wider">
@@ -416,7 +531,7 @@ export const ExamContentRenderer: React.FC<ExamContentRendererProps> = ({
           <MathAndSvgContent content={page2Content} />
 
           {/* FOOTER VERSO - UNIQUEMENT SI AVEC EN-TÊTE */}
-          {includeHeader && (
+          {effectiveIncludeHeader && (
             <div className="pt-4 border-t border-slate-900 flex items-center justify-between text-xs font-bold text-slate-700 font-sans">
               <span>{settings.schoolName} — Page Verso Officielle</span>
               <span className="uppercase font-black text-slate-900">Fin de l'Épreuve</span>
@@ -428,3 +543,4 @@ export const ExamContentRenderer: React.FC<ExamContentRendererProps> = ({
     </div>
   );
 };
+

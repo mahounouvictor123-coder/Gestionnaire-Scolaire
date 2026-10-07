@@ -13,6 +13,8 @@ import {
   Calendar, 
   User, 
   FolderArchive, 
+  Archive,
+  Trash2,
   X, 
   ZoomIn, 
   ZoomOut, 
@@ -25,7 +27,8 @@ import {
   FileCheck2,
   ExternalLink,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Undo2
 } from 'lucide-react';
 import { ExamPaper, Student, SchoolClass, SchoolSettings, School } from '../types';
 import { exportExamPaperToWord, downloadAttachedTeacherFile } from '../lib/examExportUtils';
@@ -53,6 +56,86 @@ export const ParentExamPapersTab: React.FC<ParentExamPapersTabProps> = ({
   const [activePreviewPaper, setActivePreviewPaper] = useState<ExamPaper | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [copiedFeedback, setCopiedFeedback] = useState<string | null>(null);
+
+  // Storage key for student's local preferences (archived and deleted exams)
+  const studentPrefsKey = `STUDENT_PAPERS_PREFS_${student.id}`;
+
+  const [archivedPaperIds, setArchivedPaperIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(`${studentPrefsKey}_ARCHIVED`);
+        return stored ? JSON.parse(stored) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const [deletedPaperIds, setDeletedPaperIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(`${studentPrefsKey}_DELETED`);
+        return stored ? JSON.parse(stored) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const [statusTab, setStatusTab] = useState<'ACTIVE' | 'ARCHIVED' | 'TRASH'>('ACTIVE');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [confirmDeletePaper, setConfirmDeletePaper] = useState<{ id: string; title: string } | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`${studentPrefsKey}_ARCHIVED`, JSON.stringify(archivedPaperIds));
+      } catch (e) {}
+    }
+  }, [archivedPaperIds, studentPrefsKey]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`${studentPrefsKey}_DELETED`, JSON.stringify(deletedPaperIds));
+      } catch (e) {}
+    }
+  }, [deletedPaperIds, studentPrefsKey]);
+
+  const handleArchivePaper = (paperId: string) => {
+    setArchivedPaperIds(prev => Array.from(new Set([...prev, paperId])));
+    setToastMessage("Épreuve déplacée dans votre boîte d'archives.");
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleUnarchivePaper = (paperId: string) => {
+    setArchivedPaperIds(prev => prev.filter(id => id !== paperId));
+    setToastMessage("Épreuve restaurée dans vos épreuves actives.");
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleDeletePaper = (paperId: string) => {
+    setDeletedPaperIds(prev => Array.from(new Set([...prev, paperId])));
+    setConfirmDeletePaper(null);
+    setToastMessage("Épreuve supprimée de votre espace élève (placée dans la corbeille).");
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleRestorePaper = (paperId: string) => {
+    setDeletedPaperIds(prev => prev.filter(id => id !== paperId));
+    setToastMessage("Épreuve restaurée avec succès.");
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handlePermanentHide = (paperId: string) => {
+    setArchivedPaperIds(prev => prev.filter(id => id !== paperId));
+    setDeletedPaperIds(prev => Array.from(new Set([...prev, paperId])));
+    setConfirmDeletePaper(null);
+    setToastMessage("Épreuve définitivement masquée.");
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   // Keyboard shortcut: Escape closes the preview modal
   useEffect(() => {
@@ -92,15 +175,34 @@ export const ParentExamPapersTab: React.FC<ParentExamPapersTabProps> = ({
     });
   }, [examPapers, student.classId, currentClass?.name]);
 
+  // Split papers by student's archive & trash status
+  const activePapers = useMemo(() => {
+    return classPapers.filter(p => !deletedPaperIds.includes(p.id) && !archivedPaperIds.includes(p.id));
+  }, [classPapers, deletedPaperIds, archivedPaperIds]);
+
+  const archivedPapers = useMemo(() => {
+    return classPapers.filter(p => !deletedPaperIds.includes(p.id) && archivedPaperIds.includes(p.id));
+  }, [classPapers, deletedPaperIds, archivedPaperIds]);
+
+  const trashPapers = useMemo(() => {
+    return classPapers.filter(p => deletedPaperIds.includes(p.id));
+  }, [classPapers, deletedPaperIds]);
+
+  const papersForCurrentTab = useMemo(() => {
+    if (statusTab === 'ARCHIVED') return archivedPapers;
+    if (statusTab === 'TRASH') return trashPapers;
+    return activePapers;
+  }, [statusTab, activePapers, archivedPapers, trashPapers]);
+
   // Unique list of subjects available for this class
   const availableSubjects = useMemo(() => {
-    const list = Array.from(new Set(classPapers.map(p => p.subjectName))).filter(Boolean);
+    const list = Array.from(new Set(papersForCurrentTab.map(p => p.subjectName))).filter(Boolean);
     return list.sort();
-  }, [classPapers]);
+  }, [papersForCurrentTab]);
 
   // Filtered papers according to search, subject, trimester, and type
   const filteredPapers = useMemo(() => {
-    return classPapers.filter(paper => {
+    return papersForCurrentTab.filter(paper => {
       // Subject filter
       if (selectedSubject !== 'ALL' && paper.subjectName !== selectedSubject) {
         return false;
@@ -129,7 +231,7 @@ export const ParentExamPapersTab: React.FC<ParentExamPapersTabProps> = ({
 
       return true;
     });
-  }, [classPapers, selectedSubject, selectedTrimester, selectedType, searchQuery]);
+  }, [papersForCurrentTab, selectedSubject, selectedTrimester, selectedType, searchQuery]);
 
   // Subject color badge helper
   const getSubjectColor = (subject: string) => {
@@ -226,9 +328,70 @@ export const ParentExamPapersTab: React.FC<ParentExamPapersTabProps> = ({
         </div>
       </div>
 
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950 via-slate-900 to-indigo-950 border border-emerald-500/40 text-emerald-200 text-xs font-bold flex items-center justify-between shadow-xl animate-in fade-in">
+          <div className="flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="text-slate-400 hover:text-white p-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Search & Multi-Filters Toolbar */}
       <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-md space-y-4">
         
+        {/* Status Mode Tabs: Actives / Archivées / Corbeille */}
+        <div className="flex items-center space-x-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800 flex-wrap gap-1">
+          <button
+            type="button"
+            onClick={() => setStatusTab('ACTIVE')}
+            className={`px-3 py-2 rounded-xl font-black text-xs flex items-center space-x-1.5 transition-all cursor-pointer ${
+              statusTab === 'ACTIVE'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Épreuves en cours ({activePapers.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusTab('ARCHIVED')}
+            className={`px-3 py-2 rounded-xl font-black text-xs flex items-center space-x-1.5 transition-all cursor-pointer ${
+              statusTab === 'ARCHIVED'
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FolderArchive className="w-3.5 h-3.5 text-purple-300" />
+            <span>Archivées ({archivedPapers.length})</span>
+          </button>
+
+          {trashPapers.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setStatusTab('TRASH')}
+              className={`px-3 py-2 rounded-xl font-black text-xs flex items-center space-x-1.5 transition-all cursor-pointer ${
+                statusTab === 'TRASH'
+                  ? 'bg-red-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-300" />
+              <span>Corbeille ({trashPapers.length})</span>
+            </button>
+          )}
+        </div>
+
         {/* Search Input and Trimester Buttons */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -405,9 +568,23 @@ export const ParentExamPapersTab: React.FC<ParentExamPapersTabProps> = ({
                         </span>
                       )}
 
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/80 flex items-center space-x-1" title="Conservé définitivement dans votre espace parent pour révisions">
-                        <FolderArchive className="w-3 h-3 text-purple-400" />
-                        <span>Archive Permanente</span>
+                      {archivedPaperIds.includes(paper.id) && (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/40 flex items-center space-x-1">
+                          <FolderArchive className="w-3 h-3 text-purple-300" />
+                          <span>Archivée</span>
+                        </span>
+                      )}
+
+                      {deletedPaperIds.includes(paper.id) && (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-red-500/20 text-red-300 border border-red-500/40 flex items-center space-x-1">
+                          <Trash2 className="w-3 h-3 text-red-300" />
+                          <span>Corbeille</span>
+                        </span>
+                      )}
+
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700 flex items-center space-x-1" title="Conservé pour révisions">
+                        <FolderArchive className="w-3 h-3 text-slate-400" />
+                        <span>Sujet Officiel</span>
                       </span>
                     </div>
                   </div>
@@ -516,17 +693,69 @@ export const ParentExamPapersTab: React.FC<ParentExamPapersTabProps> = ({
                 {/* Bottom Action Buttons */}
                 <div className="pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
                   
-                  {/* Share button */}
-                  <button
-                    type="button"
-                    onClick={() => handleSharePaper(paper)}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center space-x-1 transition-colors cursor-pointer"
-                    title="Partager cette épreuve"
-                  >
-                    <Share2 className="w-3.5 h-3.5" />
-                    <span className="text-[11px]">{copiedFeedback === paper.id ? 'Copié !' : 'Partager'}</span>
-                  </button>
+                  {/* Left Action Buttons: Share, Archive, Delete */}
+                  <div className="flex items-center space-x-1.5 flex-wrap gap-1">
+                    {/* Share button */}
+                    <button
+                      type="button"
+                      onClick={() => handleSharePaper(paper)}
+                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center space-x-1 transition-colors cursor-pointer"
+                      title="Partager cette épreuve"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span className="text-[11px]">{copiedFeedback === paper.id ? 'Copié !' : 'Partager'}</span>
+                    </button>
 
+                    {/* Bouton Archiver / Désarchiver */}
+                    {archivedPaperIds.includes(paper.id) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleUnarchivePaper(paper.id)}
+                        className="px-2.5 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/40 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm"
+                        title="Désarchiver et remettre dans les épreuves actives"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-purple-300" />
+                        <span className="text-[11px] font-black">Désarchiver</span>
+                      </button>
+                    ) : (
+                      !deletedPaperIds.includes(paper.id) && (
+                        <button
+                          type="button"
+                          onClick={() => handleArchivePaper(paper.id)}
+                          className="px-2.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm"
+                          title="Archiver cette épreuve pour la classer"
+                        >
+                          <FolderArchive className="w-3.5 h-3.5 text-purple-400" />
+                          <span className="text-[11px] font-black">Archiver</span>
+                        </button>
+                      )
+                    )}
+
+                    {/* Bouton Supprimer / Restaurer */}
+                    {deletedPaperIds.includes(paper.id) ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRestorePaper(paper.id)}
+                        className="px-2.5 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm"
+                        title="Restaurer cette épreuve"
+                      >
+                        <Undo2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-[11px] font-black">Restaurer</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeletePaper({ id: paper.id, title: paper.title })}
+                        className="px-2.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm"
+                        title="Supprimer cette épreuve de votre espace élève"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                        <span className="text-[11px] font-black">Supprimer</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Right Action Tools: Word, Print, Consulter */}
                   <div className="flex items-center space-x-1.5 ml-auto flex-wrap gap-1">
                     
                     {/* Direct Word Export Button (.doc) */}
@@ -570,6 +799,42 @@ export const ParentExamPapersTab: React.FC<ParentExamPapersTabProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Confirmation Modal for Student Deletion */}
+      {confirmDeletePaper && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-600/20 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-black text-white">Supprimer cette épreuve ?</h3>
+              <p className="text-xs text-slate-300 line-clamp-2">
+                « {confirmDeletePaper.title} »
+              </p>
+              <p className="text-[11px] text-slate-400 mt-2">
+                L'épreuve sera retirée de votre liste d'épreuves actives et placée dans votre Corbeille. Vous pourrez la restaurer à tout moment si nécessaire.
+              </p>
+            </div>
+            <div className="flex items-center space-x-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeletePaper(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs cursor-pointer transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeletePaper(confirmDeletePaper.id)}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-xs shadow-lg cursor-pointer transition-all"
+              >
+                Confirmer la suppression
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -684,18 +949,9 @@ export const ParentExamPapersTab: React.FC<ParentExamPapersTabProps> = ({
             style={{ transform: `scale(${previewZoom})` }}
           >
             <ExamContentRenderer
-              paper={{
-                title: activePreviewPaper.title,
-                subjectName: activePreviewPaper.subjectName,
-                className: activePreviewPaper.className,
-                duration: activePreviewPaper.duration,
-                coefficient: activePreviewPaper.coefficient,
-                instructions: activePreviewPaper.instructions,
-                content: activePreviewPaper.content,
-                academicYear: activePreviewPaper.academicYear
-              }}
+              paper={activePreviewPaper}
               settings={settings}
-              includeHeader={activePreviewPaper.includeHeader !== false}
+              includeHeader={activePreviewPaper.includeHeader === true || (!activePreviewPaper.teacherName && !activePreviewPaper.teacherId && activePreviewPaper.includeHeader !== false)}
               showVersoDivider={true}
             />
           </div>

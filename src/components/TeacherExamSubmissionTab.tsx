@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import { exportExamPaperToWord } from '../lib/examExportUtils';
 import { compressExamImage } from '../lib/imageCompression';
+import { extractTextFromDocx } from '../lib/docxExtractor';
+import { isPrimaryClass } from '../lib/schoolUtils';
 
 interface TeacherExamSubmissionTabProps {
   currentTeacher: Teacher;
@@ -65,9 +67,17 @@ export const TeacherExamSubmissionTab: React.FC<TeacherExamSubmissionTabProps> =
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Filter out primary classes from secondary teacher space
+  const teacherClasses = useMemo(() => {
+    return classes.filter(c => !isPrimaryClass(c));
+  }, [classes]);
+
   // Form Fields
   const [title, setTitle] = useState('');
-  const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
+  const [selectedClassId, setSelectedClassId] = useState<string>(() => {
+    const nonPrimary = classes.filter(c => !isPrimaryClass(c));
+    return nonPrimary[0]?.id || '';
+  });
   const [subjectName, setSubjectName] = useState<string>(currentTeacher.subjects[0] || subjects[0]?.name || 'Mathématiques');
   const [examType, setExamType] = useState<ExamType>('DEVOIR_1');
   const [trimester, setTrimester] = useState<number>(settings.currentTrimester || 1);
@@ -75,7 +85,8 @@ export const TeacherExamSubmissionTab: React.FC<TeacherExamSubmissionTabProps> =
   const [duration, setDuration] = useState<string>('2 heures');
   const [coefficient, setCoefficient] = useState<number>(2);
   const [copiesRequested, setCopiesRequested] = useState<number>(() => {
-    const cls = classes[0];
+    const nonPrimary = classes.filter(c => !isPrimaryClass(c));
+    const cls = nonPrimary[0];
     return cls ? cls.studentCount || 40 : 40;
   });
   const [reprographyNotes, setReprographyNotes] = useState<string>('');
@@ -103,6 +114,8 @@ export const TeacherExamSubmissionTab: React.FC<TeacherExamSubmissionTabProps> =
   const [attachedFileName, setAttachedFileName] = useState<string>('');
   const [attachedFileType, setAttachedFileType] = useState<'WORD' | 'PDF' | 'IMAGE'>('WORD');
   const [attachedFileSize, setAttachedFileSize] = useState<string>('');
+  const [extractedFileContent, setExtractedFileContent] = useState<string>('');
+  const [isExtracting, setIsExtracting] = useState<boolean>(false);
 
   // Written Text State
   const [writtenContent, setWrittenContent] = useState<string>('');
@@ -111,8 +124,8 @@ export const TeacherExamSubmissionTab: React.FC<TeacherExamSubmissionTabProps> =
 
   // Selected Class & Students details
   const selectedClass = useMemo(() => {
-    return classes.find(c => c.id === selectedClassId) || classes[0];
-  }, [classes, selectedClassId]);
+    return teacherClasses.find(c => c.id === selectedClassId) || teacherClasses[0];
+  }, [teacherClasses, selectedClassId]);
 
   const selectedClassStudents = useMemo(() => {
     if (!selectedClassId) return [];
@@ -124,7 +137,7 @@ export const TeacherExamSubmissionTab: React.FC<TeacherExamSubmissionTabProps> =
   // When class changes, update recommended copies
   const handleClassChange = (newClassId: string) => {
     setSelectedClassId(newClassId);
-    const targetClass = classes.find(c => c.id === newClassId);
+    const targetClass = teacherClasses.find(c => c.id === newClassId);
     if (targetClass && targetClass.studentCount > 0) {
       setCopiesRequested(targetClass.studentCount);
     }
@@ -189,6 +202,39 @@ export const TeacherExamSubmissionTab: React.FC<TeacherExamSubmissionTabProps> =
       };
       reader.readAsDataURL(file);
     }
+
+    // Extract text from Word (.docx) or Text (.txt) files immediately so full exam is captured
+    if (lowerName.endsWith('.docx')) {
+      setIsExtracting(true);
+      try {
+        const rawText = await extractTextFromDocx(file);
+        if (rawText && rawText.trim()) {
+          setExtractedFileContent(rawText.trim());
+          if (!writtenContent.trim()) {
+            setWrittenContent(rawText.trim());
+          }
+        }
+      } catch (err) {
+        console.warn('Erreur extraction docx:', err);
+      } finally {
+        setIsExtracting(false);
+      }
+    } else if (lowerName.endsWith('.txt')) {
+      setIsExtracting(true);
+      try {
+        const rawText = await file.text();
+        if (rawText && rawText.trim()) {
+          setExtractedFileContent(rawText.trim());
+          if (!writtenContent.trim()) {
+            setWrittenContent(rawText.trim());
+          }
+        }
+      } catch (err) {
+        console.warn('Erreur lecture txt:', err);
+      } finally {
+        setIsExtracting(false);
+      }
+    }
   };
 
   // Quick insert snippet helper into written content
@@ -198,7 +244,7 @@ export const TeacherExamSubmissionTab: React.FC<TeacherExamSubmissionTabProps> =
 
   // AI Assistance: Generate or improve subject outline
   const handleAiGenerateProposal = () => {
-    const targetClass = classes.find(c => c.id === selectedClassId);
+    const targetClass = teacherClasses.find(c => c.id === selectedClassId);
     setIsAiGenerating(true);
 
     setTimeout(() => {
@@ -236,7 +282,7 @@ En utilisant vos connaissances mathématiques :
   const handleSendExamWithDestination = (destination: 'SCHOOL' | 'PARENTS' | 'BOTH') => {
     setErrorMessage(null);
 
-    const targetClass = classes.find(c => c.id === selectedClassId);
+    const targetClass = teacherClasses.find(c => c.id === selectedClassId);
     const finalClassName = targetClass ? targetClass.name : 'Toutes classes';
 
     if (!title.trim()) {
@@ -257,9 +303,10 @@ En utilisant vos connaissances mathématiques :
     setIsSubmitting(true);
 
     try {
-      const summaryContent = contentMode === 'TEXT' 
-        ? writtenContent 
-        : `Épreuve transmise sous forme de document joint : ${attachedFileName} (${attachedFileSize || 'Fichier'} - ${attachedFileType}).`;
+      // Build final integral content
+      const fullContent = contentMode === 'TEXT'
+        ? writtenContent.trim()
+        : (extractedFileContent.trim() || writtenContent.trim() || (attachedFileType === 'IMAGE' ? "Épreuve originale transmise sous forme d'image scannée." : `Épreuve originale déposée par le professeur : ${attachedFileName} (${attachedFileSize || 'Fichier'} - ${attachedFileType}).`));
 
       const isForSchool = destination === 'SCHOOL' || destination === 'BOTH';
       const isForParents = destination === 'PARENTS' || destination === 'BOTH';
@@ -278,20 +325,20 @@ En utilisant vos connaissances mathématiques :
         instructions: instructions.trim(),
         parentInstructions: parentInstructions.trim(),
         submissionDeadline: submissionDeadline.trim() || undefined,
-        content: summaryContent,
+        content: fullContent,
         originalImageUrl: attachedFileType === 'IMAGE' ? attachedFileUrl : undefined,
         attachedFileUrl: attachedFileUrl || undefined,
         attachedFileName: attachedFileName || undefined,
         attachedFileType: attachedFileType,
         teacherId: currentTeacher.id,
-        teacherName: `${currentTeacher.firstName} ${currentTeacher.lastName}`,
+        teacherName: `${currentTeacher.lastName.toUpperCase()} ${currentTeacher.firstName}`,
         teacherPhone: currentTeacher.phone,
         schoolId: currentSchool.id,
         status: isForSchool ? 'EN_ATTENTE' : 'VALIDE',
         submissionNotes: reprographyNotes.trim(),
         numberOfCopiesRequested: isForSchool ? copiesRequested : 0,
         examDate: examDate,
-        includeHeader: true,
+        includeHeader: false, // Ne coller aucun en-tête d'établissement : voir exactement ce que le professeur a envoyé
         isAvailableForStudents: isForParents,
         sentToSchool: true, // Always true so it always appears in the main platform's Espace Épreuves Word IA
         sentToParents: isForParents
@@ -386,12 +433,11 @@ En utilisant vos connaissances mathématiques :
     setTimeout(() => setSuccessMessage(null), 5000);
   };
 
-  // Filter exam papers submitted by this specific teacher
+  // Filter exam papers submitted exclusively by this specific authenticated teacher
   const mySubmittedPapers = useMemo(() => {
     return examPapers.filter(p => 
       p.teacherId === currentTeacher.id || 
-      p.teacherPhone === currentTeacher.phone || 
-      (p.teacherName && p.teacherName.toLowerCase().includes(currentTeacher.lastName.toLowerCase()))
+      (currentTeacher.phone && p.teacherPhone === currentTeacher.phone)
     );
   }, [examPapers, currentTeacher]);
 
@@ -484,6 +530,25 @@ En utilisant vos connaissances mathématiques :
             </div>
           )}
 
+          {/* Locked Teacher Author Identity Badge */}
+          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center text-xs font-black">
+                👨‍🏫
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase text-slate-400 block">Enseignant Auteur du Sujet (Votre Identité) :</span>
+                <span className="text-xs font-black text-white">
+                  Prof. {currentTeacher.lastName.toUpperCase()} {currentTeacher.firstName}
+                  {currentTeacher.phone && <span className="text-slate-400 font-normal ml-1.5 font-mono">({currentTeacher.phone})</span>}
+                </span>
+              </div>
+            </div>
+            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
+              Certifié par votre compte
+            </span>
+          </div>
+
           {/* Title & Subject */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -543,7 +608,7 @@ En utilisant vos connaissances mathématiques :
                 onChange={(e) => handleClassChange(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-emerald-500/50 text-white text-xs font-bold focus:ring-2 focus:ring-emerald-500"
               >
-                {classes.map(c => (
+                {teacherClasses.map(c => (
                   <option key={c.id} value={c.id}>
                     {c.name} ({c.studentCount || students.filter(s => s.classId === c.id).length} élèves & familles)
                   </option>
@@ -730,24 +795,68 @@ En utilisant vos connaissances mathématiques :
                 </div>
               </label>
 
-              {attachedFileName && (
-                <div className="mt-3 p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
-                  <div className="flex items-center space-x-2.5 truncate">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center font-black text-xs shrink-0">
-                      {attachedFileType}
+              {isExtracting && (
+                <div className="mt-3 p-3 rounded-xl bg-blue-950/60 border border-blue-500/40 flex items-center space-x-2 text-xs text-blue-200 animate-pulse">
+                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span>Extraction du contenu intégral de l'épreuve Word (.docx) en cours...</span>
+                </div>
+              )}
+
+              {attachedFileName && !isExtracting && (
+                <div className="mt-3 space-y-2">
+                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center space-x-2.5 truncate">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-600/20 text-emerald-400 flex items-center justify-center font-black text-xs shrink-0">
+                        {attachedFileType}
+                      </div>
+                      <div className="truncate">
+                        <p className="text-xs font-bold text-white truncate">{attachedFileName}</p>
+                        <p className="text-[10px] text-slate-400">{attachedFileSize} • Fichier prêt pour diffusion</p>
+                      </div>
                     </div>
-                    <div className="truncate">
-                      <p className="text-xs font-bold text-white truncate">{attachedFileName}</p>
-                      <p className="text-[10px] text-slate-400">{attachedFileSize} • Fichier prêt pour diffusion</p>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { 
+                        setAttachedFileUrl(''); 
+                        setAttachedFileName(''); 
+                        setExtractedFileContent('');
+                      }}
+                      className="p-1 rounded-lg text-slate-400 hover:text-red-400 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => { setAttachedFileUrl(''); setAttachedFileName(''); }}
-                    className="p-1 rounded-lg text-slate-400 hover:text-red-400 cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+
+                  {extractedFileContent && (
+                    <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-xs text-emerald-200 space-y-1.5">
+                      <div className="flex items-center space-x-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span className="font-bold text-white">
+                          Épreuve extraite intégralement ({extractedFileContent.length} caractères)
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-emerald-300/80">
+                        Le document est préservé fidèlement dans son intégralité. Aucun en-tête artificiel ne lui sera collé dessus.
+                      </p>
+                      <div className="mt-1 max-h-24 overflow-y-auto p-2 rounded-lg bg-slate-950/80 border border-slate-800 text-[10px] font-mono text-slate-300 whitespace-pre-wrap">
+                        {extractedFileContent.substring(0, 300)}{extractedFileContent.length > 300 ? '...' : ''}
+                      </div>
+                    </div>
+                  )}
+
+                  {attachedFileType === 'IMAGE' && (
+                    <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-500/30 text-xs text-blue-200 flex items-center space-x-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
+                      <span>Photo scannée prête : sera affichée en haute résolution sans en-tête d'établissement surimposé.</span>
+                    </div>
+                  )}
+
+                  {attachedFileType === 'PDF' && (
+                    <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs text-purple-200 flex items-center space-x-2">
+                      <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" />
+                      <span>Document PDF prêt : visualisable et téléchargeable dans son intégralité.</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
