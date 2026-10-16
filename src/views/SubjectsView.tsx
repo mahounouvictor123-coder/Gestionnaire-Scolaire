@@ -15,11 +15,13 @@ import {
   RefreshCw,
   Baby,
   School,
-  Award
+  Award,
+  Pencil,
+  X
 } from 'lucide-react';
 
 export const SubjectsView: React.FC = () => {
-  const { subjects, addSubject, deleteSubject } = useApp();
+  const { subjects, addSubject, updateSubject, deleteSubject } = useApp();
 
   const [activeCycleTab, setActiveCycleTab] = useState<'PRIMAIRE' | 'MATERNELLE' | 'COLLEGE' | 'LYCEE' | 'ALL'>('PRIMAIRE');
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,6 +34,48 @@ export const SubjectsView: React.FC = () => {
   const [level, setLevel] = useState<SchoolLevel>('PRIMAIRE');
   const [category, setCategory] = useState<'LITTERAIRE' | 'SCIENTIFIQUE' | 'LANGUE' | 'DIVERS' | 'TECHNIQUE'>('LITTERAIRE');
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
+
+  // Modal Modification d'une matière
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editCode, setEditCode] = useState('');
+  const [editCoefficient, setEditCoefficient] = useState('2');
+  const [editLevel, setEditLevel] = useState<SchoolLevel>('COLLEGE');
+  const [editCategory, setEditCategory] = useState<'LITTERAIRE' | 'SCIENTIFIQUE' | 'LANGUE' | 'DIVERS' | 'TECHNIQUE'>('LITTERAIRE');
+
+  const openEditModal = (sb: Subject) => {
+    setEditingSubject(sb);
+    setEditName(sb.name);
+    setEditCode(sb.code);
+    setEditCoefficient(sb.coefficient.toString());
+    setEditLevel(sb.level || 'COLLEGE');
+    setEditCategory(sb.category || 'LITTERAIRE');
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSubject || !editName.trim()) return;
+
+    updateSubject(editingSubject.id, {
+      name: editName.trim(),
+      code: editCode.trim().toUpperCase() || editName.substring(0, 4).toUpperCase(),
+      coefficient: Math.max(1, parseInt(editCoefficient) || 1),
+      level: editLevel,
+      category: editCategory
+    });
+
+    setNoticeMsg(`Matière "${editName.trim()}" modifiée avec succès !`);
+    setEditingSubject(null);
+    setTimeout(() => setNoticeMsg(null), 3500);
+  };
+
+  const handleDeleteSubject = (sb: Subject) => {
+    if (window.confirm(`Confirmez-vous la suppression de la matière "${sb.name}" ?`)) {
+      deleteSubject(sb.id);
+      setNoticeMsg(`Matière "${sb.name}" supprimée de l'établissement.`);
+      setTimeout(() => setNoticeMsg(null), 3500);
+    }
+  };
 
   // Filter subjects based on cycle tab, category, and search
   const filteredSubjects = subjects.filter(sb => {
@@ -450,9 +494,19 @@ export const SubjectsView: React.FC = () => {
                       </span>
                     </td>
 
-                    <td className="p-3.5 text-right">
+                    <td className="p-3.5 text-right space-x-1">
                       <button
-                        onClick={() => deleteSubject(sb.id)}
+                        type="button"
+                        onClick={() => openEditModal(sb)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950 transition-colors cursor-pointer"
+                        title="Modifier cette matière (intitulé, coefficient, cycle)"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSubject(sb)}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950 transition-colors cursor-pointer"
                         title="Supprimer cette matière"
                       >
@@ -472,6 +526,134 @@ export const SubjectsView: React.FC = () => {
           </tbody>
         </table>
       </div>
+
+      {/* MODAL DE MODIFICATION D'UNE MATIÈRE */}
+      {editingSubject && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEditingSubject(null);
+          }}
+        >
+          <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-lg p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600">
+                  <Pencil className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base">Modifier la Matière</h3>
+                  <p className="text-xs text-slate-500">Mettre à jour l'intitulé, le coefficient ou le niveau scolaire</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingSubject(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs font-semibold">
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 mb-1 font-bold">
+                  Intitulé officiel de la matière *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500"
+                  placeholder="Ex: Mathématiques, Français, Anglais..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 dark:text-slate-300 mb-1 font-bold">
+                    Code court (Sigle)
+                  </label>
+                  <input
+                    type="text"
+                    value={editCode}
+                    onChange={e => setEditCode(e.target.value.toUpperCase())}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500 uppercase"
+                    placeholder="Ex: MATH, FRAN, PC"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 dark:text-slate-300 mb-1 font-bold">
+                    Coefficient * (Ex: 1 à 10)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="15"
+                    required
+                    value={editCoefficient}
+                    onChange={e => setEditCoefficient(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 dark:text-slate-300 mb-1 font-bold">
+                    Cycle / Niveau d'enseignement
+                  </label>
+                  <select
+                    value={editLevel}
+                    onChange={e => setEditLevel(e.target.value as SchoolLevel)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="COLLEGE">Secondaire — Collège (6ème à 3ème)</option>
+                    <option value="LYCEE">Secondaire — Lycée (2nde à Terminale)</option>
+                    <option value="PRIMAIRE">Primaire (CI à CM2)</option>
+                    <option value="MATERNELLE">Maternelle & Garderie</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 dark:text-slate-300 mb-1 font-bold">
+                    Catégorie disciplinaire
+                  </label>
+                  <select
+                    value={editCategory}
+                    onChange={e => setEditCategory(e.target.value as any)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="SCIENTIFIQUE">Scientifique & Technique</option>
+                    <option value="LITTERAIRE">Lettres & Humanités</option>
+                    <option value="LANGUE">Langues Vivantes</option>
+                    <option value="TECHNIQUE">Technique & Gestion</option>
+                    <option value="DIVERS">Arts & Sports</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingSubject(null)}
+                  className="px-4 py-2.5 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition-all cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold shadow-md shadow-amber-600/20 transition-all cursor-pointer"
+                >
+                  Enregistrer les modifications
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

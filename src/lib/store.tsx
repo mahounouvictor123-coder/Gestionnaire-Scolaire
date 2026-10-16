@@ -182,6 +182,7 @@ interface AppContextType {
 
   subjects: Subject[];
   addSubject: (sbj: Omit<Subject, 'id'>) => void;
+  updateSubject: (id: string, sbj: Partial<Subject>) => void;
   deleteSubject: (id: string) => void;
 
   grades: Grade[];
@@ -2730,22 +2731,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Subject actions
   const addSubject = (sbj: Omit<Subject, 'id'>) => {
     const newSbj: Subject = { ...sbj, id: `sbj-${Date.now()}` };
-    setSubjects(prev => [...prev, newSbj]);
+    setSubjects(prev => {
+      const updated = [...prev, newSbj];
+      syncToCloud(currentSchoolId, 'SUBJECTS', updated);
+      return updated;
+    });
+  };
+
+  const updateSubject = (id: string, updates: Partial<Subject>) => {
+    setSubjects(prev => {
+      const updated = prev.map(s => s.id === id ? { ...s, ...updates } : s);
+      syncToCloud(currentSchoolId, 'SUBJECTS', updated);
+      return updated;
+    });
   };
 
   const deleteSubject = (id: string) => {
-    setSubjects(prev => prev.filter(s => s.id !== id));
+    setSubjects(prev => {
+      const updated = prev.filter(s => s.id !== id);
+      syncToCloud(currentSchoolId, 'SUBJECTS', updated);
+      return updated;
+    });
   };
 
   // Grade actions
   const addGrade = (grd: Omit<Grade, 'id'>) => {
-    const newGrade: Grade = {
-      ...grd,
-      id: `grd-${Date.now()}`,
-      createdAt: (grd as any).createdAt || new Date().toISOString()
-    };
+    const nowIso = new Date().toISOString();
     setGrades(prev => {
-      const updated = [...prev, newGrade];
+      const existingIdx = prev.findIndex(ex => 
+        ex.studentId === grd.studentId && 
+        (ex.subjectId === grd.subjectId || (grd.subjectName && ex.subjectName === grd.subjectName)) && 
+        Number(ex.trimester) === Number(grd.trimester) && 
+        ex.examType === grd.examType
+      );
+      let updated: Grade[];
+      if (existingIdx !== -1) {
+        updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          ...grd,
+          updatedAt: nowIso
+        };
+      } else {
+        const newGrade: Grade = {
+          ...grd,
+          id: `grd-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          createdAt: (grd as any).createdAt || nowIso
+        };
+        updated = [...prev, newGrade];
+      }
       syncToCloud(currentSchoolId, 'GRADES', updated);
       return updated;
     });
@@ -2753,13 +2787,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addBulkGrades = (grds: Omit<Grade, 'id'>[]) => {
     const nowIso = new Date().toISOString();
-    const newGradesWithIds: Grade[] = grds.map((g, idx) => ({
-      ...g,
-      id: `grd-${Date.now()}-${idx}`,
-      createdAt: (g as any).createdAt || nowIso
-    }));
     setGrades(prev => {
-      const updated = [...prev, ...newGradesWithIds];
+      let updated = [...prev];
+      grds.forEach((g, idx) => {
+        const existingIdx = updated.findIndex(ex => 
+          ex.studentId === g.studentId && 
+          (ex.subjectId === g.subjectId || (g.subjectName && ex.subjectName === g.subjectName)) && 
+          Number(ex.trimester) === Number(g.trimester) && 
+          ex.examType === g.examType
+        );
+        if (existingIdx !== -1) {
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            ...g,
+            updatedAt: nowIso
+          };
+        } else {
+          updated.push({
+            ...g,
+            id: `grd-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+            createdAt: (g as any).createdAt || nowIso
+          });
+        }
+      });
       syncToCloud(currentSchoolId, 'GRADES', updated);
       return updated;
     });
@@ -3626,6 +3676,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         subjects,
         addSubject,
+        updateSubject,
         deleteSubject,
 
         grades,

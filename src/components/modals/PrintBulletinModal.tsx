@@ -1,10 +1,31 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../../lib/store';
-import { Student, SchoolClass } from '../../types';
+import { Student, SchoolClass, Subject } from '../../types';
 import { calculateClassRanks, defaultBulletinTemplate } from '../../lib/gradingUtils';
 import { SendBulletinParentModal } from './SendBulletinParentModal';
 import { SchoolLogoImportModal } from './SchoolLogoImportModal';
-import { X, Printer, Download, GraduationCap, CheckCircle2, Award, Trophy, PenTool, Upload, Eye, EyeOff, Sparkles, MessageCircle, Smartphone, Image as ImageIcon, Camera } from 'lucide-react';
+import { 
+  X, 
+  Printer, 
+  Download, 
+  GraduationCap, 
+  CheckCircle2, 
+  Award, 
+  Trophy, 
+  PenTool, 
+  Upload, 
+  Eye, 
+  EyeOff, 
+  Sparkles, 
+  MessageCircle, 
+  Smartphone, 
+  Image as ImageIcon, 
+  Camera,
+  Pencil,
+  Trash2,
+  Plus,
+  BookOpen
+} from 'lucide-react';
 
 const PRESET_SIGNATURES = [
   { name: 'Signature 1 (Encre Bleue)', url: 'https://images.unsplash.com/photo-1600132806370-bf17e65e942f?auto=format&fit=crop&q=80&w=200' },
@@ -27,13 +48,76 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
   classObj,
   trimester
 }) => {
-  const { settings, updateSettings, subjects, grades, students, currentSchool, updateSchool, archiveReportCard } = useApp();
+  const { 
+    settings, 
+    updateSettings, 
+    subjects, 
+    grades, 
+    students, 
+    currentSchool, 
+    updateSchool, 
+    archiveReportCard,
+    updateSubject,
+    deleteSubject,
+    addSubject
+  } = useApp();
   const [showSignatureControls, setShowSignatureControls] = useState(false);
   const [showSignatureOnDoc, setShowSignatureOnDoc] = useState(true);
   const [isSendParentModalOpen, setIsSendParentModalOpen] = useState(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Gestion des matières (Modifier ou Supprimer depuis le bulletin)
+  const [showSubjectManagerModal, setShowSubjectManagerModal] = useState(false);
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [editSubjectName, setEditSubjectName] = useState('');
+  const [editSubjectCoeff, setEditSubjectCoeff] = useState('2');
+  const [newSubjectName, setNewSubjectName] = useState('');
+  const [newSubjectCoeff, setNewSubjectCoeff] = useState('2');
+
+  const handleOpenEditSubject = (sbj: Subject) => {
+    setEditingSubject(sbj);
+    setEditSubjectName(sbj.name);
+    setEditSubjectCoeff(sbj.coefficient.toString());
+  };
+
+  const handleSaveEditSubject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSubject || !editSubjectName.trim()) return;
+
+    updateSubject(editingSubject.id, {
+      name: editSubjectName.trim(),
+      coefficient: Math.max(1, parseInt(editSubjectCoeff) || 1)
+    });
+
+    setNoticeMsg(`Matière "${editSubjectName.trim()}" modifiée avec succès !`);
+    setEditingSubject(null);
+    setTimeout(() => setNoticeMsg(null), 3000);
+  };
+
+  const handleDeleteSubject = (sbj: Subject) => {
+    deleteSubject(sbj.id);
+    setNoticeMsg(`Matière "${sbj.name}" retirée du bulletin.`);
+    setTimeout(() => setNoticeMsg(null), 3000);
+  };
+
+  const handleAddNewSubject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubjectName.trim()) return;
+
+    addSubject({
+      name: newSubjectName.trim(),
+      code: newSubjectName.trim().substring(0, 4).toUpperCase(),
+      coefficient: Math.max(1, parseInt(newSubjectCoeff) || 1),
+      level: classObj?.level || student?.level || 'COLLEGE',
+      category: 'DIVERS'
+    });
+
+    setNoticeMsg(`Matière "${newSubjectName.trim()}" ajoutée au bulletin !`);
+    setNewSubjectName('');
+    setTimeout(() => setNoticeMsg(null), 3000);
+  };
 
   // Escape key handler for smooth closing
   React.useEffect(() => {
@@ -148,6 +232,14 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
               <span>🏫 Logo de l'École</span>
             </button>
             <button
+              onClick={() => setShowSubjectManagerModal(true)}
+              className="ml-1 px-2.5 py-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 font-bold text-[11px] rounded-lg flex items-center space-x-1.5 transition-colors cursor-pointer"
+              title="Modifier les coefficients ou supprimer des matières du bulletin"
+            >
+              <Pencil className="h-3.5 w-3.5 text-amber-300" />
+              <span>⚙️ Gérer les Matières</span>
+            </button>
+            <button
               onClick={() => setShowSignatureControls(!showSignatureControls)}
               className="ml-1 px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-[11px] rounded-lg flex items-center space-x-1 transition-colors"
             >
@@ -251,9 +343,16 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
         )}
 
         {/* Printable Bulletin Document */}
-        <div className="p-8 sm:p-10 bg-white text-slate-900 font-sans print:p-0 print:m-0" id="bulletin-document">
+        <div className="p-8 sm:p-10 bg-white text-slate-900 font-sans print:p-0 print:m-0 relative overflow-hidden" id="bulletin-document">
           
-          {/* Header */}
+          {/* Filigrane officiel portant le nom de l'école */}
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden select-none z-0">
+            <div className="text-center transform -rotate-25 opacity-[0.05] font-black text-slate-900 uppercase text-4xl sm:text-6xl md:text-7xl tracking-widest leading-relaxed select-none">
+              {(settings.schoolName && settings.schoolName !== 'GESTIONNAIRE SCOLAIRE') ? settings.schoolName : (currentSchool?.name || 'ÉTABLISSEMENT SCOLAIRE')}
+            </div>
+          </div>
+
+          <div className="relative z-10">
           <div className="flex items-start justify-between border-b-2 border-blue-900 pb-4 mb-6">
             <div className="flex items-center space-x-4">
               <div 
@@ -280,22 +379,28 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
               </div>
             </div>
 
-            <div className="text-right">
+            <div className="text-right space-y-1">
               <div className="inline-block bg-blue-900 text-white font-black text-sm px-4 py-1.5 rounded-lg uppercase tracking-wider shadow-sm">
                 {activeTemplate.headerTitle || `BULLETIN TRIMESTRE ${trimester}`}
               </div>
-              <p className="text-xs font-bold text-slate-700 mt-2">Année Académique : {settings.academicYear}</p>
-              <p className="text-[11px] font-extrabold text-indigo-800 mt-0.5">
-                Trimestre {trimester}
+              <p className="text-xs font-bold text-slate-700">Année Académique : {settings.academicYear}</p>
+              <p className="text-[11px] font-extrabold text-indigo-800">
+                Trimestre {trimester} • Classe de {classObj?.name || student.level}
               </p>
+              <div className="mt-1 px-3 py-1 bg-blue-50 border border-blue-200 inline-block text-left rounded-lg shadow-xs">
+                <span className="text-[10px] uppercase font-bold text-blue-800 block">Élève Titulaire :</span>
+                <strong className="text-xs font-black text-blue-950 uppercase tracking-wide">
+                  {student.lastName.toUpperCase()} {student.firstName}
+                </strong>
+              </div>
             </div>
           </div>
 
-          {/* Student Info Box with Prominent Rank Display */}
+          {/* Student Info Box with Prominent Rank Display - NOM DE L'ÉLÈVE EN MAJUSCULE BIEN VISIBLE */}
           <div className="grid grid-cols-4 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-6 text-xs">
             <div>
-              <p className="text-slate-500 font-bold uppercase text-[10px]">Identité de l'Élève</p>
-              <p className="font-extrabold text-sm text-slate-900 uppercase">{student.lastName} {student.firstName}</p>
+              <p className="text-slate-500 font-bold uppercase text-[10px]">Nom & Prénoms de l'Élève</p>
+              <p className="font-black text-base text-blue-950 uppercase tracking-tight">{student.lastName.toUpperCase()} {student.firstName}</p>
               <p className="text-slate-600 font-semibold mt-0.5">Matricule : <span className="text-blue-700 font-bold">{student.registrationNumber}</span></p>
             </div>
 
@@ -327,7 +432,20 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
           <table className="w-full text-xs border-collapse border border-slate-300 mb-4">
             <thead>
               <tr className="bg-blue-900 text-white font-bold uppercase tracking-wider text-left">
-                <th className="p-2 border border-slate-300">Matières</th>
+                <th className="p-2 border border-slate-300">
+                  <div className="flex items-center justify-between">
+                    <span>Matières Définies par l'École</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowSubjectManagerModal(true)}
+                      className="px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 text-white font-extrabold text-[10px] inline-flex items-center space-x-1 transition-all cursor-pointer print:hidden"
+                      title="Modifier les coefficients ou supprimer des matières"
+                    >
+                      <Pencil className="h-3 w-3 text-amber-300" />
+                      <span>⚙️ Modifier / Supprimer</span>
+                    </button>
+                  </div>
+                </th>
                 {activeTemplate.columns.showCoefficients && <th className="p-2 border border-slate-300 text-center">Coeff</th>}
                 {activeTemplate.columns.showInterroAverage && <th className="p-2 border border-slate-300 text-center">Interro</th>}
                 {activeTemplate.columns.showDevoirMark && <th className="p-2 border border-slate-300 text-center">Devoir</th>}
@@ -342,7 +460,27 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                 studentRankData.subjectResults.map((item, idx) => (
                   <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                     <td className="p-2 border border-slate-300 font-bold text-slate-900">
-                      <div>{item.subject.name}</div>
+                      <div className="flex items-center justify-between group">
+                        <span>{item.subject.name}</span>
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1 print:hidden">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditSubject(item.subject)}
+                            className="p-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 cursor-pointer"
+                            title={`Modifier "${item.subject.name}" (nom ou coefficient)`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSubject(item.subject)}
+                            className="p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 cursor-pointer"
+                            title={`Supprimer "${item.subject.name}" du bulletin`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
                     </td>
                     {activeTemplate.columns.showCoefficients && (
                       <td className="p-2 border border-slate-300 text-center font-semibold">
@@ -365,16 +503,16 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                       </td>
                     )}
                     <td className="p-2 border border-slate-300 text-center font-black text-blue-900">
-                      {item.average.toFixed(2)}
+                      {item.grades.length > 0 ? item.average.toFixed(2) : '-'}
                     </td>
                     {activeTemplate.columns.showSubjectRank && (
                       <td className="p-2 border border-slate-300 text-center font-extrabold text-purple-700">
-                        {item.subjectRank || '-'}
+                        {item.grades.length > 0 ? (item.subjectRank || '-') : '-'}
                       </td>
                     )}
                     {activeTemplate.columns.showTeacherAppreciation && (
                       <td className="p-2 border border-slate-300 italic text-slate-700">
-                        {item.appreciation}
+                        {item.grades.length > 0 ? item.appreciation : '-'}
                       </td>
                     )}
                   </tr>
@@ -457,6 +595,8 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
 
           </div>
 
+          </div> {/* Closing relative z-10 */}
+
         </div>
 
       </div>
@@ -482,6 +622,222 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
         onClose={() => setIsLogoModalOpen(false)}
         initialContext="BULLETIN"
       />
+
+      {/* MODAL GESTION, MODIFICATION ET SUPPRESSION DES MATIÈRES DU BULLETIN */}
+      {showSubjectManagerModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowSubjectManagerModal(false);
+          }}
+        >
+          <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/80">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400">
+                  <BookOpen className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black">Gestion des Matières du Bulletin</h3>
+                  <p className="text-xs text-slate-500">Modifiez le nom, le coefficient ou supprimez les matières du cursus</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSubjectManagerModal(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-5 overflow-y-auto space-y-6 flex-1 text-xs">
+              
+              {/* Formulaire de modification rapide si une matière est sélectionnée */}
+              {editingSubject ? (
+                <form onSubmit={handleSaveEditSubject} className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-amber-800 dark:text-amber-300 flex items-center space-x-1.5">
+                      <Pencil className="h-4 w-4" />
+                      <span>Modifier la Matière : <strong>{editingSubject.name}</strong></span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEditingSubject(null)}
+                      className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    >
+                      Annuler
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Intitulé de la matière *
+                      </label>
+                      <input
+                        type="text"
+                        value={editSubjectName}
+                        onChange={e => setEditSubjectName(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
+                        placeholder="Ex: Mathématiques Générales"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Coefficient *
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={editSubjectCoeff}
+                        onChange={e => setEditSubjectCoeff(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end space-x-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditingSubject(null)}
+                      className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-300 transition-colors cursor-pointer"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold shadow-sm transition-colors cursor-pointer"
+                    >
+                      Enregistrer les modifications
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Formulaire d'ajout d'une nouvelle matière */
+                <form onSubmit={handleAddNewSubject} className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 space-y-3">
+                  <span className="font-extrabold text-indigo-900 dark:text-indigo-300 flex items-center space-x-1.5">
+                    <Plus className="h-4 w-4" />
+                    <span>Ajouter une Nouvelle Matière au Bulletin</span>
+                  </span>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Nom de la nouvelle matière *
+                      </label>
+                      <input
+                        type="text"
+                        value={newSubjectName}
+                        onChange={e => setNewSubjectName(e.target.value)}
+                        placeholder="Ex: Éducation Civique, Informatique..."
+                        className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Coefficient *
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={newSubjectCoeff}
+                        onChange={e => setNewSubjectCoeff(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-white"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black shadow-sm transition-colors cursor-pointer flex items-center space-x-1.5"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Ajouter au Bulletin</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Liste des matières actuelles figurant sur le bulletin */}
+              <div>
+                <h4 className="font-black text-slate-800 dark:text-slate-200 mb-2 uppercase tracking-wider text-[11px]">
+                  Matières configurées pour le bulletin ({studentRankData.subjectResults.length}) :
+                </h4>
+
+                <div className="space-y-1.5 divide-y divide-slate-100 dark:divide-slate-800">
+                  {studentRankData.subjectResults.map((sr) => {
+                    const sbj = sr.subject;
+                    return (
+                      <div 
+                        key={sbj.id} 
+                        className="pt-2 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 p-2 rounded-xl transition-colors"
+                      >
+                        <div className="flex items-center space-x-2.5">
+                          <span className="p-1 rounded-md bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-bold font-mono text-[10px]">
+                            {sbj.code || sbj.name.substring(0, 4).toUpperCase()}
+                          </span>
+                          <div>
+                            <p className="font-extrabold text-slate-900 dark:text-white text-xs">{sbj.name}</p>
+                            <p className="text-[10px] text-slate-400">Niveau : {sbj.level || 'SECONDAIRE'}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold text-xs">
+                            Coeff. {sbj.coefficient}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditSubject(sbj)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950 transition-colors cursor-pointer"
+                            title="Modifier le nom ou le coefficient de cette matière"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSubject(sbj)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950 transition-colors cursor-pointer"
+                            title="Supprimer cette matière du bulletin"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowSubjectManagerModal(false)}
+                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow transition-all cursor-pointer"
+              >
+                Terminé & Actualiser le Bulletin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,4 +1,5 @@
 import { Student, Grade, Subject, BulletinTemplate } from '../types';
+import { isPrimaryClass } from './schoolUtils';
 
 export interface SubjectResult {
   subject: Subject;
@@ -81,9 +82,22 @@ export function calculateSubjectAverage(
   let finalAverage = 0;
 
   if (template.calculationFormula === 'INTERRO_DEVOIR_COMPO') {
-    const interros = studentGrades.filter(g => g.examType === 'INTERRO' || g.examType === 'TP');
-    const devoirs = studentGrades.filter(g => g.examType === 'DEVOIR');
-    const compos = studentGrades.filter(g => g.examType === 'COMPOSITION');
+    const isInterro = (t: string) => {
+      const u = (t || '').toUpperCase();
+      return u === 'INTERRO' || u === 'TP' || u.startsWith('INTERRO') || u.startsWith('TEST') || u.startsWith('EVAL') || u.startsWith('INT');
+    };
+    const isDevoir = (t: string) => {
+      const u = (t || '').toUpperCase();
+      return u === 'DEVOIR' || u.startsWith('DEVOIR') || u === 'DS' || u.startsWith('DS');
+    };
+    const isCompo = (t: string) => {
+      const u = (t || '').toUpperCase();
+      return u === 'COMPOSITION' || u.startsWith('COMPO') || u === 'EXAMEN' || u.startsWith('EXAM');
+    };
+
+    const interros = studentGrades.filter(g => isInterro(g.examType));
+    const devoirs = studentGrades.filter(g => isDevoir(g.examType));
+    const compos = studentGrades.filter(g => isCompo(g.examType));
 
     const interroAvg = interros.length > 0
       ? interros.reduce((sum, g) => sum + g.mark, 0) / interros.length
@@ -114,7 +128,16 @@ export function calculateSubjectAverage(
       totalParts += 2;
     }
 
-    finalAverage = totalParts > 0 ? sumPoints / totalParts : 0;
+    if (totalParts > 0) {
+      finalAverage = sumPoints / totalParts;
+    } else if (studentGrades.length > 0) {
+      // Fallback if grades don't match specific types
+      const totalWeighted = studentGrades.reduce((sum, g) => sum + (g.mark * (g.coefficient || 1)), 0);
+      const totalCoeffs = studentGrades.reduce((sum, g) => sum + (g.coefficient || 1), 0) || 1;
+      finalAverage = totalWeighted / totalCoeffs;
+    } else {
+      finalAverage = 0;
+    }
 
     return {
       subject,
@@ -193,55 +216,58 @@ export function calculateClassRanks(
     };
   }
 
-  // Determine target level of the class
-  const targetLevel = students[0]?.level || 'COLLEGE';
+  // Determine if this is a primary or secondary class
+  const isPrimary = isPrimaryClass(students[0]);
 
-  // Filter subjects relevant to this class/level
+  // Filter subjects defined by the school for this educational level
+  // For secondary classes (Collège & Lycée), include ALL subjects defined by the school
   const relevantSubjects = subjects.filter(sbj => {
-    if (sbj.level && sbj.level === targetLevel) return true;
-    const hasGradeInClass = grades.some(g =>
-      g.subjectId === sbj.id &&
-      g.trimester === trimester &&
-      students.some(s => s.id === g.studentId)
-    );
-    if (hasGradeInClass) return true;
-    return !sbj.level;
+    if (isPrimary) {
+      return isPrimaryClass(sbj) || sbj.level === 'PRIMAIRE' || sbj.level === 'MATERNELLE' || sbj.id.startsWith('sbj-p-') || sbj.id.startsWith('sbj-mat-');
+    } else {
+      // Secondary: include all subjects that are NOT primary or maternelle
+      const isPri = isPrimaryClass(sbj) || sbj.level === 'PRIMAIRE' || sbj.level === 'MATERNELLE' || sbj.id.startsWith('sbj-p-') || sbj.id.startsWith('sbj-mat-');
+      return !isPri;
+    }
   });
 
   const activeSubjects = relevantSubjects.length > 0 ? relevantSubjects : subjects;
 
   // 1. Calculate for each student
   const rawResults = students.map(student => {
-    const studentGrades = grades.filter(g => g.studentId === student.id && g.trimester === trimester);
+    const studentGrades = grades.filter(g => g.studentId === student.id && Number(g.trimester) === Number(trimester));
     
-    // Evaluate for each subject relevant to student
+    // Evaluate for each subject relevant to student - KEEP ALL subjects defined by the school
     const subjectResults = activeSubjects.map(sbj => {
-      const sbjGrades = studentGrades.filter(g => g.subjectId === sbj.id);
-      
-      // Check if ANY student in the class has a grade for this subject
-      const classHasGradesForSbj = grades.some(g => 
-        g.subjectId === sbj.id && 
-        g.trimester === trimester && 
-        students.some(s => s.id === g.studentId)
+      const sbjGrades = studentGrades.filter(g => 
+        g.subjectId === sbj.id || 
+        g.subjectId === sbj.name || 
+        (sbj.code && g.subjectId === sbj.code) ||
+        (g.subjectName && g.subjectName.toLowerCase() === sbj.name.toLowerCase())
       );
-
       const res = calculateSubjectAverage(sbj, sbjGrades, tmpl);
-      
-      // If no grades exist for this student AND no student in the class has grades for this subject, zero out coefficient
-      if (sbjGrades.length === 0 && !classHasGradesForSbj) {
+
+      // If no grades exist for this student in this subject
+      if (sbjGrades.length === 0) {
         return {
           ...res,
-          coefficient: 0,
-          weightedAverage: 0
+          coefficient: sbj.coefficient || 1,
+          average: 0,
+          weightedAverage: 0,
+          appreciation: 'Non évalué'
         };
       }
 
       return res;
-    }).filter(sr => sr.coefficient > 0 || sr.grades.length > 0);
+    });
 
-    const totalCoeffs = subjectResults.reduce((sum, sr) => sum + sr.coefficient, 0) || 1;
-    const totalWeightedPoints = subjectResults.reduce((sum, sr) => sum + sr.weightedAverage, 0);
-    const overallAverage = subjectResults.length > 0 ? totalWeightedPoints / totalCoeffs : 0;
+    // Evaluate total coefficients and overall average based on evaluated subjects
+    const evaluatedResults = subjectResults.filter(sr => sr.grades.length > 0);
+    const totalCoeffs = evaluatedResults.length > 0
+      ? evaluatedResults.reduce((sum, sr) => sum + sr.coefficient, 0)
+      : subjectResults.reduce((sum, sr) => sum + sr.coefficient, 0) || 1;
+    const totalWeightedPoints = evaluatedResults.reduce((sum, sr) => sum + sr.weightedAverage, 0);
+    const overallAverage = evaluatedResults.length > 0 ? totalWeightedPoints / totalCoeffs : 0;
 
     return {
       student,

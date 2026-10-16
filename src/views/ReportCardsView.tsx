@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../lib/store';
-import { Student } from '../types';
+import { Student, Subject } from '../types';
+import { isPrimaryClass } from '../lib/schoolUtils';
 import { PrintBulletinModal } from '../components/modals/PrintBulletinModal';
 import { ScanBulletinTemplateModal } from '../components/modals/ScanBulletinTemplateModal';
 import { SendBulletinParentModal } from '../components/modals/SendBulletinParentModal';
@@ -9,6 +10,7 @@ import { SchoolLogoImportModal } from '../components/modals/SchoolLogoImportModa
 import { calculateClassRanks, defaultBulletinTemplate } from '../lib/gradingUtils';
 import {
   FileCheck,
+  FileText,
   Printer,
   Sparkles,
   User,
@@ -34,7 +36,13 @@ import {
   Send,
   Bot,
   ArrowLeft,
-  Image as ImageIcon
+  Image as ImageIcon,
+  PenTool,
+  Eye,
+  EyeOff,
+  Pencil,
+  X,
+  Plus
 } from 'lucide-react';
 
 interface ReportCardsViewProps {
@@ -48,21 +56,102 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     settings,
     grades,
     subjects,
+    addSubject,
+    updateSubject,
+    deleteSubject,
     currentSchool,
     archivedReportCards,
     archiveReportCard,
     deleteArchivedReportCard
   } = useApp();
 
+  // EXCLUSION STRICTE DES CLASSES DU PRIMAIRE : seules les classes secondaires (Collège & Lycée) sont retenues
+  const secondaryClasses = useMemo(() => {
+    return classes.filter(c => !isPrimaryClass(c));
+  }, [classes]);
+
   const [mainTab, setMainTab] = useState<'GENERATOR' | 'ARCHIVES'>('GENERATOR');
-  const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
+  const [selectedClassId, setSelectedClassId] = useState<string>(() => {
+    const sec = classes.filter(c => !isPrimaryClass(c));
+    return sec[0]?.id || classes[0]?.id || '';
+  });
+
+  // Maintenir la classe sélectionnée dans le périmètre secondaire
+  useEffect(() => {
+    if (secondaryClasses.length > 0 && !secondaryClasses.some(c => c.id === selectedClassId)) {
+      setSelectedClassId(secondaryClasses[0].id);
+    }
+  }, [secondaryClasses, selectedClassId]);
+
   const [selectedTrimester, setSelectedTrimester] = useState<1 | 2 | 3>(settings.currentTrimester);
   const [selectedStudentForBulletin, setSelectedStudentForBulletin] = useState<Student | null>(null);
   const [isScanTemplateModalOpen, setIsScanTemplateModalOpen] = useState(false);
   const [showAiWhatsAppModal, setShowAiWhatsAppModal] = useState(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'CARDS' | 'RANKING_TABLE'>('RANKING_TABLE');
+  
+  // Format d'affichage par défaut : BULLETIN_PREVIEW (Format officiel dressé)
+  const [viewMode, setViewMode] = useState<'BULLETIN_PREVIEW' | 'RANKING_TABLE' | 'CARDS'>('BULLETIN_PREVIEW');
+  // Sélectionner par défaut le premier élève réel de la classe
+  const [previewStudentId, setPreviewStudentId] = useState<string>(() => {
+    const sec = classes.filter(c => !isPrimaryClass(c));
+    const firstCls = sec[0] || classes[0];
+    const firstSts = students.filter(s => s.classId === firstCls?.id);
+    return firstSts[0]?.id || 'SPECIMEN';
+  });
+  const [showSignatureOnDoc, setShowSignatureOnDoc] = useState(true);
   const [bulkArchiveMessage, setBulkArchiveMessage] = useState<string>('');
+
+  // Gestion des matières (Modification et Suppression directe depuis le bulletin)
+  const [showSubjectManagerModal, setShowSubjectManagerModal] = useState(false);
+  const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [editSubjectName, setEditSubjectName] = useState('');
+  const [editSubjectCoeff, setEditSubjectCoeff] = useState('2');
+  const [newSubjectName, setNewSubjectName] = useState('');
+  const [newSubjectCoeff, setNewSubjectCoeff] = useState('2');
+  const [subjectNotice, setSubjectNotice] = useState<string | null>(null);
+
+  const handleOpenEditSubject = (sbj: Subject) => {
+    setEditingSubject(sbj);
+    setEditSubjectName(sbj.name);
+    setEditSubjectCoeff(sbj.coefficient.toString());
+  };
+
+  const handleSaveEditSubject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSubject || !editSubjectName.trim()) return;
+
+    updateSubject(editingSubject.id, {
+      name: editSubjectName.trim(),
+      coefficient: Math.max(1, parseInt(editSubjectCoeff) || 1)
+    });
+
+    setSubjectNotice(`Matière "${editSubjectName.trim()}" mise à jour avec succès !`);
+    setEditingSubject(null);
+    setTimeout(() => setSubjectNotice(null), 3000);
+  };
+
+  const handleDeleteSubjectFromBulletin = (sbj: Subject) => {
+    deleteSubject(sbj.id);
+    setSubjectNotice(`Matière "${sbj.name}" retirée du bulletin avec succès.`);
+    setTimeout(() => setSubjectNotice(null), 3000);
+  };
+
+  const handleAddNewSubjectFromBulletin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSubjectName.trim()) return;
+
+    addSubject({
+      name: newSubjectName.trim(),
+      code: newSubjectName.trim().substring(0, 4).toUpperCase(),
+      coefficient: Math.max(1, parseInt(newSubjectCoeff) || 1),
+      level: selectedClass?.level || 'COLLEGE',
+      category: 'DIVERS'
+    });
+
+    setSubjectNotice(`Matière "${newSubjectName.trim()}" ajoutée avec succès au bulletin !`);
+    setNewSubjectName('');
+    setTimeout(() => setSubjectNotice(null), 3000);
+  };
 
   // Send to Parent WhatsApp/SMS Modal state
   const [sendParentModalData, setSendParentModalData] = useState<{
@@ -80,11 +169,23 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   const [archiveClassFilter, setArchiveClassFilter] = useState<string>('ALL');
 
   const activeTemplate = currentSchool?.bulletinTemplate || settings.bulletinTemplate || defaultBulletinTemplate();
+  const activeSignatureUrl = currentSchool?.signatureUrl || settings.signatureUrl;
 
-  const selectedClass = classes.find(c => c.id === selectedClassId) || classes[0];
-  const classStudents = students.filter(s => s.classId === selectedClassId);
+  const selectedClass = secondaryClasses.find(c => c.id === selectedClassId) || secondaryClasses[0] || classes[0];
+  const classStudents = students.filter(s => s.classId === selectedClass?.id);
 
-  // Compute exact rankings for all students in selected class from 1st to last
+  // Synchronisation automatique : quand on change de classe, afficher immédiatement le premier élève réel
+  useEffect(() => {
+    if (classStudents.length > 0) {
+      if (!classStudents.some(s => s.id === previewStudentId)) {
+        setPreviewStudentId(classStudents[0].id);
+      }
+    } else {
+      setPreviewStudentId('SPECIMEN');
+    }
+  }, [selectedClassId, classStudents]);
+
+  // Compute exact rankings for all students in selected secondary class from 1st to last
   const classRankSummary = calculateClassRanks(
     classStudents,
     grades,
@@ -92,6 +193,69 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     selectedTrimester,
     activeTemplate
   );
+
+  // Spécimen modèle d'élève officiel portant toutes les matières de l'école
+  const specimenStudent: Student = useMemo(() => ({
+    id: 'specimen-student',
+    firstName: 'Élève Exemple',
+    lastName: 'SPÉCIMEN OFFICIEL',
+    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=150',
+    email: 'specimen@ecole.educ',
+    phone: currentSchool?.phone || settings.phone || '01 00 00 00 00',
+    classId: selectedClass?.id || '',
+    dateOfBirth: '2010-01-01',
+    address: currentSchool?.address || settings.address,
+    gender: 'M',
+    status: 'INSCRIT',
+    registrationNumber: 'MAT-SPEC-2025',
+    parentName: 'Direction Pédagogique',
+    parentPhone: currentSchool?.phone || settings.phone || '96 00 00 00',
+    parentEmail: 'direction@ecole.educ',
+    enrollmentDate: '2024-09-01',
+    healthNotes: 'R.A.S',
+    level: selectedClass?.level || 'COLLEGE'
+  }), [selectedClass, currentSchool, settings]);
+
+  const activeStudentForBulletin = previewStudentId === 'SPECIMEN'
+    ? specimenStudent
+    : (classStudents.find(s => s.id === previewStudentId) || classStudents[0] || specimenStudent);
+
+  // Toutes les matières du secondaire définies par l'établissement
+  const definedSecondarySubjects = useMemo(() => {
+    return subjects.filter(s =>
+      !isPrimaryClass(s) &&
+      s.level !== 'PRIMAIRE' &&
+      s.level !== 'MATERNELLE' &&
+      !s.id.startsWith('sbj-p-') &&
+      !s.id.startsWith('sbj-mat-')
+    );
+  }, [subjects]);
+
+  const currentBulletinRankData = useMemo(() => {
+    const found = classRankSummary.rankings.find(r => r.student.id === activeStudentForBulletin.id);
+    if (found) return found;
+
+    return {
+      student: activeStudentForBulletin,
+      subjectResults: definedSecondarySubjects.map(s => ({
+        subject: s,
+        grades: [],
+        average: 0,
+        weightedAverage: 0,
+        coefficient: s.coefficient || 1,
+        appreciation: 'Non évalué'
+      })),
+      totalCoefficients: definedSecondarySubjects.reduce((sum, s) => sum + (s.coefficient || 1), 0) || 1,
+      totalWeightedPoints: 0,
+      overallAverage: 0,
+      rank: activeStudentForBulletin.id === 'specimen-student' ? 'Modèle Vierge' : 'N/A',
+      numericRank: 1,
+      mention: activeStudentForBulletin.id === 'specimen-student' ? "SPÉCIMEN ÉCOLE" : "SANS DÉCISION",
+      generalAppreciation: activeStudentForBulletin.id === 'specimen-student'
+        ? "Format officiel du bulletin dressé pour la classe, portant l'ensemble des matières arrêtées par l'école."
+        : "Aucune note enregistrée pour cet élève ce trimestre."
+    };
+  }, [classRankSummary, activeStudentForBulletin, definedSecondarySubjects]);
 
   const handlePrintClassRanking = () => {
     window.print();
@@ -259,14 +423,14 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
       <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
         <div>
           <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-            Sélectionner la Classe *
+            Sélectionner la Classe (Secondaire) *
           </label>
           <select
             value={selectedClassId}
             onChange={e => setSelectedClassId(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 cursor-pointer"
           >
-            {classes.map(c => (
+            {secondaryClasses.map(c => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.level}) — {c.studentCount || 0} élèves
               </option>
@@ -281,7 +445,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
           <select
             value={selectedTrimester}
             onChange={e => setSelectedTrimester(parseInt(e.target.value) as 1 | 2 | 3)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 cursor-pointer"
           >
             <option value={1}>1er Trimestre</option>
             <option value={2}>2ème Trimestre</option>
@@ -293,29 +457,41 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
           <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
             Format d'Affichage
           </label>
-          <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+          <div className="grid grid-cols-3 gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
             <button
-              onClick={() => setViewMode('RANKING_TABLE')}
-              className={`py-1.5 px-3 rounded-lg font-extrabold flex items-center justify-center space-x-1.5 transition-all ${
-                viewMode === 'RANKING_TABLE'
+              onClick={() => setViewMode('BULLETIN_PREVIEW')}
+              className={`py-1.5 px-2 rounded-lg font-extrabold flex items-center justify-center space-x-1 transition-all cursor-pointer ${
+                viewMode === 'BULLETIN_PREVIEW'
                   ? 'bg-purple-600 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <ListOrdered className="h-4 w-4" />
-              <span>Classement</span>
+              <FileText className="h-3.5 w-3.5" />
+              <span className="truncate">📄 Bulletin Dressé</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('RANKING_TABLE')}
+              className={`py-1.5 px-2 rounded-lg font-extrabold flex items-center justify-center space-x-1 transition-all cursor-pointer ${
+                viewMode === 'RANKING_TABLE'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <ListOrdered className="h-3.5 w-3.5" />
+              <span className="truncate">🏆 Classement</span>
             </button>
 
             <button
               onClick={() => setViewMode('CARDS')}
-              className={`py-1.5 px-3 rounded-lg font-extrabold flex items-center justify-center space-x-1.5 transition-all ${
+              className={`py-1.5 px-2 rounded-lg font-extrabold flex items-center justify-center space-x-1 transition-all cursor-pointer ${
                 viewMode === 'CARDS'
                   ? 'bg-purple-600 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Grid className="h-4 w-4" />
-              <span>Cards Élèves</span>
+              <Grid className="h-3.5 w-3.5" />
+              <span className="truncate">👥 Cards Élèves</span>
             </button>
           </div>
         </div>
@@ -372,7 +548,402 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
         </div>
       </div>
 
-      {/* VIEW MODE 1: OFFICIAL CLASS RANKING TABLE (Du 1er au Dernier) */}
+      {/* VIEW MODE 1: FORMAT DU BULLETIN DRESSÉ (Portant toutes les matières de l'école, le filigrane et le logo en entête) */}
+      {viewMode === 'BULLETIN_PREVIEW' && (
+        <div className="space-y-4">
+          
+          {/* Barre d'outils et sélecteur de l'élève affiché */}
+          <div className="p-4 bg-slate-900 text-white rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-lg print:hidden">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="text-xs font-black uppercase text-purple-300 flex items-center space-x-1.5">
+                <FileCheck className="h-4 w-4 text-purple-400" />
+                <span>Format du Bulletin Dressé :</span>
+              </span>
+
+              {/* Sélecteur de l'élève ou spécimen vierge */}
+              <div className="flex items-center space-x-1.5">
+                <label className="text-[11px] text-slate-300 font-bold">Élève :</label>
+                <select
+                  value={previewStudentId}
+                  onChange={e => setPreviewStudentId(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-extrabold text-xs focus:ring-2 focus:ring-purple-500 cursor-pointer max-w-[280px] sm:max-w-md truncate"
+                >
+                  {classRankSummary.rankings.map(r => (
+                    <option key={r.student.id} value={r.student.id}>
+                      {r.numericRank === 1 ? '🥇' : r.numericRank === 2 ? '🥈' : r.numericRank === 3 ? '🥉' : '👤'} {r.student.lastName.toUpperCase()} {r.student.firstName} (Mat: {r.student.registrationNumber}) — Rang {r.rank}
+                    </option>
+                  ))}
+                  <option value="SPECIMEN">
+                    📄 Spécimen Vierge (Modèle officiel sans nom)
+                  </option>
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowSignatureOnDoc(!showSignatureOnDoc)}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                  showSignatureOnDoc
+                    ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40'
+                    : 'bg-slate-800 text-slate-400 border border-slate-700'
+                }`}
+                title="Afficher ou masquer la signature et le cachet officiel"
+              >
+                {showSignatureOnDoc ? <Eye className="h-3.5 w-3.5 text-emerald-400" /> : <EyeOff className="h-3.5 w-3.5" />}
+                <span>{showSignatureOnDoc ? 'Cachet Actif' : 'Cachet Masqué'}</span>
+              </button>
+            </div>
+
+            {/* Actions rapides sur le bulletin dressé */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSubjectManagerModal(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center space-x-1.5 shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+                title="Modifier les coefficients, intitulés ou supprimer des matières du bulletin"
+              >
+                <Pencil className="h-3.5 w-3.5 text-amber-300" />
+                <span>⚙️ Gérer les Matières</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSendParentModalData({
+                  isOpen: true,
+                  student: activeStudentForBulletin.id === 'specimen-student' ? undefined : activeStudentForBulletin,
+                  studentAverage: currentBulletinRankData.overallAverage,
+                  studentRank: currentBulletinRankData.rank,
+                  studentMention: currentBulletinRankData.mention
+                })}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center space-x-1.5 shadow transition-all cursor-pointer"
+                title="Envoyer le lien du bulletin au parent par WhatsApp ou SMS"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                <span>📲 WhatsApp Parent</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedStudentForBulletin(activeStudentForBulletin)}
+                className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs flex items-center space-x-1.5 shadow-md shadow-purple-600/30 transition-all cursor-pointer"
+                title="Imprimer ou exporter en PDF ce bulletin officiel"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                <span>Imprimer / PDF</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Feedback message for subject actions */}
+          {subjectNotice && (
+            <div className="p-3 bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-300 rounded-2xl text-xs font-bold flex items-center space-x-2 shadow-xs">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span>{subjectNotice}</span>
+            </div>
+          )}
+
+          {/* DOCUMENT BULLETIN OFFICIEL DRESSÉ */}
+          <div 
+            className="p-8 sm:p-10 bg-white text-slate-900 rounded-3xl border border-slate-200 shadow-xl relative overflow-hidden print:p-0 print:border-none print:shadow-none" 
+            id="bulletin-document-view"
+          >
+            {/* Filigrane (Watermark) officiel portant en filigrane le nom de l'école */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden select-none z-0">
+              <div className="text-center transform -rotate-25 opacity-[0.05] font-black text-slate-900 uppercase text-4xl sm:text-6xl md:text-7xl tracking-widest leading-relaxed select-none">
+                {(settings.schoolName && settings.schoolName !== 'GESTIONNAIRE SCOLAIRE') ? settings.schoolName : (currentSchool?.name || 'ÉTABLISSEMENT SCOLAIRE')}
+              </div>
+            </div>
+
+            {/* Contenu du Bulletin au premier plan */}
+            <div className="relative z-10 space-y-6">
+              
+              {/* Entête Officielle avec Logo de l'École */}
+              <div className="flex items-start justify-between border-b-2 border-blue-900 pb-4">
+                <div className="flex items-center space-x-4">
+                  <div 
+                    className="relative group cursor-pointer shrink-0" 
+                    onClick={() => setIsLogoModalOpen(true)}
+                    title="Cliquer pour changer ou importer le logo officiel de l'école"
+                  >
+                    <img
+                      src={currentSchool?.logoUrl || settings.logoUrl || '/icon.svg'}
+                      alt={currentSchool?.name || settings.schoolName}
+                      className="h-20 w-20 object-contain rounded-xl ring-2 ring-blue-900/20 bg-white p-1"
+                    />
+                    <span className="absolute -bottom-1 -right-1 p-1 bg-indigo-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity print:hidden shadow-md">
+                      <ImageIcon className="h-2.5 w-2.5" />
+                    </span>
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-extrabold text-blue-900 uppercase tracking-tight">
+                      {(settings.schoolName && settings.schoolName !== 'GESTIONNAIRE SCOLAIRE') ? settings.schoolName : (currentSchool?.name || 'ÉTABLISSEMENT SCOLAIRE')}
+                    </h1>
+                    <p className="text-xs font-semibold text-emerald-700 italic">{currentSchool?.motto || settings.motto}</p>
+                    <p className="text-xs text-slate-600 mt-1">{currentSchool?.address || settings.address} • Tel: {currentSchool?.phone || settings.phone}</p>
+                    <p className="text-xs text-slate-500">{currentSchool?.city} ({currentSchool?.country || 'Afrique'})</p>
+                  </div>
+                </div>
+
+                <div className="text-right space-y-1">
+                  <div className="inline-block bg-blue-900 text-white font-black text-sm px-4 py-1.5 rounded-lg uppercase tracking-wider shadow-sm">
+                    {activeTemplate.headerTitle || `BULLETIN TRIMESTRE ${selectedTrimester}`}
+                  </div>
+                  <p className="text-xs font-bold text-slate-700">Année Académique : {settings.academicYear}</p>
+                  <p className="text-[11px] font-extrabold text-indigo-800">
+                    Trimestre {selectedTrimester} • Classe de {selectedClass?.name}
+                  </p>
+                  <div className="mt-1 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 inline-block text-left shadow-xs">
+                    <span className="text-[10px] uppercase font-black text-blue-700 block">Élève Titulaire :</span>
+                    <strong className="text-sm font-black text-blue-950 uppercase tracking-wide">
+                      {activeStudentForBulletin.lastName.toUpperCase()} {activeStudentForBulletin.firstName}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Bandeau d'Identification de l'Élève & Rang - NOM DE L'ÉLÈVE BIEN VISIBLE */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs">
+                <div className="flex items-center space-x-3">
+                  <img
+                    src={activeStudentForBulletin.photoUrl}
+                    alt={activeStudentForBulletin.firstName}
+                    className="h-12 w-12 rounded-xl object-cover ring-2 ring-blue-900/30 shrink-0"
+                  />
+                  <div>
+                    <p className="text-slate-500 font-bold uppercase text-[10px]">Nom & Prénoms de l'Élève</p>
+                    <p className="font-black text-base text-blue-950 uppercase tracking-tight">
+                      {activeStudentForBulletin.lastName.toUpperCase()} {activeStudentForBulletin.firstName}
+                    </p>
+                    <p className="text-slate-600 font-bold text-xs mt-0.5">
+                      Matricule : <span className="text-blue-700 font-black">{activeStudentForBulletin.registrationNumber}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-slate-500 font-bold uppercase text-[10px]">Classe & Sexe</p>
+                  <p className="font-bold text-slate-900">{selectedClass?.name || activeStudentForBulletin.level}</p>
+                  <p className="text-slate-600 mt-0.5">
+                    Sexe : {activeStudentForBulletin.gender} | Né(e) le : {activeStudentForBulletin.dateOfBirth}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-slate-500 font-bold uppercase text-[10px]">Classement dans la Classe</p>
+                  <p className="font-black text-base text-purple-900 flex items-center space-x-1">
+                    <Trophy className="h-4 w-4 text-amber-500 inline" />
+                    <span>RANG : {currentBulletinRankData.rank}</span>
+                  </p>
+                  <p className="text-slate-600 font-semibold text-[11px]">
+                    sur {classRankSummary.totalStudents || 1} élève(s)
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-slate-500 font-bold uppercase text-[10px]">Responsable Légal</p>
+                  <p className="font-bold text-slate-900">{activeStudentForBulletin.parentName}</p>
+                  <p className="text-slate-600 mt-0.5">Tél : {activeStudentForBulletin.parentPhone}</p>
+                </div>
+              </div>
+
+              {/* Tableau de toutes les matières arrêtées par l'école avec possibilité de modifier ou supprimer */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse border border-slate-300">
+                  <thead>
+                    <tr className="bg-blue-900 text-white font-bold uppercase tracking-wider text-left">
+                      <th className="p-2 border border-slate-300">
+                        <div className="flex items-center justify-between">
+                          <span>Matières Définies par l'École</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowSubjectManagerModal(true)}
+                            className="px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 text-white font-extrabold text-[10px] inline-flex items-center space-x-1 transition-all cursor-pointer print:hidden"
+                            title="Modifier les coefficients ou supprimer des matières"
+                          >
+                            <Pencil className="h-3 w-3 text-amber-300" />
+                            <span>⚙️ Modifier / Supprimer</span>
+                          </button>
+                        </div>
+                      </th>
+                      {activeTemplate.columns.showCoefficients && (
+                        <th className="p-2 border border-slate-300 text-center w-16">Coeff</th>
+                      )}
+                      {activeTemplate.columns.showInterroAverage && (
+                        <th className="p-2 border border-slate-300 text-center w-20">Interro</th>
+                      )}
+                      {activeTemplate.columns.showDevoirMark && (
+                        <th className="p-2 border border-slate-300 text-center w-20">Devoir</th>
+                      )}
+                      {activeTemplate.columns.showCompoMark && (
+                        <th className="p-2 border border-slate-300 text-center w-20">Compo</th>
+                      )}
+                      <th className="p-2 border border-slate-300 text-center w-24">Moy. /20</th>
+                      {activeTemplate.columns.showSubjectRank && (
+                        <th className="p-2 border border-slate-300 text-center w-20">Rang</th>
+                      )}
+                      {activeTemplate.columns.showTeacherAppreciation && (
+                        <th className="p-2 border border-slate-300">Appréciation Enseignant</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {currentBulletinRankData.subjectResults.length > 0 ? (
+                      currentBulletinRankData.subjectResults.map((item, idx) => (
+                        <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                          <td className="p-2 border border-slate-300 font-bold text-slate-900">
+                            <div className="flex items-center justify-between group">
+                              <span>{item.subject.name}</span>
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1 print:hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditSubject(item.subject)}
+                                  className="p-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 cursor-pointer"
+                                  title={`Modifier "${item.subject.name}" (nom ou coefficient)`}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSubjectFromBulletin(item.subject)}
+                                  className="p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 cursor-pointer"
+                                  title={`Supprimer "${item.subject.name}"`}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                          {activeTemplate.columns.showCoefficients && (
+                            <td className="p-2 border border-slate-300 text-center font-semibold">
+                              {item.coefficient}
+                            </td>
+                          )}
+                          {activeTemplate.columns.showInterroAverage && (
+                            <td className="p-2 border border-slate-300 text-center">
+                              {item.grades.length > 0 && item.interroAverage !== undefined
+                                ? item.interroAverage.toFixed(2)
+                                : '-'}
+                            </td>
+                          )}
+                          {activeTemplate.columns.showDevoirMark && (
+                            <td className="p-2 border border-slate-300 text-center">
+                              {item.grades.length > 0 && item.devoirMark !== undefined
+                                ? item.devoirMark.toFixed(2)
+                                : '-'}
+                            </td>
+                          )}
+                          {activeTemplate.columns.showCompoMark && (
+                            <td className="p-2 border border-slate-300 text-center">
+                              {item.grades.length > 0 && item.compoMark !== undefined
+                                ? item.compoMark.toFixed(2)
+                                : '-'}
+                            </td>
+                          )}
+                          <td className="p-2 border border-slate-300 text-center font-black text-blue-900">
+                            {item.grades.length > 0 ? item.average.toFixed(2) : '-'}
+                          </td>
+                          {activeTemplate.columns.showSubjectRank && (
+                            <td className="p-2 border border-slate-300 text-center font-extrabold text-purple-700">
+                              {item.grades.length > 0 ? (item.subjectRank || '-') : '-'}
+                            </td>
+                          )}
+                          {activeTemplate.columns.showTeacherAppreciation && (
+                            <td className="p-2 border border-slate-300 italic text-slate-700">
+                              {item.grades.length > 0 ? item.appreciation : '-'}
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="p-4 text-center text-slate-500 italic">
+                          Aucune matière configurée pour cette classe.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-100 font-extrabold text-slate-900">
+                      <td className="p-2 border border-slate-300">TOTAL GÉNÉRAL</td>
+                      {activeTemplate.columns.showCoefficients && (
+                        <td className="p-2 border border-slate-300 text-center">
+                          {currentBulletinRankData.totalCoefficients}
+                        </td>
+                      )}
+                      <td 
+                        colSpan={(activeTemplate.columns.showInterroAverage ? 1 : 0) + (activeTemplate.columns.showDevoirMark ? 1 : 0) + (activeTemplate.columns.showCompoMark ? 1 : 0) + 1} 
+                        className="p-2 border border-slate-300 text-center text-sm font-black text-blue-900"
+                      >
+                        MOYENNE : {currentBulletinRankData.overallAverage > 0 ? `${currentBulletinRankData.overallAverage.toFixed(2)} / 20` : '- / 20'}
+                      </td>
+                      {activeTemplate.columns.showSubjectRank && (
+                        <td className="p-2 border border-slate-300 text-center font-black text-purple-900">
+                          {currentBulletinRankData.rank}
+                        </td>
+                      )}
+                      {activeTemplate.columns.showTeacherAppreciation && (
+                        <td className="p-2 border border-slate-300 text-emerald-800 font-extrabold uppercase">
+                          {currentBulletinRankData.mention}
+                        </td>
+                      )}
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Ligne de Statistiques de la Classe */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-900 font-bold">
+                <div>Moyenne Classe : <span className="font-black text-slate-900">{classRankSummary.classAverage.toFixed(2)} / 20</span></div>
+                <div>Plus Forte Moy. : <span className="font-black text-emerald-700">{classRankSummary.highestAverage.toFixed(2)} / 20</span></div>
+                <div>Plus Faible Moy. : <span className="font-black text-red-700">{classRankSummary.lowestAverage.toFixed(2)} / 20</span></div>
+                <div>Taux de Réussite : <span className="font-black text-purple-700">{classRankSummary.passRate.toFixed(1)}%</span></div>
+              </div>
+
+              {/* Appréciation du Conseil & Signature / Cachet */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2 border-t border-slate-200 text-xs">
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <h4 className="font-bold text-blue-900 uppercase">Appréciation Générale du Conseil de Classe</h4>
+                  <p className="italic text-slate-700 leading-relaxed">
+                    "{currentBulletinRankData.generalAppreciation}"
+                  </p>
+                  <div className="pt-2 flex items-center space-x-2 text-[11px] text-slate-500">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    <span>Décision du Conseil : <strong>{currentBulletinRankData.mention}</strong></span>
+                  </div>
+                </div>
+
+                <div className="text-center flex flex-col items-center justify-between p-2">
+                  <p className="font-bold text-slate-800">
+                    Fait à {currentSchool?.city || settings.city.split('-')[0].trim()}, le {new Date().toLocaleDateString('fr-FR')}
+                  </p>
+                  <p className="font-bold text-blue-900 text-xs uppercase mt-2">
+                    {activeTemplate.directorTitle || 'Le Directeur Général'}
+                  </p>
+                  
+                  {showSignatureOnDoc ? (
+                    <div className="relative mt-2">
+                      <img
+                        src={activeSignatureUrl}
+                        alt="Signature"
+                        className="h-16 opacity-90 object-contain ring-1 ring-slate-100 rounded p-1 bg-white"
+                      />
+                      <div className="absolute inset-0 border-2 border-emerald-600 rounded-full w-20 h-20 opacity-25 -rotate-12 left-1/2 -translate-x-1/2 pointer-events-none" />
+                    </div>
+                  ) : (
+                    <div className="h-16 w-36 border-2 border-dashed border-slate-300 rounded-lg mt-2 flex items-center justify-center text-[10px] text-slate-400 italic">
+                      [Emplacement Signature & Cachet]
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* VIEW MODE 2: OFFICIAL CLASS RANKING TABLE (Du 1er au Dernier) */}
       {viewMode === 'RANKING_TABLE' && (
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           
@@ -708,8 +1279,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                 onChange={e => setArchiveClassFilter(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500"
               >
-                <option value="ALL">Toutes les Classes</option>
-                {classes.map(c => (
+                <option value="ALL">Toutes les Classes Secondaires</option>
+                {secondaryClasses.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
@@ -893,6 +1464,223 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
         onClose={() => setIsLogoModalOpen(false)}
         initialContext="BULLETIN"
       />
+
+      {/* MODAL 6: GESTION & MODIFICATION / SUPPRESSION DES MATIÈRES DU BULLETIN */}
+      {showSubjectManagerModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowSubjectManagerModal(false);
+          }}
+        >
+          <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/80">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+                  <Pencil className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base">Gestion des Matières du Bulletin ({definedSecondarySubjects.length})</h3>
+                  <p className="text-xs text-slate-500">Modifiez le nom, le coefficient ou supprimez les matières du cursus</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSubjectManagerModal(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="p-5 overflow-y-auto space-y-5 text-xs">
+              
+              {subjectNotice && (
+                <div className="p-3 bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-300 rounded-xl font-bold flex items-center space-x-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>{subjectNotice}</span>
+                </div>
+              )}
+
+              {/* Formulaire d'ajout rapide d'une matière */}
+              <form onSubmit={handleAddNewSubjectFromBulletin} className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2.5">
+                <span className="font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px] block">
+                  + Ajouter une nouvelle matière au bulletin
+                </span>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Nom de la matière (ex: Philosophie, Informatique...)"
+                    value={newSubjectName}
+                    onChange={e => setNewSubjectName(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-extrabold focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
+                  />
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="number"
+                      min="1"
+                      max="15"
+                      required
+                      placeholder="Coeff"
+                      value={newSubjectCoeff}
+                      onChange={e => setNewSubjectCoeff(e.target.value)}
+                      className="w-20 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 font-extrabold text-center focus:ring-2 focus:ring-indigo-500 text-slate-900 dark:text-white"
+                      title="Coefficient"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold shadow-sm transition-all cursor-pointer shrink-0"
+                    >
+                      Ajouter
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              {/* Liste des matières du secondaire configurées */}
+              <div>
+                <span className="font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px] block mb-2">
+                  Matières figurant actuellement sur le bulletin dressé :
+                </span>
+                <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+                  {definedSecondarySubjects.map(sbj => (
+                    <div 
+                      key={sbj.id} 
+                      className="p-3 bg-white dark:bg-slate-900 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                    >
+                      <div className="min-w-0 pr-3">
+                        <p className="font-extrabold text-sm text-slate-900 dark:text-white truncate">
+                          {sbj.name}
+                        </p>
+                        <p className="text-[10px] text-slate-500 font-bold">
+                          Sigle : {sbj.code} • Niveau : {sbj.level || 'Secondaire'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center space-x-2 shrink-0">
+                        <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 font-black text-xs text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+                          Coeff. {sbj.coefficient}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditSubject(sbj)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950 transition-colors cursor-pointer"
+                          title="Modifier le nom ou le coefficient de cette matière"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSubjectFromBulletin(sbj)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950 transition-colors cursor-pointer"
+                          title="Supprimer cette matière du bulletin"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/80 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowSubjectManagerModal(false)}
+                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs shadow transition-all cursor-pointer"
+              >
+                Terminé & Actualiser le Bulletin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL MODIFICATION SPÉCIFIQUE D'UNE MATIÈRE DU BULLETIN */}
+      {editingSubject && (
+        <div 
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setEditingSubject(null);
+          }}
+        >
+          <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-600">
+                  <Pencil className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-sm">Modifier la Matière</h4>
+                  <p className="text-[11px] text-slate-500">Mettre à jour l'intitulé ou le coefficient officiel</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingSubject(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditSubject} className="space-y-3.5 text-xs font-semibold">
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 mb-1 font-bold">
+                  Intitulé officiel de la matière *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editSubjectName}
+                  onChange={e => setEditSubjectName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500"
+                  placeholder="Ex: Mathématiques, SVT..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 mb-1 font-bold">
+                  Coefficient sur le bulletin * (1 à 15)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="15"
+                  required
+                  value={editSubjectCoeff}
+                  onChange={e => setEditSubjectCoeff(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingSubject(null)}
+                  className="px-3.5 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 font-bold cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold shadow cursor-pointer"
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

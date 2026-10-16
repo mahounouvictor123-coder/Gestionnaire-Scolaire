@@ -28,11 +28,13 @@ import {
   Award,
   LogOut,
   FileUp,
-  Zap
+  Zap,
+  FileText
 } from 'lucide-react';
 import { TeacherAuthGate } from '../components/TeacherAuthGate';
 import { TeacherExamSubmissionTab } from '../components/TeacherExamSubmissionTab';
 import { TeacherQuizWeekTab } from '../components/TeacherQuizWeekTab';
+import { PrintBulletinModal } from '../components/modals/PrintBulletinModal';
 import { isPrimaryClass } from '../lib/schoolUtils';
 
 interface TeacherSubAppProps {
@@ -89,6 +91,8 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
     setIsInstallModalOpen(true);
   };
   const [isSavedSuccess, setIsSavedSuccess] = useState(false);
+  const [statusAlert, setStatusAlert] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
+  const [previewStudentBulletin, setPreviewStudentBulletin] = useState<Student | null>(null);
 
   // Exclude primary classes from secondary teacher portal
   const teacherClasses = useMemo(() => {
@@ -100,6 +104,10 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
     const nonPrimary = classes.filter(c => !isPrimaryClass(c));
     return nonPrimary[0]?.id || '';
   });
+
+  const selectedClass = useMemo(() => {
+    return teacherClasses.find(c => c.id === selectedClassId) || classes.find(c => c.id === selectedClassId) || teacherClasses[0];
+  }, [teacherClasses, classes, selectedClassId]);
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(() => {
     return subjects[0]?.id || '';
@@ -162,7 +170,7 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
         g.studentId === s.id && 
         g.subjectId === selectedSubjectId && 
         g.classId === selectedClassId && 
-        g.trimester === trimester && 
+        Number(g.trimester) === Number(trimester) && 
         g.examType === examType
       );
       initialMap[s.id] = {
@@ -171,7 +179,7 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
       };
     });
     setStudentMarks(initialMap);
-  }, [selectedClassId, selectedSubjectId, trimester, examType, classStudents]);
+  }, [selectedClassId, selectedSubjectId, trimester, examType, classStudents, grades]);
 
   // Handle Mark Input Change
   const handleMarkChange = (studentId: string, value: string) => {
@@ -195,8 +203,11 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
     }));
   };
 
-  // Save Grades Handler
+  // Save Grades Handler (Directly integrated to the student's bulletin)
   const handleSaveGrades = () => {
+    const targetClass = teacherClasses.find(c => c.id === selectedClassId) || classes.find(c => c.id === selectedClassId);
+    const targetSubject = subjects.find(s => s.id === selectedSubjectId);
+
     const validGradesToSave: any[] = [];
     const nowIso = new Date().toISOString();
 
@@ -207,7 +218,9 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
         validGradesToSave.push({
           studentId: s.id,
           subjectId: selectedSubjectId,
+          subjectName: targetSubject ? targetSubject.name : '',
           classId: selectedClassId,
+          className: targetClass ? targetClass.name : '',
           trimester: trimester,
           examType: examType,
           mark: markVal,
@@ -223,17 +236,18 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
     });
 
     if (validGradesToSave.length === 0) {
-      alert("Veuillez saisir au moins une note valide avant d'enregistrer.");
+      setStatusAlert({
+        type: 'error',
+        message: "Veuillez saisir au moins une note valide avant d'enregistrer."
+      });
+      setTimeout(() => setStatusAlert(null), 3500);
       return;
     }
 
-    // Save in centralized store (syncs with Firestore Cloud and localStorage automatically)
+    // Save in centralized store (syncs with Firestore Cloud, localStorage and student bulletin directly)
     addBulkGrades(validGradesToSave);
 
     // Automatically send an in-app school communication broadcast for parents
-    const targetClass = teacherClasses.find(c => c.id === selectedClassId);
-    const targetSubject = subjects.find(s => s.id === selectedSubjectId);
-    
     if (targetClass && targetSubject) {
       try {
         addCommunication({
@@ -241,7 +255,7 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
           senderName: currentTeacher ? `M./Mme ${currentTeacher.lastName} (${targetSubject.name})` : `Professeur de ${targetSubject.name}`,
           recipientGroup: 'PARENTS',
           subject: `Nouvelles notes publiées en ${targetSubject.name} (${targetClass.name})`,
-          content: `Les notes de l'évaluation "${examType}" du ${examDate} en ${targetSubject.name} ont été renseignées pour la classe de ${targetClass.name}. Elles sont consultables directement dans votre Espace Parents.`,
+          content: `Les notes de l'évaluation "${examType}" du ${examDate} en ${targetSubject.name} ont été renseignées pour la classe de ${targetClass.name}. Elles sont directement consultables sur le bulletin de l'élève.`,
           channels: ['SMS', 'WHATSAPP'],
           sentAt: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
           status: 'LIVRE'
@@ -250,7 +264,14 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
     }
 
     setIsSavedSuccess(true);
-    setTimeout(() => setIsSavedSuccess(false), 4000);
+    setStatusAlert({
+      type: 'success',
+      message: `✅ ${validGradesToSave.length} note(s) enregistrée(s) et intégrée(s) directement au bulletin officiel de chaque élève !`
+    });
+    setTimeout(() => {
+      setIsSavedSuccess(false);
+      setStatusAlert(null);
+    }, 4500);
   };
 
   // 3-Day Modification History List for this teacher / school
@@ -272,7 +293,11 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
 
   const handleOpenEditGrade = (grade: Grade) => {
     if (!isGradeModifiable(grade)) {
-      alert("Délai de modification dépassé ! Conformément au règlement, les notes ne sont plus modifiables après 3 jours (72h).");
+      setStatusAlert({
+        type: 'error',
+        message: "Délai de modification dépassé ! Conformément au règlement, les notes ne sont plus modifiables après 3 jours (72h)."
+      });
+      setTimeout(() => setStatusAlert(null), 4000);
       return;
     }
     setEditingGrade(grade);
@@ -283,14 +308,22 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
   const handleConfirmEditGrade = () => {
     if (!editingGrade) return;
     if (!isGradeModifiable(editingGrade)) {
-      alert("Le délai de 3 jours a expiré.");
+      setStatusAlert({
+        type: 'error',
+        message: "Le délai de modification de 3 jours a expiré."
+      });
       setEditingGrade(null);
+      setTimeout(() => setStatusAlert(null), 3500);
       return;
     }
 
     const num = parseFloat(editedMark);
     if (isNaN(num)) {
-      alert("Note invalide");
+      setStatusAlert({
+        type: 'error',
+        message: "Note invalide. Veuillez saisir un nombre valide."
+      });
+      setTimeout(() => setStatusAlert(null), 3500);
       return;
     }
 
@@ -301,6 +334,11 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
     });
 
     setEditingGrade(null);
+    setStatusAlert({
+      type: 'success',
+      message: "Note modifiée avec succès et immédiatement répercutée sur le bulletin de l'élève !"
+    });
+    setTimeout(() => setStatusAlert(null), 3500);
   };
 
   // Quick statistics of current input session
@@ -491,16 +529,39 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
 
         </div>
 
-        {/* SUCCESS NOTIFICATION BANNER */}
-        {isSavedSuccess && (
-          <div className="p-4 rounded-2xl bg-emerald-600 text-white font-bold text-xs sm:text-sm shadow-xl flex items-center space-x-3 animate-in fade-in slide-in-from-top-2">
-            <CheckCircle2 className="w-6 h-6 shrink-0" />
-            <div>
-              <p className="font-black">Notes enregistrées et publiées avec succès !</p>
-              <p className="text-xs text-emerald-100 mt-0.5">
-                Elles sont instantanément visibles par la Direction et sur l'Espace Parents. Modifiables pendant 72 heures.
-              </p>
+        {/* SUCCESS & STATUS NOTIFICATION BANNER */}
+        {statusAlert && (
+          <div className={`p-4 rounded-2xl font-bold text-xs sm:text-sm shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 ${
+            statusAlert.type === 'success'
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white'
+              : 'bg-gradient-to-r from-rose-600 to-red-600 text-white'
+          }`}>
+            <div className="flex items-center space-x-3">
+              {statusAlert.type === 'success' ? (
+                <CheckCircle2 className="w-6 h-6 shrink-0 text-white" />
+              ) : (
+                <AlertCircle className="w-6 h-6 shrink-0 text-white" />
+              )}
+              <div>
+                <p className="font-black">{statusAlert.message}</p>
+                {statusAlert.type === 'success' && (
+                  <p className="text-xs text-emerald-100 mt-0.5">
+                    Les moyennes, totaux et rangs sont calculés et reportés en direct sur les bulletins trimestriels.
+                  </p>
+                )}
+              </div>
             </div>
+
+            {statusAlert.type === 'success' && classStudents.length > 0 && selectedClass && (
+              <button
+                type="button"
+                onClick={() => setPreviewStudentBulletin(classStudents[0])}
+                className="px-3.5 py-2 rounded-xl bg-white text-emerald-950 font-black text-xs hover:bg-emerald-50 transition-colors shadow-sm shrink-0 cursor-pointer flex items-center space-x-1.5"
+              >
+                <FileText className="w-4 h-4 text-emerald-700" />
+                <span>📄 Consulter le Bulletin Dressé</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -636,14 +697,28 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleSaveGrades}
-                  className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center space-x-2 shadow-lg transition-transform active:scale-95 cursor-pointer"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Enregistrer & Publier les Notes</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {classStudents.length > 0 && selectedClass && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewStudentBulletin(classStudents[0])}
+                      className="px-3.5 py-2.5 rounded-2xl bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-black flex items-center space-x-1.5 transition-all shadow-sm cursor-pointer"
+                      title="Consulter le format officiel du bulletin dressé pour cette classe"
+                    >
+                      <FileText className="w-4 h-4 text-purple-300" />
+                      <span>📄 Format Bulletin Dressé</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleSaveGrades}
+                    className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center space-x-2 shadow-lg transition-transform active:scale-95 cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Enregistrer & Publier les Notes</span>
+                  </button>
+                </div>
               </div>
 
               <div className="divide-y divide-slate-800/80">
@@ -679,8 +754,8 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
                         </div>
                       </div>
 
-                      {/* Inputs */}
-                      <div className="flex items-center space-x-3 flex-1 justify-end">
+                      {/* Inputs & Direct Bulletin Preview */}
+                      <div className="flex items-center space-x-2.5 flex-1 justify-end">
                         
                         {/* Note Input */}
                         <div className="relative w-28 shrink-0">
@@ -714,6 +789,17 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
                             className="w-full px-3 py-2 rounded-xl bg-slate-800/80 border border-slate-700 text-xs text-white placeholder-slate-500"
                           />
                         </div>
+
+                        {/* Direct Bulletin Button for Student */}
+                        <button
+                          type="button"
+                          onClick={() => setPreviewStudentBulletin(std)}
+                          className="px-2.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/20 text-[11px] font-bold flex items-center space-x-1 shrink-0 transition-colors cursor-pointer"
+                          title={`Consulter le bulletin officiel de ${std.firstName} ${std.lastName}`}
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Bulletin</span>
+                        </button>
 
                       </div>
 
