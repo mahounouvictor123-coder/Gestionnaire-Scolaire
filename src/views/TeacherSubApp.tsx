@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../lib/store';
-import { SchoolClass, Subject, Teacher, Grade } from '../types';
+import { SchoolClass, Subject, Teacher, Grade, Student } from '../types';
 import { updateDynamicPwaBranding } from '../lib/pwaHelper';
 import { isGradeModifiable, getGradeDeadlineInfo } from '../lib/gradeUtils';
 import { PwaInstallGuideModalProps } from '../components/modals/PwaInstallGuideModal';
@@ -49,6 +49,7 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
     subjects, 
     teachers, 
     grades, 
+    addGrade,
     addBulkGrades, 
     updateGrade,
     addCommunication,
@@ -201,6 +202,40 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
         comment
       }
     }));
+  };
+
+  // Instant Auto-Sync of single student mark directly to store & student bulletin
+  const autoSyncStudentGrade = (studentId: string) => {
+    const entry = studentMarks[studentId];
+    if (!entry || entry.mark === '' || isNaN(Number(entry.mark))) return;
+    const targetClass = teacherClasses.find(c => c.id === selectedClassId) || classes.find(c => c.id === selectedClassId);
+    const targetSubject = subjects.find(s => s.id === selectedSubjectId);
+    const markVal = Math.min(maxMark, Math.max(0, parseFloat(entry.mark)));
+    const nowIso = new Date().toISOString();
+
+    addGrade({
+      studentId: studentId,
+      subjectId: selectedSubjectId,
+      subjectName: targetSubject ? targetSubject.name : '',
+      classId: selectedClassId,
+      className: targetClass ? targetClass.name : '',
+      trimester: trimester,
+      examType: examType,
+      mark: markVal,
+      maxMark: maxMark,
+      date: examDate,
+      coefficient: coefficient,
+      createdAt: nowIso,
+      teacherName: currentTeacher ? `${currentTeacher.firstName} ${currentTeacher.lastName}` : 'Enseignant',
+      teacherId: currentTeacher?.id,
+      comment: entry.comment.trim()
+    });
+  };
+
+  // Open the student's official bulletin directly with immediate save
+  const handleOpenStudentBulletin = (student: Student) => {
+    autoSyncStudentGrade(student.id);
+    setPreviewStudentBulletin(student);
   };
 
   // Save Grades Handler (Directly integrated to the student's bulletin)
@@ -685,6 +720,35 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
               </div>
             )}
 
+            {/* Direct Bulletin Sync Information Banner */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-teal-950/70 to-slate-900 border border-emerald-500/40 flex items-center justify-between flex-wrap gap-3 shadow-lg">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                  <Zap className="w-5 h-5 text-emerald-400 animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black text-white flex items-center space-x-2">
+                    <span>Transmission Directe au Bulletin Officiel</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500 text-slate-950 font-black uppercase tracking-wider">Actif en Temps Réel</span>
+                  </h4>
+                  <p className="text-[11px] text-emerald-200/90 mt-0.5">
+                    Toute note ou appréciation saisie par le professeur vient directement s'inscrire sur le bulletin de l'élève (colonne correspondante, moyenne générale et classement).
+                  </p>
+                </div>
+              </div>
+              {classStudents.length > 0 && selectedClass && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenStudentBulletin(classStudents[0])}
+                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs flex items-center space-x-2 shadow cursor-pointer transition-transform active:scale-95"
+                  title="Vérifier l'aperçu du bulletin officiel pour cette classe"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Aperçu Bulletin Dressé</span>
+                </button>
+              )}
+            </div>
+
             {/* Students Grade Input Table */}
             <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
@@ -693,7 +757,7 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
                     Liste des Élèves ({classStudents.length} élèves)
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Saisissez la note sur 20 et une appréciation éventuelle pour chaque élève.
+                    Saisissez la note sur 20 et une appréciation éventuelle pour chaque élève. Elle est synchronisée instantanément sur son bulletin.
                   </p>
                 </div>
 
@@ -701,7 +765,7 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
                   {classStudents.length > 0 && selectedClass && (
                     <button
                       type="button"
-                      onClick={() => setPreviewStudentBulletin(classStudents[0])}
+                      onClick={() => handleOpenStudentBulletin(classStudents[0])}
                       className="px-3.5 py-2.5 rounded-2xl bg-purple-600/30 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-black flex items-center space-x-1.5 transition-all shadow-sm cursor-pointer"
                       title="Consulter le format officiel du bulletin dressé pour cette classe"
                     >
@@ -748,9 +812,14 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
                           <p className="text-xs font-black text-white">
                             {std.lastName.toUpperCase()} {std.firstName}
                           </p>
-                          <p className="text-[10px] text-slate-400">
-                            Matricule : {std.registrationNumber}
-                          </p>
+                          <div className="flex items-center space-x-2 text-[10px]">
+                            <span className="text-slate-400">Matricule : {std.registrationNumber}</span>
+                            {hasVal && (
+                              <span className="px-1.5 py-0.5 rounded font-black text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                ✓ Sur le Bulletin
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -767,6 +836,12 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
                             placeholder="Note /20"
                             value={entry.mark}
                             onChange={(e) => handleMarkChange(std.id, e.target.value)}
+                            onBlur={() => autoSyncStudentGrade(std.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                autoSyncStudentGrade(std.id);
+                              }
+                            }}
                             className={`w-full px-3 py-2 rounded-xl text-sm font-black text-center focus:outline-none transition-all ${
                               !hasVal
                                 ? 'bg-slate-800 border border-slate-700 text-white'
@@ -783,9 +858,10 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
                         <div className="flex-1 max-w-xs hidden md:block">
                           <input
                             type="text"
-                            placeholder="Appréciation (ex: Très bien, En progrès)"
+                            placeholder="Appréciation bulletin (ex: Très bien, En progrès)"
                             value={entry.comment}
                             onChange={(e) => handleCommentChange(std.id, e.target.value)}
+                            onBlur={() => autoSyncStudentGrade(std.id)}
                             className="w-full px-3 py-2 rounded-xl bg-slate-800/80 border border-slate-700 text-xs text-white placeholder-slate-500"
                           />
                         </div>
@@ -793,12 +869,12 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
                         {/* Direct Bulletin Button for Student */}
                         <button
                           type="button"
-                          onClick={() => setPreviewStudentBulletin(std)}
-                          className="px-2.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/20 text-[11px] font-bold flex items-center space-x-1 shrink-0 transition-colors cursor-pointer"
-                          title={`Consulter le bulletin officiel de ${std.firstName} ${std.lastName}`}
+                          onClick={() => handleOpenStudentBulletin(std)}
+                          className="px-3 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-600 text-purple-200 hover:text-white border border-purple-500/30 text-[11px] font-bold flex items-center space-x-1.5 shrink-0 transition-colors cursor-pointer shadow-sm"
+                          title={`Consulter le bulletin officiel de ${std.firstName} ${std.lastName} avec sa note en direct`}
                         >
-                          <FileText className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Bulletin</span>
+                          <FileText className="w-3.5 h-3.5 text-purple-300" />
+                          <span>Voir Bulletin</span>
                         </button>
 
                       </div>
@@ -999,6 +1075,17 @@ export const TeacherSubApp: React.FC<TeacherSubAppProps> = ({ onReturnToPlatform
         schoolName={currentSchool.name}
         appTitle="Notes Professeurs"
       />
+
+      {/* Official Student Report Card (Bulletin) Modal */}
+      {previewStudentBulletin && selectedClass && (
+        <PrintBulletinModal
+          isOpen={true}
+          onClose={() => setPreviewStudentBulletin(null)}
+          student={previewStudentBulletin}
+          schoolClass={selectedClass}
+          trimester={trimester}
+        />
+      )}
 
     </div>
   );

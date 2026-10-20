@@ -345,7 +345,7 @@ export const ParentSubApp: React.FC<ParentSubAppProps> = ({ onReturnToPlatform }
   }, [grades, currentStudent]);
 
   const filteredGrades = useMemo(() => {
-    return studentGrades.filter(g => g.trimester === selectedTrimester);
+    return studentGrades.filter(g => Number(g.trimester) === Number(selectedTrimester));
   }, [studentGrades, selectedTrimester]);
 
   const studentPayments = useMemo(() => {

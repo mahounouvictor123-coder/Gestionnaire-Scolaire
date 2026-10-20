@@ -37,17 +37,20 @@ interface PrintBulletinModalProps {
   isOpen: boolean;
   onClose: () => void;
   student: Student;
-  classObj: SchoolClass;
-  trimester: 1 | 2 | 3;
+  classObj?: SchoolClass;
+  schoolClass?: SchoolClass;
+  trimester: 1 | 2 | 3 | number;
 }
 
 export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
   isOpen,
   onClose,
   student,
-  classObj,
+  classObj: propClassObj,
+  schoolClass: propSchoolClass,
   trimester
 }) => {
+  const classObj = propClassObj || propSchoolClass || ({ id: student?.classId || '', name: 'Classe', level: student?.level || 'COLLEGE' } as SchoolClass);
   const { 
     settings, 
     updateSettings, 
@@ -512,7 +515,16 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                     )}
                     {activeTemplate.columns.showTeacherAppreciation && (
                       <td className="p-2 border border-slate-300 italic text-slate-700">
-                        {item.grades.length > 0 ? item.appreciation : '-'}
+                        {item.grades.length > 0 ? (
+                          <div className="space-y-0.5">
+                            <div>{item.appreciation}</div>
+                            {item.teacherName && (
+                              <div className="text-[10px] text-slate-500 font-medium not-italic">
+                                {item.teacherName}
+                              </div>
+                            )}
+                          </div>
+                        ) : '-'}
                       </td>
                     )}
                   </tr>

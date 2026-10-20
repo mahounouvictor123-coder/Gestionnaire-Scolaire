@@ -65,23 +65,17 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     deleteArchivedReportCard
   } = useApp();
 
-  // EXCLUSION STRICTE DES CLASSES DU PRIMAIRE : seules les classes secondaires (Collège & Lycée) sont retenues
-  const secondaryClasses = useMemo(() => {
-    return classes.filter(c => !isPrimaryClass(c));
-  }, [classes]);
-
   const [mainTab, setMainTab] = useState<'GENERATOR' | 'ARCHIVES'>('GENERATOR');
   const [selectedClassId, setSelectedClassId] = useState<string>(() => {
-    const sec = classes.filter(c => !isPrimaryClass(c));
-    return sec[0]?.id || classes[0]?.id || '';
+    return classes[0]?.id || '';
   });
 
-  // Maintenir la classe sélectionnée dans le périmètre secondaire
+  // Maintenir la classe sélectionnée
   useEffect(() => {
-    if (secondaryClasses.length > 0 && !secondaryClasses.some(c => c.id === selectedClassId)) {
-      setSelectedClassId(secondaryClasses[0].id);
+    if (classes.length > 0 && !classes.some(c => c.id === selectedClassId)) {
+      setSelectedClassId(classes[0].id);
     }
-  }, [secondaryClasses, selectedClassId]);
+  }, [classes, selectedClassId]);
 
   const [selectedTrimester, setSelectedTrimester] = useState<1 | 2 | 3>(settings.currentTrimester);
   const [selectedStudentForBulletin, setSelectedStudentForBulletin] = useState<Student | null>(null);
@@ -89,12 +83,11 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   const [showAiWhatsAppModal, setShowAiWhatsAppModal] = useState(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   
-  // Format d'affichage par défaut : BULLETIN_PREVIEW (Format officiel dressé)
-  const [viewMode, setViewMode] = useState<'BULLETIN_PREVIEW' | 'RANKING_TABLE' | 'CARDS'>('BULLETIN_PREVIEW');
+  // Format d'affichage par défaut : RANKING_TABLE (La liste de la classe s'affiche d'abord, cliquer sur un élève affiche son bulletin)
+  const [viewMode, setViewMode] = useState<'RANKING_TABLE' | 'BULLETIN_PREVIEW' | 'CARDS'>('RANKING_TABLE');
   // Sélectionner par défaut le premier élève réel de la classe
   const [previewStudentId, setPreviewStudentId] = useState<string>(() => {
-    const sec = classes.filter(c => !isPrimaryClass(c));
-    const firstCls = sec[0] || classes[0];
+    const firstCls = classes[0];
     const firstSts = students.filter(s => s.classId === firstCls?.id);
     return firstSts[0]?.id || 'SPECIMEN';
   });
@@ -171,7 +164,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   const activeTemplate = currentSchool?.bulletinTemplate || settings.bulletinTemplate || defaultBulletinTemplate();
   const activeSignatureUrl = currentSchool?.signatureUrl || settings.signatureUrl;
 
-  const selectedClass = secondaryClasses.find(c => c.id === selectedClassId) || secondaryClasses[0] || classes[0];
+  const selectedClass = classes.find(c => c.id === selectedClassId) || classes[0];
   const classStudents = students.filter(s => s.classId === selectedClass?.id);
 
   // Synchronisation automatique : quand on change de classe, afficher immédiatement le premier élève réel
@@ -185,7 +178,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     }
   }, [selectedClassId, classStudents]);
 
-  // Compute exact rankings for all students in selected secondary class from 1st to last
+  // Compute exact rankings for all students in selected class from 1st to last
   const classRankSummary = calculateClassRanks(
     classStudents,
     grades,
@@ -220,16 +213,17 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     ? specimenStudent
     : (classStudents.find(s => s.id === previewStudentId) || classStudents[0] || specimenStudent);
 
-  // Toutes les matières du secondaire définies par l'établissement
-  const definedSecondarySubjects = useMemo(() => {
-    return subjects.filter(s =>
-      !isPrimaryClass(s) &&
-      s.level !== 'PRIMAIRE' &&
-      s.level !== 'MATERNELLE' &&
-      !s.id.startsWith('sbj-p-') &&
-      !s.id.startsWith('sbj-mat-')
-    );
-  }, [subjects]);
+  // Toutes les matières définies par l'établissement pour ce niveau
+  const isSelectedPrimary = selectedClass ? isPrimaryClass(selectedClass) : false;
+  const definedClassSubjects = useMemo(() => {
+    const filtered = subjects.filter(s => {
+      if (isSelectedPrimary) {
+        return isPrimaryClass(s) || s.level === 'PRIMAIRE' || s.level === 'MATERNELLE' || s.id.startsWith('sbj-p-') || s.id.startsWith('sbj-mat-');
+      }
+      return !isPrimaryClass(s) && s.level !== 'PRIMAIRE' && s.level !== 'MATERNELLE' && !s.id.startsWith('sbj-p-') && !s.id.startsWith('sbj-mat-');
+    });
+    return filtered.length > 0 ? filtered : subjects;
+  }, [subjects, isSelectedPrimary]);
 
   const currentBulletinRankData = useMemo(() => {
     const found = classRankSummary.rankings.find(r => r.student.id === activeStudentForBulletin.id);
@@ -237,7 +231,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
 
     return {
       student: activeStudentForBulletin,
-      subjectResults: definedSecondarySubjects.map(s => ({
+      subjectResults: definedClassSubjects.map(s => ({
         subject: s,
         grades: [],
         average: 0,
@@ -245,7 +239,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
         coefficient: s.coefficient || 1,
         appreciation: 'Non évalué'
       })),
-      totalCoefficients: definedSecondarySubjects.reduce((sum, s) => sum + (s.coefficient || 1), 0) || 1,
+      totalCoefficients: definedClassSubjects.reduce((sum, s) => sum + (s.coefficient || 1), 0) || 1,
       totalWeightedPoints: 0,
       overallAverage: 0,
       rank: activeStudentForBulletin.id === 'specimen-student' ? 'Modèle Vierge' : 'N/A',
@@ -255,7 +249,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
         ? "Format officiel du bulletin dressé pour la classe, portant l'ensemble des matières arrêtées par l'école."
         : "Aucune note enregistrée pour cet élève ce trimestre."
     };
-  }, [classRankSummary, activeStudentForBulletin, definedSecondarySubjects]);
+  }, [classRankSummary, activeStudentForBulletin, definedClassSubjects]);
 
   const handlePrintClassRanking = () => {
     window.print();
@@ -423,18 +417,27 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
       <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
         <div>
           <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-            Sélectionner la Classe (Secondaire) *
+            Sélectionner une Classe *
           </label>
           <select
             value={selectedClassId}
-            onChange={e => setSelectedClassId(e.target.value)}
+            onChange={e => {
+              setSelectedClassId(e.target.value);
+              const clsStudents = students.filter(s => s.classId === e.target.value);
+              if (clsStudents.length > 0) {
+                setPreviewStudentId(clsStudents[0].id);
+              }
+            }}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 cursor-pointer"
           >
-            {secondaryClasses.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.level}) — {c.studentCount || 0} élèves
-              </option>
-            ))}
+            {classes.map(c => {
+              const count = students.filter(s => s.classId === c.id).length;
+              return (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.level || 'Général'}) — {count} élève{count > 1 ? 's' : ''}
+                </option>
+              );
+            })}
           </select>
         </div>
 
@@ -459,18 +462,6 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
           </label>
           <div className="grid grid-cols-3 gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
             <button
-              onClick={() => setViewMode('BULLETIN_PREVIEW')}
-              className={`py-1.5 px-2 rounded-lg font-extrabold flex items-center justify-center space-x-1 transition-all cursor-pointer ${
-                viewMode === 'BULLETIN_PREVIEW'
-                  ? 'bg-purple-600 text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
-            >
-              <FileText className="h-3.5 w-3.5" />
-              <span className="truncate">📄 Bulletin Dressé</span>
-            </button>
-
-            <button
               onClick={() => setViewMode('RANKING_TABLE')}
               className={`py-1.5 px-2 rounded-lg font-extrabold flex items-center justify-center space-x-1 transition-all cursor-pointer ${
                 viewMode === 'RANKING_TABLE'
@@ -479,7 +470,19 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
               }`}
             >
               <ListOrdered className="h-3.5 w-3.5" />
-              <span className="truncate">🏆 Classement</span>
+              <span className="truncate">📋 Liste Classe</span>
+            </button>
+
+            <button
+              onClick={() => setViewMode('BULLETIN_PREVIEW')}
+              className={`py-1.5 px-2 rounded-lg font-extrabold flex items-center justify-center space-x-1 transition-all cursor-pointer ${
+                viewMode === 'BULLETIN_PREVIEW'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              <span className="truncate">📄 Format Bulletin</span>
             </button>
 
             <button
@@ -491,7 +494,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
               }`}
             >
               <Grid className="h-3.5 w-3.5" />
-              <span className="truncate">👥 Cards Élèves</span>
+              <span className="truncate">👥 Cartes Élèves</span>
             </button>
           </div>
         </div>
@@ -555,6 +558,16 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
           {/* Barre d'outils et sélecteur de l'élève affiché */}
           <div className="p-4 bg-slate-900 text-white rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-lg print:hidden">
             <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setViewMode('RANKING_TABLE')}
+                className="px-3 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-600 text-white font-black text-xs flex items-center space-x-1.5 transition-all shadow-sm cursor-pointer mr-1"
+                title="Revenir à la liste des élèves de la classe"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>Liste de la Classe ({classStudents.length})</span>
+              </button>
+
               <span className="text-xs font-black uppercase text-purple-300 flex items-center space-x-1.5">
                 <FileCheck className="h-4 w-4 text-purple-400" />
                 <span>Format du Bulletin Dressé :</span>
@@ -849,7 +862,16 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                           )}
                           {activeTemplate.columns.showTeacherAppreciation && (
                             <td className="p-2 border border-slate-300 italic text-slate-700">
-                              {item.grades.length > 0 ? item.appreciation : '-'}
+                              {item.grades.length > 0 ? (
+                                <div className="space-y-0.5">
+                                  <div>{item.appreciation}</div>
+                                  {item.teacherName && (
+                                    <div className="text-[10px] text-slate-500 font-medium not-italic">
+                                      {item.teacherName}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : '-'}
                             </td>
                           )}
                         </tr>
@@ -949,12 +971,14 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
           
           <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-900/80">
             <div>
-              <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center space-x-2">
-                <Trophy className="h-4 w-4 text-amber-500" />
-                <span>Classement Général Officiel — {selectedClass?.name} (Trimestre {selectedTrimester})</span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Tableau du 1er au dernier élève selon la formule "{activeTemplate.templateName}"
+              <div className="flex items-center space-x-2">
+                <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center space-x-2">
+                  <Trophy className="h-4 w-4 text-amber-500" />
+                  <span>Liste des Élèves — {selectedClass?.name} ({classRankSummary.totalStudents} élèves • Trimestre {selectedTrimester})</span>
+                </h3>
+              </div>
+              <p className="text-xs text-purple-700 dark:text-purple-300 font-extrabold mt-0.5">
+                👉 Cliquez sur n'importe quel élève de la classe pour faire figurer et imprimer son bulletin officiel.
               </p>
             </div>
 
@@ -999,7 +1023,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                   <th className="p-3.5 text-center">Moyenne Générale</th>
                   <th className="p-3.5 text-center">Points Coeff.</th>
                   <th className="p-3.5 text-center">Décision / Mention</th>
-                  <th className="p-3.5 text-right pr-6">Actions Bulletins & Parents</th>
+                  <th className="p-3.5 text-right pr-6">Affichage & Actions Bulletins</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1011,9 +1035,14 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                     return (
                       <tr
                         key={rankItem.student.id}
-                        className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${
+                        onClick={() => {
+                          setSelectedStudentForBulletin(rankItem.student);
+                          setPreviewStudentId(rankItem.student.id);
+                        }}
+                        className={`hover:bg-purple-50/80 dark:hover:bg-purple-950/40 cursor-pointer transition-all ${
                           isTop3 ? 'bg-amber-500/5' : ''
-                        }`}
+                        } ${previewStudentId === rankItem.student.id ? 'ring-2 ring-purple-500/40 bg-purple-50/40 dark:bg-purple-950/20' : ''}`}
+                        title={`Cliquer pour faire figurer le bulletin officiel de ${rankItem.student.lastName} ${rankItem.student.firstName}`}
                       >
                         {/* Rank Badge */}
                         <td className="p-3.5 text-center font-black">
@@ -1040,8 +1069,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                               className="h-10 w-10 rounded-xl object-cover ring-2 ring-purple-500/20"
                             />
                             <div>
-                              <p className="font-extrabold text-sm text-slate-900 dark:text-white">
-                                {rankItem.student.lastName} {rankItem.student.firstName}
+                              <p className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center space-x-1.5">
+                                <span>{rankItem.student.lastName} {rankItem.student.firstName}</span>
                               </p>
                               <p className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
                                 {rankItem.student.registrationNumber}
@@ -1081,7 +1110,31 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                         </td>
 
                         {/* Action */}
-                        <td className="p-3.5 text-right pr-6 space-x-2">
+                        <td className="p-3.5 text-right pr-6 space-x-2" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => {
+                              setSelectedStudentForBulletin(rankItem.student);
+                              setPreviewStudentId(rankItem.student.id);
+                            }}
+                            className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs inline-flex items-center space-x-1.5 shadow-md shadow-purple-600/20 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                            title={`Afficher le bulletin officiel de ${rankItem.student.firstName}`}
+                          >
+                            <FileText className="h-3.5 w-3.5 text-purple-200" />
+                            <span>📄 Afficher Bulletin</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setPreviewStudentId(rankItem.student.id);
+                              setViewMode('BULLETIN_PREVIEW');
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs inline-flex items-center space-x-1 transition-all cursor-pointer"
+                            title="Consulter le format document dressé"
+                          >
+                            <Eye className="h-3.5 w-3.5 text-purple-600" />
+                            <span>Format Page</span>
+                          </button>
+
                           <button
                             onClick={() => setSendParentModalData({
                               isOpen: true,
@@ -1094,15 +1147,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                             title="Envoyer le lien du bulletin au parent par WhatsApp ou SMS"
                           >
                             <MessageCircle className="h-3.5 w-3.5" />
-                            <span>📲 WhatsApp / SMS</span>
-                          </button>
-
-                          <button
-                            onClick={() => setSelectedStudentForBulletin(rankItem.student)}
-                            className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs inline-flex items-center space-x-1.5 shadow transition-all cursor-pointer"
-                          >
-                            <Printer className="h-3.5 w-3.5" />
-                            <span>Imprimer</span>
+                            <span>📲 WhatsApp</span>
                           </button>
                         </td>
                       </tr>
@@ -1128,7 +1173,11 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
           {classRankSummary.rankings.map(rankItem => (
             <div
               key={rankItem.student.id}
-              className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4 hover:border-purple-300 transition-all"
+              onClick={() => {
+                setSelectedStudentForBulletin(rankItem.student);
+                setPreviewStudentId(rankItem.student.id);
+              }}
+              className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4 hover:border-purple-400 hover:shadow-md transition-all cursor-pointer"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
@@ -1168,7 +1217,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-2 pt-1" onClick={e => e.stopPropagation()}>
                 <button
                   onClick={() => setSendParentModalData({
                     isOpen: true,
@@ -1184,11 +1233,14 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                 </button>
 
                 <button
-                  onClick={() => setSelectedStudentForBulletin(rankItem.student)}
-                  className="py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center space-x-1.5 shadow transition-all cursor-pointer"
+                  onClick={() => {
+                    setSelectedStudentForBulletin(rankItem.student);
+                    setPreviewStudentId(rankItem.student.id);
+                  }}
+                  className="py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center justify-center space-x-1.5 shadow transition-all cursor-pointer hover:scale-105 active:scale-95"
                 >
-                  <Printer className="h-3.5 w-3.5" />
-                  <span>Imprimer</span>
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>📄 Bulletin</span>
                 </button>
               </div>
             </div>
@@ -1279,8 +1331,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                 onChange={e => setArchiveClassFilter(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500"
               >
-                <option value="ALL">Toutes les Classes Secondaires</option>
-                {secondaryClasses.map(c => (
+                <option value="ALL">Toutes les Classes</option>
+                {classes.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
@@ -1481,7 +1533,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                   <Pencil className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-base">Gestion des Matières du Bulletin ({definedSecondarySubjects.length})</h3>
+                  <h3 className="font-black text-base">Gestion des Matières du Bulletin ({definedClassSubjects.length})</h3>
                   <p className="text-xs text-slate-500">Modifiez le nom, le coefficient ou supprimez les matières du cursus</p>
                 </div>
               </div>
@@ -1540,13 +1592,13 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                 </div>
               </form>
 
-              {/* Liste des matières du secondaire configurées */}
+              {/* Liste des matières configurées */}
               <div>
                 <span className="font-black text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px] block mb-2">
                   Matières figurant actuellement sur le bulletin dressé :
                 </span>
                 <div className="border border-slate-200 dark:border-slate-700 rounded-2xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
-                  {definedSecondarySubjects.map(sbj => (
+                  {definedClassSubjects.map(sbj => (
                     <div 
                       key={sbj.id} 
                       className="p-3 bg-white dark:bg-slate-900 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"

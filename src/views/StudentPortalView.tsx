@@ -65,7 +65,7 @@ export const StudentPortalView: React.FC = () => {
 
   // Filter grades for this student and trimester
   const studentGrades = grades.filter(
-    g => g.studentId === student.id && g.trimester === selectedTrimester
+    g => g.studentId === student.id && Number(g.trimester) === Number(selectedTrimester)
   );
 
   // Filter attendance records for this student
@@ -75,11 +75,20 @@ export const StudentPortalView: React.FC = () => {
 
   // Group grades by subject to compute averages
   const subjectBreakdown = subjects.map(sbj => {
-    const sbjGrades = studentGrades.filter(g => g.subjectId === sbj.id);
+    const sbjGrades = studentGrades.filter(g => 
+      g.subjectId === sbj.id || 
+      g.subjectId === sbj.name || 
+      (sbj.code && g.subjectId === sbj.code) ||
+      (g.subjectName && g.subjectName.trim().toLowerCase() === sbj.name.trim().toLowerCase()) ||
+      (g.subjectId && g.subjectId.trim().toLowerCase() === sbj.name.trim().toLowerCase())
+    );
     if (sbjGrades.length === 0) return null;
 
-    const avg = sbjGrades.reduce((acc, g) => acc + g.mark, 0) / sbjGrades.length;
-    const weightedAvg = avg * sbj.coefficient;
+    const avg = sbjGrades.reduce((acc, g) => {
+      const markOn20 = g.maxMark && g.maxMark !== 20 ? (g.mark / g.maxMark) * 20 : g.mark;
+      return acc + markOn20;
+    }, 0) / sbjGrades.length;
+    const weightedAvg = avg * (sbj.coefficient || 1);
 
     return {
       subject: sbj,

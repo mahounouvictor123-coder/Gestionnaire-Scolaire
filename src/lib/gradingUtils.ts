@@ -12,6 +12,7 @@ export interface SubjectResult {
   coefficient: number;
   subjectRank?: string;
   appreciation: string;
+  teacherName?: string;
 }
 
 export interface StudentRankResult {
@@ -79,39 +80,52 @@ export function calculateSubjectAverage(
     };
   }
 
+  // Normalize marks to a standard /20 scale
+  const toScale20 = (g: Grade) => {
+    if (g.maxMark && g.maxMark > 0 && g.maxMark !== 20) {
+      return (g.mark / g.maxMark) * 20;
+    }
+    return g.mark;
+  };
+
+  const isInterro = (t: string) => {
+    const u = (t || '').toUpperCase().trim();
+    return u === 'INTERRO' || u === 'TP' || u.startsWith('INTERRO') || u.startsWith('TEST') || u.startsWith('EVAL') || u.startsWith('INT');
+  };
+  const isDevoir = (t: string) => {
+    const u = (t || '').toUpperCase().trim();
+    return u === 'DEVOIR' || u.startsWith('DEVOIR') || u === 'DS' || u.startsWith('DS');
+  };
+  const isCompo = (t: string) => {
+    const u = (t || '').toUpperCase().trim();
+    return u === 'COMPOSITION' || u.startsWith('COMPO') || u === 'EXAMEN' || u.startsWith('EXAM');
+  };
+
+  const interros = studentGrades.filter(g => isInterro(g.examType));
+  const devoirs = studentGrades.filter(g => isDevoir(g.examType));
+  const compos = studentGrades.filter(g => isCompo(g.examType));
+
+  const interroAvg = interros.length > 0
+    ? interros.reduce((sum, g) => sum + toScale20(g), 0) / interros.length
+    : undefined;
+
+  const devoirAvg = devoirs.length > 0
+    ? devoirs.reduce((sum, g) => sum + toScale20(g), 0) / devoirs.length
+    : undefined;
+
+  const compoAvg = compos.length > 0
+    ? compos.reduce((sum, g) => sum + toScale20(g), 0) / compos.length
+    : undefined;
+
   let finalAverage = 0;
 
-  if (template.calculationFormula === 'INTERRO_DEVOIR_COMPO') {
-    const isInterro = (t: string) => {
-      const u = (t || '').toUpperCase();
-      return u === 'INTERRO' || u === 'TP' || u.startsWith('INTERRO') || u.startsWith('TEST') || u.startsWith('EVAL') || u.startsWith('INT');
-    };
-    const isDevoir = (t: string) => {
-      const u = (t || '').toUpperCase();
-      return u === 'DEVOIR' || u.startsWith('DEVOIR') || u === 'DS' || u.startsWith('DS');
-    };
-    const isCompo = (t: string) => {
-      const u = (t || '').toUpperCase();
-      return u === 'COMPOSITION' || u.startsWith('COMPO') || u === 'EXAMEN' || u.startsWith('EXAM');
-    };
-
-    const interros = studentGrades.filter(g => isInterro(g.examType));
-    const devoirs = studentGrades.filter(g => isDevoir(g.examType));
-    const compos = studentGrades.filter(g => isCompo(g.examType));
-
-    const interroAvg = interros.length > 0
-      ? interros.reduce((sum, g) => sum + g.mark, 0) / interros.length
-      : undefined;
-
-    const devoirAvg = devoirs.length > 0
-      ? devoirs.reduce((sum, g) => sum + g.mark, 0) / devoirs.length
-      : undefined;
-
-    const compoAvg = compos.length > 0
-      ? compos.reduce((sum, g) => sum + g.mark, 0) / compos.length
-      : undefined;
-
-    // Formula: (InterroAvg + Devoir + Compo * 2) / 4 or available parts
+  if (template.calculationFormula === 'WEIGHTED_COEFFICIENTS' && interroAvg === undefined && devoirAvg === undefined && compoAvg === undefined) {
+    const totalWeighted = studentGrades.reduce((sum, g) => sum + (toScale20(g) * (g.coefficient || 1)), 0);
+    const totalCoeffs = studentGrades.reduce((sum, g) => sum + (g.coefficient || 1), 0) || 1;
+    finalAverage = totalWeighted / totalCoeffs;
+  } else {
+    // Official African & French Curriculum Trimester Rule:
+    // (Moyenne Interros + Devoir + Compo * 2) / 4 (or available parts)
     let totalParts = 0;
     let sumPoints = 0;
 
@@ -131,39 +145,32 @@ export function calculateSubjectAverage(
     if (totalParts > 0) {
       finalAverage = sumPoints / totalParts;
     } else if (studentGrades.length > 0) {
-      // Fallback if grades don't match specific types
-      const totalWeighted = studentGrades.reduce((sum, g) => sum + (g.mark * (g.coefficient || 1)), 0);
+      const totalWeighted = studentGrades.reduce((sum, g) => sum + (toScale20(g) * (g.coefficient || 1)), 0);
       const totalCoeffs = studentGrades.reduce((sum, g) => sum + (g.coefficient || 1), 0) || 1;
       finalAverage = totalWeighted / totalCoeffs;
     } else {
       finalAverage = 0;
     }
-
-    return {
-      subject,
-      grades: studentGrades,
-      interroAverage: interroAvg,
-      devoirMark: devoirAvg,
-      compoMark: compoAvg,
-      average: finalAverage,
-      weightedAverage: finalAverage * coeff,
-      coefficient: coeff,
-      appreciation: getSubjectAppreciation(finalAverage)
-    };
   }
 
-  // Standard Weighted / Simple Average
-  const totalWeighted = studentGrades.reduce((sum, g) => sum + (g.mark * (g.coefficient || 1)), 0);
-  const totalCoeffs = studentGrades.reduce((sum, g) => sum + (g.coefficient || 1), 0) || 1;
-  finalAverage = totalWeighted / totalCoeffs;
+  // Teacher comment from entered grades
+  const teacherComments = studentGrades
+    .map(g => g.comment?.trim())
+    .filter((c): c is string => Boolean(c && c.length > 0));
+  const teacherComment = teacherComments.length > 0 ? teacherComments[teacherComments.length - 1] : '';
+  const teacherName = studentGrades.find(g => g.teacherName)?.teacherName;
 
   return {
     subject,
     grades: studentGrades,
+    interroAverage: interroAvg,
+    devoirMark: devoirAvg,
+    compoMark: compoAvg,
     average: finalAverage,
     weightedAverage: finalAverage * coeff,
     coefficient: coeff,
-    appreciation: getSubjectAppreciation(finalAverage)
+    teacherName,
+    appreciation: teacherComment || getSubjectAppreciation(finalAverage)
   };
 }
 
@@ -225,13 +232,21 @@ export function calculateClassRanks(
     if (isPrimary) {
       return isPrimaryClass(sbj) || sbj.level === 'PRIMAIRE' || sbj.level === 'MATERNELLE' || sbj.id.startsWith('sbj-p-') || sbj.id.startsWith('sbj-mat-');
     } else {
-      // Secondary: include all subjects that are NOT primary or maternelle
+  // Secondary: include all subjects that are NOT primary or maternelle
       const isPri = isPrimaryClass(sbj) || sbj.level === 'PRIMAIRE' || sbj.level === 'MATERNELLE' || sbj.id.startsWith('sbj-p-') || sbj.id.startsWith('sbj-mat-');
       return !isPri;
     }
   });
 
-  const activeSubjects = relevantSubjects.length > 0 ? relevantSubjects : subjects;
+  // Always include any subjects that have registered grades for these students
+  const studentIdsSet = new Set(students.map(s => s.id));
+  const gradedSubjectIds = new Set(
+    grades
+      .filter(g => studentIdsSet.has(g.studentId) && Number(g.trimester) === Number(trimester))
+      .map(g => g.subjectId)
+  );
+  const extraGradedSubjects = subjects.filter(s => gradedSubjectIds.has(s.id) && !relevantSubjects.some(rs => rs.id === s.id));
+  const activeSubjects = (relevantSubjects.length > 0 ? relevantSubjects : subjects).concat(extraGradedSubjects);
 
   // 1. Calculate for each student
   const rawResults = students.map(student => {
@@ -243,7 +258,9 @@ export function calculateClassRanks(
         g.subjectId === sbj.id || 
         g.subjectId === sbj.name || 
         (sbj.code && g.subjectId === sbj.code) ||
-        (g.subjectName && g.subjectName.toLowerCase() === sbj.name.toLowerCase())
+        (g.subjectName && g.subjectName.trim().toLowerCase() === sbj.name.trim().toLowerCase()) ||
+        (g.subjectId && g.subjectId.trim().toLowerCase() === sbj.name.trim().toLowerCase()) ||
+        (g.subjectName && sbj.name && (g.subjectName.toLowerCase().includes(sbj.name.toLowerCase()) || sbj.name.toLowerCase().includes(g.subjectName.toLowerCase())))
       );
       const res = calculateSubjectAverage(sbj, sbjGrades, tmpl);
 

@@ -131,6 +131,8 @@ export interface Grade {
   updatedAt?: string;
   teacherName?: string;
   teacherId?: string;
+  subjectName?: string;
+  className?: string;
   comment?: string;
   isLockedByDeadline?: boolean;
 }
