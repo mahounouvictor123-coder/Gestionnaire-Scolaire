@@ -4,6 +4,8 @@ import { Student, SchoolClass, Subject } from '../../types';
 import { calculateClassRanks, defaultBulletinTemplate } from '../../lib/gradingUtils';
 import { SendBulletinParentModal } from './SendBulletinParentModal';
 import { SchoolLogoImportModal } from './SchoolLogoImportModal';
+import { InsertBulletinGradesModal } from './InsertBulletinGradesModal';
+import { downloadSingleBulletinPdf } from '../../lib/bulletinPdfExport';
 import { 
   X, 
   Printer, 
@@ -24,7 +26,8 @@ import {
   Pencil,
   Trash2,
   Plus,
-  BookOpen
+  BookOpen,
+  Edit3
 } from 'lucide-react';
 
 const PRESET_SIGNATURES = [
@@ -70,6 +73,10 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Saisie et modification des notes directement depuis ce bulletin
+  const [isInsertGradesOpen, setIsInsertGradesOpen] = useState(false);
+  const [targetSubjectForGrades, setTargetSubjectForGrades] = useState<Subject | null>(null);
 
   // Gestion des matières (Modifier ou Supprimer depuis le bulletin)
   const [showSubjectManagerModal, setShowSubjectManagerModal] = useState(false);
@@ -212,6 +219,25 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
     window.print();
   };
 
+  const handleDownloadPdf = () => {
+    try {
+      downloadSingleBulletinPdf({
+        studentRank: studentRankData,
+        classSummary: classRankSummary,
+        schoolClass: classObj,
+        school: currentSchool,
+        settings,
+        trimester: trimester as 1 | 2 | 3,
+        template: activeTemplate,
+        showSignature: showSignatureOnDoc
+      });
+      setNoticeMsg(`📥 Bulletin de ${student.lastName} ${student.firstName} téléchargé en PDF avec succès !`);
+      setTimeout(() => setNoticeMsg(null), 3500);
+    } catch (err) {
+      console.error('Erreur lors du téléchargement PDF:', err);
+    }
+  };
+
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-md overflow-y-auto backdrop-enter"
@@ -227,8 +253,27 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
             <GraduationCap className="h-5 w-5 text-purple-400" />
             <span className="font-bold text-sm">Aperçu Officiel du Bulletin - {activeTemplate.templateName}</span>
             <button
+              onClick={handleDownloadPdf}
+              className="ml-2 px-3 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-[11px] rounded-lg flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer hover:scale-105 active:scale-95"
+              title="Télécharger le bulletin officiel de cet élève en document PDF"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>📥 Télécharger PDF</span>
+            </button>
+            <button
+              onClick={() => {
+                setTargetSubjectForGrades(null);
+                setIsInsertGradesOpen(true);
+              }}
+              className="ml-1 px-3 py-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-[11px] rounded-lg flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer hover:scale-105 active:scale-95"
+              title="Saisir ou modifier directement les notes de ce bulletin"
+            >
+              <Edit3 className="h-3.5 w-3.5 text-emerald-200" />
+              <span>📝 Saisir / Modifier Notes</span>
+            </button>
+            <button
               onClick={() => setIsLogoModalOpen(true)}
-              className="ml-2 px-2.5 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 font-bold text-[11px] rounded-lg flex items-center space-x-1.5 transition-colors cursor-pointer"
+              className="ml-1 px-2.5 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 font-bold text-[11px] rounded-lg flex items-center space-x-1.5 transition-colors cursor-pointer"
               title="Importer ou changer le logo officiel qui apparaît sur le bulletin et les épreuves Word"
             >
               <ImageIcon className="h-3.5 w-3.5 text-indigo-400" />
@@ -438,15 +483,29 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                 <th className="p-2 border border-slate-300">
                   <div className="flex items-center justify-between">
                     <span>Matières Définies par l'École</span>
-                    <button
-                      type="button"
-                      onClick={() => setShowSubjectManagerModal(true)}
-                      className="px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 text-white font-extrabold text-[10px] inline-flex items-center space-x-1 transition-all cursor-pointer print:hidden"
-                      title="Modifier les coefficients ou supprimer des matières"
-                    >
-                      <Pencil className="h-3 w-3 text-amber-300" />
-                      <span>⚙️ Modifier / Supprimer</span>
-                    </button>
+                    <div className="flex items-center space-x-1.5 print:hidden">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTargetSubjectForGrades(null);
+                          setIsInsertGradesOpen(true);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[10px] inline-flex items-center space-x-1 transition-all cursor-pointer"
+                        title="Saisir ou corriger les notes de cet élève"
+                      >
+                        <Edit3 className="h-3 w-3" />
+                        <span>📝 Saisir Notes</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowSubjectManagerModal(true)}
+                        className="px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 text-white font-extrabold text-[10px] inline-flex items-center space-x-1 transition-all cursor-pointer"
+                        title="Modifier les coefficients ou supprimer des matières"
+                      >
+                        <Pencil className="h-3 w-3 text-amber-300" />
+                        <span>⚙️ Modifier / Supprimer</span>
+                      </button>
+                    </div>
                   </div>
                 </th>
                 {activeTemplate.columns.showCoefficients && <th className="p-2 border border-slate-300 text-center">Coeff</th>}
@@ -468,8 +527,19 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1 print:hidden">
                           <button
                             type="button"
+                            onClick={() => {
+                              setTargetSubjectForGrades(item.subject);
+                              setIsInsertGradesOpen(true);
+                            }}
+                            className="p-1 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 cursor-pointer"
+                            title={`Saisir ou modifier les notes de ${item.subject.name}`}
+                          >
+                            <Edit3 className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleOpenEditSubject(item.subject)}
-                            className="p-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 cursor-pointer"
+                            className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
                             title={`Modifier "${item.subject.name}" (nom ou coefficient)`}
                           >
                             <Pencil className="h-3 w-3" />
@@ -849,6 +919,23 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* MODAL: Saisie et modification directe des notes du bulletin */}
+      {isInsertGradesOpen && (
+        <InsertBulletinGradesModal
+          isOpen={isInsertGradesOpen}
+          onClose={() => {
+            setIsInsertGradesOpen(false);
+            setTargetSubjectForGrades(null);
+          }}
+          student={student}
+          classStudents={classStudents}
+          schoolClass={classObj}
+          trimester={trimester as 1 | 2 | 3}
+          targetSubject={targetSubjectForGrades}
+          availableSubjects={studentRankData.subjectResults.length > 0 ? studentRankData.subjectResults.map(r => r.subject) : subjects}
+        />
       )}
     </div>
   );

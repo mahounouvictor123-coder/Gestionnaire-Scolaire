@@ -490,7 +490,6 @@ function MainApp() {
       case 'subjects':
         return <SubjectsView />;
       case 'grades':
-        return <GradesView />;
       case 'report-cards':
         return <ReportCardsView onNavigate={setActiveView} />;
       case 'payments':

@@ -7,6 +7,8 @@ import { ScanBulletinTemplateModal } from '../components/modals/ScanBulletinTemp
 import { SendBulletinParentModal } from '../components/modals/SendBulletinParentModal';
 import { AIGradesBulletinWhatsAppModal } from '../components/modals/AIGradesBulletinWhatsAppModal';
 import { SchoolLogoImportModal } from '../components/modals/SchoolLogoImportModal';
+import { InsertBulletinGradesModal } from '../components/modals/InsertBulletinGradesModal';
+import { downloadSingleBulletinPdf, downloadClassBulletinsPdf } from '../lib/bulletinPdfExport';
 import { calculateClassRanks, defaultBulletinTemplate } from '../lib/gradingUtils';
 import {
   FileCheck,
@@ -36,11 +38,13 @@ import {
   Send,
   Bot,
   ArrowLeft,
+  ArrowRight,
   Image as ImageIcon,
   PenTool,
   Eye,
   EyeOff,
   Pencil,
+  Edit3,
   X,
   Plus
 } from 'lucide-react';
@@ -93,6 +97,12 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   });
   const [showSignatureOnDoc, setShowSignatureOnDoc] = useState(true);
   const [bulkArchiveMessage, setBulkArchiveMessage] = useState<string>('');
+  const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+
+  // Saisie et insertion directe des notes du bulletin
+  const [isInsertGradesModalOpen, setIsInsertGradesModalOpen] = useState(false);
+  const [insertGradesStudent, setInsertGradesStudent] = useState<Student | null>(null);
+  const [insertGradesTargetSubject, setInsertGradesTargetSubject] = useState<Subject | null>(null);
 
   // Gestion des matières (Modification et Suppression directe depuis le bulletin)
   const [showSubjectManagerModal, setShowSubjectManagerModal] = useState(false);
@@ -283,6 +293,49 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     setTimeout(() => setBulkArchiveMessage(''), 5000);
   };
 
+  // Télécharger le bulletin d'un élève en PDF
+  const handleDownloadSinglePdf = (rankItem: typeof currentBulletinRankData) => {
+    try {
+      downloadSingleBulletinPdf({
+        studentRank: rankItem,
+        classSummary: classRankSummary,
+        schoolClass: selectedClass,
+        school: currentSchool,
+        settings,
+        trimester: selectedTrimester,
+        template: activeTemplate,
+        showSignature: showSignatureOnDoc
+      });
+      setDownloadNotice(`📥 Bulletin de ${rankItem.student.lastName} ${rankItem.student.firstName} téléchargé en PDF avec succès !`);
+      setTimeout(() => setDownloadNotice(null), 4000);
+    } catch (err) {
+      console.error('Erreur lors du téléchargement du bulletin:', err);
+    }
+  };
+
+  // Télécharger tous les bulletins de la classe en 1 seul PDF multi-pages
+  const handleDownloadClassPdf = () => {
+    try {
+      if (classRankSummary.rankings.length === 0) {
+        alert("Aucun élève dans cette classe à télécharger.");
+        return;
+      }
+      downloadClassBulletinsPdf(
+        classRankSummary.rankings,
+        classRankSummary,
+        selectedClass,
+        currentSchool,
+        settings,
+        selectedTrimester,
+        activeTemplate
+      );
+      setDownloadNotice(`📥 Tous les bulletins de la classe ${selectedClass?.name} (${classRankSummary.totalStudents} élèves) ont été téléchargés en PDF !`);
+      setTimeout(() => setDownloadNotice(null), 4500);
+    } catch (err) {
+      console.error('Erreur lors du téléchargement des bulletins:', err);
+    }
+  };
+
   // Filter archived bulletins
   const filteredArchives = archivedReportCards.filter(card => {
     const matchesSearch = card.studentName.toLowerCase().includes(archiveSearch.toLowerCase()) ||
@@ -332,8 +385,30 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
           </p>
         </div>
 
-        {/* Action Buttons: Scan Bulletin Model & AI WhatsApp Dispatcher */}
+        {/* Action Buttons: Saisie des Notes, Télécharger Bulletins, Logo, IA WhatsApp, Scanner */}
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+          <button
+            onClick={() => {
+              setInsertGradesStudent(activeStudentForBulletin.id === 'specimen-student' ? (classStudents[0] || null) : activeStudentForBulletin);
+              setInsertGradesTargetSubject(null);
+              setIsInsertGradesModalOpen(true);
+            }}
+            className="w-full md:w-auto px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 hover:from-emerald-700 hover:to-indigo-800 text-white font-black text-xs shadow-lg shadow-emerald-700/25 flex items-center justify-center space-x-2 transition-all shrink-0 cursor-pointer hover:scale-105 active:scale-95"
+            title="Saisir ou corriger les notes d'évaluation (interrogations, devoirs, compositions) directement dans le bulletin"
+          >
+            <Edit3 className="h-4 w-4 text-emerald-200" />
+            <span>📝 Saisir / Insérer les Notes</span>
+          </button>
+
+          <button
+            onClick={handleDownloadClassPdf}
+            className="w-full md:w-auto px-4 py-2.5 rounded-2xl bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-800 hover:from-blue-800 hover:to-purple-900 text-white font-black text-xs shadow-lg shadow-blue-700/25 flex items-center justify-center space-x-2 transition-all shrink-0 cursor-pointer hover:scale-105 active:scale-95"
+            title="Télécharger tous les bulletins de la classe en un document PDF complet"
+          >
+            <Download className="h-4 w-4 text-amber-300" />
+            <span>📥 Télécharger Bulletins Classe (PDF)</span>
+          </button>
+
           <button
             onClick={() => setIsLogoModalOpen(true)}
             className="w-full md:w-auto px-3.5 py-2.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-extrabold text-xs border border-indigo-200 dark:border-indigo-800 shadow-sm flex items-center justify-center space-x-2 transition-all shrink-0 cursor-pointer"
@@ -410,6 +485,21 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
         </div>
       )}
 
+      {downloadNotice && (
+        <div className="p-4 rounded-2xl bg-blue-500/15 border border-blue-500/40 text-blue-900 dark:text-blue-200 font-black text-xs flex items-center justify-between shadow-sm animate-in fade-in">
+          <div className="flex items-center space-x-2">
+            <Download className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0 animate-bounce" />
+            <span>{downloadNotice}</span>
+          </div>
+          <button
+            onClick={() => setDownloadNotice(null)}
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* TAB 1: GENERATOR & CLASS RANKING */}
       {mainTab === 'GENERATOR' && (
         <>
@@ -422,11 +512,16 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
           <select
             value={selectedClassId}
             onChange={e => {
-              setSelectedClassId(e.target.value);
-              const clsStudents = students.filter(s => s.classId === e.target.value);
+              const newClassId = e.target.value;
+              setSelectedClassId(newClassId);
+              const clsStudents = students.filter(s => s.classId === newClassId);
               if (clsStudents.length > 0) {
                 setPreviewStudentId(clsStudents[0].id);
+              } else {
+                setPreviewStudentId('SPECIMEN');
               }
+              // Afficher immédiatement la liste de la classe comme demandé
+              setViewMode('RANKING_TABLE');
             }}
             className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 cursor-pointer"
           >
@@ -573,13 +668,27 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                 <span>Format du Bulletin Dressé :</span>
               </span>
 
-              {/* Sélecteur de l'élève ou spécimen vierge */}
+              {/* Sélecteur de l'élève ou spécimen vierge avec boutons Précédent / Suivant */}
               <div className="flex items-center space-x-1.5">
-                <label className="text-[11px] text-slate-300 font-bold">Élève :</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const idx = classRankSummary.rankings.findIndex(r => r.student.id === previewStudentId);
+                    if (idx > 0) {
+                      setPreviewStudentId(classRankSummary.rankings[idx - 1].student.id);
+                    }
+                  }}
+                  disabled={classRankSummary.rankings.findIndex(r => r.student.id === previewStudentId) <= 0}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 cursor-pointer"
+                  title="Élève précédent"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                </button>
+
                 <select
                   value={previewStudentId}
                   onChange={e => setPreviewStudentId(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-extrabold text-xs focus:ring-2 focus:ring-purple-500 cursor-pointer max-w-[280px] sm:max-w-md truncate"
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-extrabold text-xs focus:ring-2 focus:ring-purple-500 cursor-pointer max-w-[260px] sm:max-w-xs truncate"
                 >
                   {classRankSummary.rankings.map(r => (
                     <option key={r.student.id} value={r.student.id}>
@@ -590,6 +699,21 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                     📄 Spécimen Vierge (Modèle officiel sans nom)
                   </option>
                 </select>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const idx = classRankSummary.rankings.findIndex(r => r.student.id === previewStudentId);
+                    if (idx !== -1 && idx < classRankSummary.rankings.length - 1) {
+                      setPreviewStudentId(classRankSummary.rankings[idx + 1].student.id);
+                    }
+                  }}
+                  disabled={classRankSummary.rankings.findIndex(r => r.student.id === previewStudentId) >= classRankSummary.rankings.length - 1 || classRankSummary.rankings.findIndex(r => r.student.id === previewStudentId) === -1}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-30 cursor-pointer"
+                  title="Élève suivant"
+                >
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
               </div>
 
               <button
@@ -609,6 +733,30 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
 
             {/* Actions rapides sur le bulletin dressé */}
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setInsertGradesStudent(activeStudentForBulletin.id === 'specimen-student' ? (classStudents[0] || null) : activeStudentForBulletin);
+                  setInsertGradesTargetSubject(null);
+                  setIsInsertGradesModalOpen(true);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center space-x-1.5 shadow-md shadow-emerald-600/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                title="Saisir ou corriger directement les notes de cet élève"
+              >
+                <Edit3 className="h-3.5 w-3.5 text-emerald-200" />
+                <span>📝 Saisir / Modifier les Notes</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDownloadSinglePdf(currentBulletinRankData)}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs flex items-center space-x-1.5 shadow-md shadow-blue-600/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                title="Télécharger le bulletin officiel de cet élève en document PDF"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>📥 Télécharger le Bulletin (PDF)</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setShowSubjectManagerModal(true)}
@@ -767,15 +915,30 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                       <th className="p-2 border border-slate-300">
                         <div className="flex items-center justify-between">
                           <span>Matières Définies par l'École</span>
-                          <button
-                            type="button"
-                            onClick={() => setShowSubjectManagerModal(true)}
-                            className="px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 text-white font-extrabold text-[10px] inline-flex items-center space-x-1 transition-all cursor-pointer print:hidden"
-                            title="Modifier les coefficients ou supprimer des matières"
-                          >
-                            <Pencil className="h-3 w-3 text-amber-300" />
-                            <span>⚙️ Modifier / Supprimer</span>
-                          </button>
+                          <div className="flex items-center space-x-1.5 print:hidden">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInsertGradesStudent(activeStudentForBulletin.id === 'specimen-student' ? (classStudents[0] || null) : activeStudentForBulletin);
+                                setInsertGradesTargetSubject(null);
+                                setIsInsertGradesModalOpen(true);
+                              }}
+                              className="px-2.5 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[10px] inline-flex items-center space-x-1 transition-all cursor-pointer shadow-xs"
+                              title="Saisir ou corriger les notes de cet élève"
+                            >
+                              <Edit3 className="h-3 w-3" />
+                              <span>📝 Saisir les Notes</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowSubjectManagerModal(true)}
+                              className="px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 text-white font-extrabold text-[10px] inline-flex items-center space-x-1 transition-all cursor-pointer"
+                              title="Modifier les coefficients ou supprimer des matières"
+                            >
+                              <Pencil className="h-3 w-3 text-amber-300" />
+                              <span>⚙️ Gérer Matières</span>
+                            </button>
+                          </div>
                         </div>
                       </th>
                       {activeTemplate.columns.showCoefficients && (
@@ -806,11 +969,24 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                           <td className="p-2 border border-slate-300 font-bold text-slate-900">
                             <div className="flex items-center justify-between group">
                               <span>{item.subject.name}</span>
-                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1 print:hidden">
+                              <div className="flex items-center space-x-1 print:hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setInsertGradesStudent(activeStudentForBulletin.id === 'specimen-student' ? (classStudents[0] || null) : activeStudentForBulletin);
+                                    setInsertGradesTargetSubject(item.subject);
+                                    setIsInsertGradesModalOpen(true);
+                                  }}
+                                  className="px-1.5 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] inline-flex items-center space-x-0.5 cursor-pointer border border-emerald-200"
+                                  title={`Saisir / Modifier les notes en ${item.subject.name}`}
+                                >
+                                  <Edit3 className="h-2.5 w-2.5 text-emerald-600" />
+                                  <span>Notes</span>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEditSubject(item.subject)}
-                                  className="p-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 cursor-pointer"
+                                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
                                   title={`Modifier "${item.subject.name}" (nom ou coefficient)`}
                                 >
                                   <Pencil className="h-3 w-3" />
@@ -818,7 +994,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteSubjectFromBulletin(item.subject)}
-                                  className="p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 cursor-pointer"
+                                  className="p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
                                   title={`Supprimer "${item.subject.name}"`}
                                 >
                                   <Trash2 className="h-3 w-3" />
@@ -853,7 +1029,22 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                             </td>
                           )}
                           <td className="p-2 border border-slate-300 text-center font-black text-blue-900">
-                            {item.grades.length > 0 ? item.average.toFixed(2) : '-'}
+                            {item.grades.length > 0 ? (
+                              item.average.toFixed(2)
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setInsertGradesStudent(activeStudentForBulletin.id === 'specimen-student' ? (classStudents[0] || null) : activeStudentForBulletin);
+                                  setInsertGradesTargetSubject(item.subject);
+                                  setIsInsertGradesModalOpen(true);
+                                }}
+                                className="text-emerald-700 hover:text-emerald-800 text-[10px] font-extrabold underline cursor-pointer print:no-underline print:text-slate-400"
+                                title={`Cliquer pour saisir les notes en ${item.subject.name}`}
+                              >
+                                + Saisir Note
+                              </button>
+                            )}
                           </td>
                           {activeTemplate.columns.showSubjectRank && (
                             <td className="p-2 border border-slate-300 text-center font-extrabold text-purple-700">
@@ -984,6 +1175,28 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
 
             <div className="flex flex-wrap items-center gap-2">
               <button
+                onClick={() => {
+                  setInsertGradesStudent(classStudents[0] || null);
+                  setInsertGradesTargetSubject(null);
+                  setIsInsertGradesModalOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center space-x-1.5 shadow-md shadow-emerald-600/25 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                title="Saisir ou corriger les notes de la classe entière"
+              >
+                <Edit3 className="h-4 w-4 text-emerald-200" />
+                <span>📝 Saisir les Notes de la Classe</span>
+              </button>
+
+              <button
+                onClick={handleDownloadClassPdf}
+                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs flex items-center space-x-1.5 shadow-md shadow-blue-600/25 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                title="Télécharger tous les bulletins de la classe en un document PDF complet"
+              >
+                <Download className="h-4 w-4" />
+                <span>📥 Télécharger Tous les Bulletins (PDF)</span>
+              </button>
+
+              <button
                 onClick={() => setSendParentModalData({
                   isOpen: true,
                   student: undefined // triggers class bulk mode
@@ -1036,8 +1249,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                       <tr
                         key={rankItem.student.id}
                         onClick={() => {
-                          setSelectedStudentForBulletin(rankItem.student);
                           setPreviewStudentId(rankItem.student.id);
+                          setViewMode('BULLETIN_PREVIEW');
                         }}
                         className={`hover:bg-purple-50/80 dark:hover:bg-purple-950/40 cursor-pointer transition-all ${
                           isTop3 ? 'bg-amber-500/5' : ''
@@ -1110,29 +1323,50 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                         </td>
 
                         {/* Action */}
-                        <td className="p-3.5 text-right pr-6 space-x-2" onClick={e => e.stopPropagation()}>
-                          <button
-                            onClick={() => {
-                              setSelectedStudentForBulletin(rankItem.student);
-                              setPreviewStudentId(rankItem.student.id);
-                            }}
-                            className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs inline-flex items-center space-x-1.5 shadow-md shadow-purple-600/20 transition-all cursor-pointer hover:scale-105 active:scale-95"
-                            title={`Afficher le bulletin officiel de ${rankItem.student.firstName}`}
-                          >
-                            <FileText className="h-3.5 w-3.5 text-purple-200" />
-                            <span>📄 Afficher Bulletin</span>
-                          </button>
-
+                        <td className="p-3.5 text-right pr-6 space-x-1.5" onClick={e => e.stopPropagation()}>
                           <button
                             onClick={() => {
                               setPreviewStudentId(rankItem.student.id);
                               setViewMode('BULLETIN_PREVIEW');
                             }}
-                            className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs inline-flex items-center space-x-1 transition-all cursor-pointer"
-                            title="Consulter le format document dressé"
+                            className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs inline-flex items-center space-x-1 shadow-md shadow-purple-600/20 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                            title={`Faire figurer le bulletin officiel de ${rankItem.student.firstName}`}
                           >
-                            <Eye className="h-3.5 w-3.5 text-purple-600" />
-                            <span>Format Page</span>
+                            <FileText className="h-3.5 w-3.5 text-purple-200" />
+                            <span>📄 Bulletin</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setInsertGradesStudent(rankItem.student);
+                              setInsertGradesTargetSubject(null);
+                              setIsInsertGradesModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs inline-flex items-center space-x-1 shadow-sm transition-all cursor-pointer hover:scale-105 active:scale-95"
+                            title={`Saisir ou modifier les notes de ${rankItem.student.firstName}`}
+                          >
+                            <Edit3 className="h-3.5 w-3.5 text-emerald-200" />
+                            <span>📝 Notes</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleDownloadSinglePdf(rankItem)}
+                            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs inline-flex items-center space-x-1 shadow-sm transition-all cursor-pointer hover:scale-105 active:scale-95"
+                            title={`Télécharger le bulletin officiel de ${rankItem.student.firstName} en PDF`}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            <span>📥 PDF</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setSelectedStudentForBulletin(rankItem.student);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs inline-flex items-center space-x-1 transition-all cursor-pointer"
+                            title="Imprimer ou exporter en PDF ce bulletin"
+                          >
+                            <Printer className="h-3.5 w-3.5 text-purple-600" />
+                            <span>Imprimer</span>
                           </button>
 
                           <button
@@ -1143,7 +1377,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                               studentRank: rankItem.rank,
                               studentMention: rankItem.mention
                             })}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center space-x-1.5 shadow transition-all cursor-pointer"
+                            className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center space-x-1 shadow transition-all cursor-pointer"
                             title="Envoyer le lien du bulletin au parent par WhatsApp ou SMS"
                           >
                             <MessageCircle className="h-3.5 w-3.5" />
@@ -1732,6 +1966,27 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL 7: Saisie et insertion directe des notes du bulletin */}
+      {isInsertGradesModalOpen && (
+        <InsertBulletinGradesModal
+          isOpen={isInsertGradesModalOpen}
+          onClose={() => {
+            setIsInsertGradesModalOpen(false);
+            setInsertGradesTargetSubject(null);
+          }}
+          student={insertGradesStudent || (activeStudentForBulletin.id === 'specimen-student' ? classStudents[0] : activeStudentForBulletin)}
+          classStudents={classStudents}
+          schoolClass={selectedClass}
+          trimester={selectedTrimester}
+          targetSubject={insertGradesTargetSubject}
+          availableSubjects={definedClassSubjects}
+          onSaved={() => {
+            setDownloadNotice(`✅ Notes enregistrées et bulletin recalculé en direct !`);
+            setTimeout(() => setDownloadNotice(null), 4000);
+          }}
+        />
       )}
 
     </div>
