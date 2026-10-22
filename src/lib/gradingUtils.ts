@@ -430,19 +430,24 @@ export function groupSubjectResults(results: SubjectResult[]): SubjectGroup[] {
     const n = (s.name || '').toUpperCase();
     const c = (s.code || '').toUpperCase();
     return (
+      n.includes('PCT') ||
+      c.includes('PCT') ||
+      c === 'PC' ||
+      c === 'PCT' ||
+      n.includes('PHYSIQUE') ||
+      n.includes('CHIMIE') ||
+      n.includes('TECHNOLOGIE') ||
+      n.includes('TECHNO') ||
+      n.includes('SPCT') ||
+      c.includes('SPCT') ||
       n.includes('MATH') ||
       c.includes('MATH') ||
       n.includes('SVT') ||
       c.includes('SVT') ||
-      n.includes('SPCT') ||
-      c.includes('SPCT') ||
-      n.includes('PCT') ||
-      c.includes('PCT') ||
-      n.includes('PHYSIQUE') ||
-      n.includes('CHIMIE') ||
       n.includes('BIOLOGIE') ||
-      n.includes('TECHNO') ||
-      n.includes('SCIENCE')
+      n.includes('SCIENCE') ||
+      n.includes('EST') ||
+      c.includes('EST')
     );
   };
 

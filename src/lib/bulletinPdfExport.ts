@@ -17,6 +17,7 @@ export interface BulletinPdfOptions {
   trimester: 1 | 2 | 3 | number;
   template?: BulletinTemplate;
   showSignature?: boolean;
+  logoDataUrl?: string;
 }
 
 /**
@@ -25,6 +26,107 @@ export interface BulletinPdfOptions {
 function cleanText(text: string | undefined | null): string {
   if (!text) return '';
   return text.trim();
+}
+
+/**
+ * Loads an image from a URL, relative path, or blob and converts it to a base64 PNG dataUrl
+ */
+export async function loadImageAsDataUrl(url: string | undefined | null): Promise<string | null> {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('data:image/')) {
+    return trimmed;
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width || 120;
+        canvas.height = img.naturalHeight || img.height || 120;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (err) {
+        resolve(null);
+      }
+    };
+    img.onerror = () => {
+      fetch(trimmed)
+        .then(res => res.blob())
+        .then(blob => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        })
+        .catch(() => resolve(null));
+    };
+    img.src = trimmed;
+  });
+}
+
+/**
+ * Generates an official circular crest/seal if no logo is provided or image loading fails
+ */
+export function generateDefaultSchoolLogo(schoolName: string = 'COMPLEXE SCOLAIRE'): string {
+  if (typeof document === 'undefined') return '';
+  const canvas = document.createElement('canvas');
+  canvas.width = 160;
+  canvas.height = 160;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return '';
+
+  const cx = 80;
+  const cy = 80;
+
+  // Outer dark ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, 76, 0, Math.PI * 2);
+  ctx.fillStyle = '#0f172a';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 71, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 67, 0, Math.PI * 2);
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#1e3a8a';
+  ctx.stroke();
+
+  // Official Monogram
+  ctx.fillStyle = '#1e293b';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('COMPLEXE', cx, 40);
+
+  ctx.font = '900 24px sans-serif';
+  ctx.fillStyle = '#1e3a8a';
+  const words = schoolName.split(/\s+/).filter(w => w.length > 2 && !['LE', 'LA', 'LES', 'DU', 'DES', 'DE'].includes(w.toUpperCase()));
+  const initials = words.map(w => w[0]).join('').slice(0, 3) || 'CS';
+  ctx.fillText(initials.toUpperCase(), cx, 76);
+
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillStyle = '#1e293b';
+  ctx.fillText('SCOLAIRE', cx, 112);
+
+  ctx.font = 'bold 9px sans-serif';
+  ctx.fillStyle = '#059669';
+  ctx.fillText('★ BÉNIN ★', cx, 128);
+
+  return canvas.toDataURL('image/png');
 }
 
 /**
@@ -47,7 +149,8 @@ export function addBulletinPageToPdf(
     settings,
     trimester,
     template,
-    showSignature = true
+    showSignature = true,
+    logoDataUrl
   } = options;
 
   const student = studentRank.student;
@@ -80,23 +183,36 @@ export function addBulletinPageToPdf(
   const logoBoxWidth = 32;
   const headerCenterWidth = contentWidth - logoBoxWidth;
 
-  // School crest circular representation
+  const logoX = margin + 5;
+  const logoY = margin + 2;
+  const logoSize = 22;
+
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, 'PNG', logoX, logoY, logoSize, logoSize, undefined, 'FAST');
+    } catch {
+      try {
+        doc.addImage(logoDataUrl, 'JPEG', logoX, logoY, logoSize, logoSize, undefined, 'FAST');
+      } catch (err) {
+        console.warn('Failed to embed logo into PDF:', err);
+      }
+    }
+  }
+
+  // Circular border around logo
   doc.setDrawColor(30, 41, 59);
-  doc.setLineWidth(0.4);
-  doc.circle(margin + 16, margin + 12, 10, 'S');
-  doc.setFontSize(5);
+  doc.setLineWidth(0.35);
+  doc.circle(logoX + (logoSize / 2), logoY + (logoSize / 2), (logoSize / 2) + 0.3, 'S');
+
+  doc.setFontSize(5.2);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(51, 65, 85);
-  doc.text('COMPLEXE', margin + 16, margin + 9, { align: 'center' });
-  doc.text('SCOLAIRE', margin + 16, margin + 12, { align: 'center' });
-  doc.text('SAVOIR', margin + 16, margin + 15, { align: 'center' });
+  doc.text(motto, margin + 16, margin + 26.5, { align: 'center', maxWidth: logoBoxWidth - 2 });
 
-  doc.setFontSize(5.5);
+  doc.setFontSize(4.8);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(71, 85, 105);
-  doc.text(motto, margin + 16, margin + 25, { align: 'center' });
-  doc.setFontSize(5);
-  doc.text('DISCIPLINE • TRAVAIL', margin + 16, margin + 28, { align: 'center' });
+  doc.setTextColor(100, 116, 139);
+  doc.text('DISCIPLINE • TRAVAIL • SUCCÈS', margin + 16, margin + 29.8, { align: 'center' });
 
   // Center: Header Texts
   const headerCenterX = margin + logoBoxWidth + (headerCenterWidth / 2);
@@ -257,8 +373,7 @@ export function addBulletinPageToPdf(
     'INT 1',
     'INT 2',
     'Moy. INT',
-    'DEV 1',
-    'DEV 2',
+    'DEVOIR',
     'COMPO',
     'MOY/20',
     'Moy. Coef',
@@ -273,8 +388,7 @@ export function addBulletinPageToPdf(
     // Add subjects in this group
     group.items.forEach(item => {
       const interroAvgVal = item.interroAverage !== undefined ? item.interroAverage.toFixed(2) : (item.interro1 !== undefined ? item.interro1.toFixed(2) : '-');
-      const dev1Val = item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-';
-      const dev2Val = item.devoir2Mark !== undefined ? item.devoir2Mark.toFixed(2) : '-';
+      const devVal = item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-';
       const compoVal = item.compoMark !== undefined ? item.compoMark.toFixed(2) : '-';
 
       tableBody.push([
@@ -283,8 +397,7 @@ export function addBulletinPageToPdf(
         item.interro1 !== undefined ? item.interro1.toFixed(2) : '-',
         item.interro2 !== undefined ? item.interro2.toFixed(2) : '-',
         interroAvgVal,
-        dev1Val,
-        dev2Val,
+        devVal,
         compoVal,
         item.grades.length > 0 ? item.average.toFixed(2) : '-',
         item.grades.length > 0 ? item.weightedAverage.toFixed(2) : '-',
@@ -297,7 +410,7 @@ export function addBulletinPageToPdf(
     tableBody.push([
       { content: group.name, styles: { fontStyle: 'bolditalic' as const, fillColor: [241, 245, 249] } },
       { content: String(group.totalCoeff), styles: { fontStyle: 'bold' as const, halign: 'center' as const, fillColor: [241, 245, 249] } },
-      { content: '', colSpan: 6, styles: { fillColor: [241, 245, 249] } },
+      { content: '', colSpan: 5, styles: { fillColor: [241, 245, 249] } },
       { content: group.groupAverage > 0 ? group.groupAverage.toFixed(2) : '-', styles: { fontStyle: 'bold' as const, halign: 'center' as const, fillColor: [241, 245, 249] } },
       { content: group.totalWeightedPoints > 0 ? group.totalWeightedPoints.toFixed(2) : '-', styles: { fontStyle: 'bold' as const, halign: 'center' as const, fillColor: [241, 245, 249] } },
       { content: '', colSpan: 2, styles: { fillColor: [241, 245, 249] } }
@@ -307,7 +420,7 @@ export function addBulletinPageToPdf(
   // Footer Row
   const footRow = [
     { content: `Toutes Matières: ${studentRank.totalCoefficients}`, styles: { halign: 'left' as const, fontStyle: 'bold' as const } },
-    { content: '', colSpan: 6, styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+    { content: '', colSpan: 5, styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
     { content: 'TOTAL GENERAL :', styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
     { content: studentRank.totalWeightedPoints.toFixed(2), colSpan: 2, styles: { halign: 'center' as const, fontStyle: 'bold' as const } },
     { content: '', colSpan: 2 }
@@ -351,18 +464,17 @@ export function addBulletinPageToPdf(
       lineWidth: 0.25
     },
     columnStyles: {
-      0: { halign: 'left', cellWidth: 40 },
+      0: { halign: 'left', cellWidth: 42 },
       1: { halign: 'center', cellWidth: 10 },
-      2: { halign: 'center', cellWidth: 11 },
-      3: { halign: 'center', cellWidth: 11 },
-      4: { halign: 'center', cellWidth: 12 },
-      5: { halign: 'center', cellWidth: 11 },
-      6: { halign: 'center', cellWidth: 11 },
-      7: { halign: 'center', cellWidth: 12 },
-      8: { halign: 'center', cellWidth: 13, fontStyle: 'bold' },
-      9: { halign: 'center', cellWidth: 14, fontStyle: 'bold' },
-      10: { halign: 'center', cellWidth: 11 },
-      11: { halign: 'left', cellWidth: 'auto' }
+      2: { halign: 'center', cellWidth: 12 },
+      3: { halign: 'center', cellWidth: 12 },
+      4: { halign: 'center', cellWidth: 13 },
+      5: { halign: 'center', cellWidth: 13 },
+      6: { halign: 'center', cellWidth: 13 },
+      7: { halign: 'center', cellWidth: 14, fontStyle: 'bold' },
+      8: { halign: 'center', cellWidth: 15, fontStyle: 'bold' },
+      9: { halign: 'center', cellWidth: 12 },
+      10: { halign: 'left', cellWidth: 'auto' }
     }
   });
 
@@ -540,14 +652,20 @@ export function addBulletinPageToPdf(
 /**
  * Download a single student's report card as PDF
  */
-export function downloadSingleBulletinPdf(options: BulletinPdfOptions) {
+export async function downloadSingleBulletinPdf(options: BulletinPdfOptions): Promise<void> {
+  let logoDataUrl = options.logoDataUrl;
+  if (!logoDataUrl) {
+    const candidateUrl = options.school?.logoUrl || options.settings?.logoUrl;
+    logoDataUrl = (await loadImageAsDataUrl(candidateUrl)) || generateDefaultSchoolLogo(options.school?.name || options.settings?.schoolName);
+  }
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4'
   });
 
-  addBulletinPageToPdf(doc, options, true);
+  addBulletinPageToPdf(doc, { ...options, logoDataUrl }, true);
 
   const studentName = cleanText(`${options.studentRank.student.lastName}_${options.studentRank.student.firstName}`)
     .replace(/\s+/g, '_')
@@ -562,7 +680,7 @@ export function downloadSingleBulletinPdf(options: BulletinPdfOptions) {
 /**
  * Download all students' report cards of a class in a single multi-page PDF
  */
-export function downloadClassBulletinsPdf(
+export async function downloadClassBulletinsPdf(
   rankings: StudentRankResult[],
   classSummary: ClassRankSummary,
   schoolClass: SchoolClass | undefined,
@@ -570,8 +688,11 @@ export function downloadClassBulletinsPdf(
   settings: SchoolSettings,
   trimester: 1 | 2 | 3 | number,
   template?: BulletinTemplate
-) {
+): Promise<void> {
   if (!rankings || rankings.length === 0) return;
+
+  const candidateUrl = school?.logoUrl || settings?.logoUrl;
+  const logoDataUrl = (await loadImageAsDataUrl(candidateUrl)) || generateDefaultSchoolLogo(school?.name || settings?.schoolName);
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -590,7 +711,8 @@ export function downloadClassBulletinsPdf(
         settings,
         trimester,
         template,
-        showSignature: true
+        showSignature: true,
+        logoDataUrl
       },
       idx === 0
     );

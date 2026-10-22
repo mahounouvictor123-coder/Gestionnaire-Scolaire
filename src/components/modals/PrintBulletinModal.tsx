@@ -278,9 +278,9 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
     window.print();
   };
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     try {
-      downloadSingleBulletinPdf({
+      await downloadSingleBulletinPdf({
         studentRank: studentRankData,
         classSummary: classRankSummary,
         schoolClass: classObj,
@@ -590,8 +590,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                     <th className="p-1 border border-slate-700 w-11" title="Note d'interrogation 1">Int 1</th>
                     <th className="p-1 border border-slate-700 w-11" title="Note d'interrogation 2">Int 2</th>
                     <th className="p-1 border border-slate-700 w-12" title="Moyenne des interrogations">Moy. INT</th>
-                    <th className="p-1 border border-slate-700 w-11">DEV 1</th>
-                    <th className="p-1 border border-slate-700 w-11">DEV 2</th>
+                    <th className="p-1 border border-slate-700 w-11">DEVOIR</th>
                     <th className="p-1 border border-slate-700 w-12">COMPO</th>
                     <th className="p-1 border border-slate-700 w-14 font-black">MOY/20</th>
                     <th className="p-1 border border-slate-700 w-14 font-black bg-slate-300">Moy. Coef</th>
@@ -605,8 +604,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                       <React.Fragment key={gIdx}>
                         {group.items.map((item, idx) => {
                           const interroAvgVal = item.interroAverage !== undefined ? item.interroAverage.toFixed(2) : (item.interro1 !== undefined ? item.interro1.toFixed(2) : '-');
-                          const dev1Val = item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-';
-                          const dev2Val = item.devoir2Mark !== undefined ? item.devoir2Mark.toFixed(2) : '-';
+                          const devVal = item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-';
                           const compoVal = item.compoMark !== undefined ? item.compoMark.toFixed(2) : '-';
 
                           return (
@@ -642,10 +640,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                                 {interroAvgVal}
                               </td>
                               <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                {dev1Val}
-                              </td>
-                              <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                {dev2Val}
+                                {devVal}
                               </td>
                               <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
                                 {compoVal}
@@ -674,7 +669,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                           <td className="p-1 border border-slate-700 text-center font-black">
                             {group.totalCoeff}
                           </td>
-                          <td colSpan={6} className="p-1 border border-slate-700 bg-slate-50/50"></td>
+                          <td colSpan={5} className="p-1 border border-slate-700 bg-slate-50/50"></td>
                           <td className="p-1 border border-slate-700 text-center font-black text-slate-950">
                             {group.groupAverage > 0 ? group.groupAverage.toFixed(2) : '-'}
                           </td>
@@ -687,7 +682,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={12} className="p-4 text-center text-slate-500 italic">
+                      <td colSpan={11} className="p-4 text-center text-slate-500 italic">
                         Aucune matière configurée pour ce trimestre.
                       </td>
                     </tr>
@@ -702,7 +697,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                     <td className="p-1.5 border border-slate-700 text-center font-black text-xs">
                       {studentRankData.totalCoefficients}
                     </td>
-                    <td colSpan={6} className="p-1.5 border border-slate-700 text-right uppercase tracking-wider pr-3">
+                    <td colSpan={5} className="p-1.5 border border-slate-700 text-right uppercase tracking-wider pr-3">
                       TOTAL GENERAL :
                     </td>
                     <td className="p-1.5 border border-slate-700 text-center font-black text-xs" colSpan={2}>

@@ -881,13 +881,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const ensurePrimaryAndMaternelleSubjects = (subjs: Subject[]): Subject[] => {
     if (!Array.isArray(subjs) || subjs.length === 0) return initialSubjects;
-    const hasPrimaryCE = subjs.some(s => s.code === 'CE' || s.name.toLowerCase().includes('communication'));
-    if (!hasPrimaryCE) {
-      const existingIds = new Set(subjs.map(s => s.id));
-      const missing = [...OFFICIAL_PRIMARY_SUBJECTS, ...OFFICIAL_MATERNELLE_SUBJECTS].filter(s => !existingIds.has(s.id));
-      return [...missing, ...subjs];
+    let list = [...subjs];
+
+    // Guarantee PCT subject presence and SCIENTIFIQUE category for secondary
+    const hasPCT = list.some(s => s.code === 'PCT' || s.name.toUpperCase().includes('PCT'));
+    if (!hasPCT) {
+      const pcIdx = list.findIndex(s => s.code === 'PC' || s.name.toLowerCase().includes('physique'));
+      if (pcIdx !== -1) {
+        list[pcIdx] = {
+          ...list[pcIdx],
+          code: 'PCT',
+          name: 'PCT (Physique - Chimie - Technologie)',
+          category: 'SCIENTIFIQUE'
+        };
+      } else {
+        list.push({
+          id: 'sbj-3',
+          code: 'PCT',
+          name: 'PCT (Physique - Chimie - Technologie)',
+          category: 'SCIENTIFIQUE',
+          coefficient: 4,
+          level: 'COLLEGE'
+        });
+      }
+    } else {
+      list = list.map(s => (s.code === 'PCT' || s.name.toUpperCase().includes('PCT')) ? { ...s, category: 'SCIENTIFIQUE' } : s);
     }
-    return subjs;
+
+    const hasPrimaryCE = list.some(s => s.code === 'CE' || s.name.toLowerCase().includes('communication'));
+    if (!hasPrimaryCE) {
+      const existingIds = new Set(list.map(s => s.id));
+      const missing = [...OFFICIAL_PRIMARY_SUBJECTS, ...OFFICIAL_MATERNELLE_SUBJECTS].filter(s => !existingIds.has(s.id));
+      return [...missing, ...list];
+    }
+    return list;
   };
 
   const [classes, setClasses] = useState<SchoolClass[]>(() => loadScopedData('CLASSES', initialClasses));

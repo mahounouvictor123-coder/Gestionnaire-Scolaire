@@ -351,9 +351,9 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   };
 
   // Télécharger le bulletin d'un élève en PDF
-  const handleDownloadSinglePdf = (rankItem: typeof currentBulletinRankData) => {
+  const handleDownloadSinglePdf = async (rankItem: typeof currentBulletinRankData) => {
     try {
-      downloadSingleBulletinPdf({
+      await downloadSingleBulletinPdf({
         studentRank: rankItem,
         classSummary: classRankSummary,
         schoolClass: selectedClass,
@@ -371,13 +371,13 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   };
 
   // Télécharger tous les bulletins de la classe en 1 seul PDF multi-pages
-  const handleDownloadClassPdf = () => {
+  const handleDownloadClassPdf = async () => {
     try {
       if (classRankSummary.rankings.length === 0) {
         alert("Aucun élève dans cette classe à télécharger.");
         return;
       }
-      downloadClassBulletinsPdf(
+      await downloadClassBulletinsPdf(
         classRankSummary.rankings,
         classRankSummary,
         selectedClass,
@@ -1004,8 +1004,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                       <th className="p-1 border border-slate-700 w-11" title="Note d'interrogation 1">Int 1</th>
                       <th className="p-1 border border-slate-700 w-11" title="Note d'interrogation 2">Int 2</th>
                       <th className="p-1 border border-slate-700 w-12" title="Moyenne des interrogations">Moy. INT</th>
-                      <th className="p-1 border border-slate-700 w-11">DEV 1</th>
-                      <th className="p-1 border border-slate-700 w-11">DEV 2</th>
+                      <th className="p-1 border border-slate-700 w-11">DEVOIR</th>
                       <th className="p-1 border border-slate-700 w-12">COMPO</th>
                       <th className="p-1 border border-slate-700 w-14 font-black">MOY/20</th>
                       <th className="p-1 border border-slate-700 w-14 font-black bg-slate-300">Moy. Coef</th>
@@ -1019,8 +1018,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                         <React.Fragment key={gIdx}>
                           {group.items.map((item, idx) => {
                             const interroAvgVal = item.interroAverage !== undefined ? item.interroAverage.toFixed(2) : (item.interro1 !== undefined ? item.interro1.toFixed(2) : '-');
-                            const dev1Val = item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-';
-                            const dev2Val = item.devoir2Mark !== undefined ? item.devoir2Mark.toFixed(2) : '-';
+                            const devVal = item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-';
                             const compoVal = item.compoMark !== undefined ? item.compoMark.toFixed(2) : '-';
 
                             return (
@@ -1057,10 +1055,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                                   {interroAvgVal}
                                 </td>
                                 <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                  {dev1Val}
-                                </td>
-                                <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                  {dev2Val}
+                                  {devVal}
                                 </td>
                                 <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
                                   {compoVal}
@@ -1089,7 +1084,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                             <td className="p-1 border border-slate-700 text-center font-black">
                               {group.totalCoeff}
                             </td>
-                            <td colSpan={6} className="p-1 border border-slate-700 bg-slate-50/50"></td>
+                            <td colSpan={5} className="p-1 border border-slate-700 bg-slate-50/50"></td>
                             <td className="p-1 border border-slate-700 text-center font-black text-slate-950">
                               {group.groupAverage > 0 ? group.groupAverage.toFixed(2) : '-'}
                             </td>
@@ -1102,7 +1097,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={12} className="p-4 text-center text-slate-500 italic">
+                        <td colSpan={11} className="p-4 text-center text-slate-500 italic">
                           Aucune matière configurée pour ce trimestre.
                         </td>
                       </tr>
@@ -1117,7 +1112,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                       <td className="p-1.5 border border-slate-700 text-center font-black text-xs">
                         {currentBulletinRankData.totalCoefficients}
                       </td>
-                      <td colSpan={6} className="p-1.5 border border-slate-700 text-right uppercase tracking-wider pr-3">
+                      <td colSpan={5} className="p-1.5 border border-slate-700 text-right uppercase tracking-wider pr-3">
                         TOTAL GENERAL :
                       </td>
                       <td className="p-1.5 border border-slate-700 text-center font-black text-xs" colSpan={2}>

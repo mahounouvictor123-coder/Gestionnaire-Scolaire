@@ -292,7 +292,7 @@ export const initialSubjects: Subject[] = [
   // 🏫 3. MATIÈRES DU SECONDAIRE (COLLÈGE & LYCÉE)
   { id: "sbj-1", code: "MATH", name: "Mathématiques", category: "SCIENTIFIQUE", coefficient: 5, level: "LYCEE" },
   { id: "sbj-2", code: "FRAN", name: "Français & Littérature", category: "LITTERAIRE", coefficient: 4, level: "LYCEE" },
-  { id: "sbj-3", code: "PC", name: "Physique - Chimie", category: "SCIENTIFIQUE", coefficient: 4, level: "LYCEE" },
+  { id: "sbj-3", code: "PCT", name: "PCT (Physique - Chimie - Technologie)", category: "SCIENTIFIQUE", coefficient: 4, level: "COLLEGE" },
   { id: "sbj-4", code: "SVT", name: "Sciences de la Vie et de la Terre", category: "SCIENTIFIQUE", coefficient: 3, level: "LYCEE" },
   { id: "sbj-5", code: "HIST", name: "Histoire - Géographie", category: "LITTERAIRE", coefficient: 3, level: "COLLEGE" },
   { id: "sbj-6", code: "ANG", name: "Langue Anglaise", category: "LANGUE", coefficient: 3, level: "COLLEGE" },
@@ -320,7 +320,7 @@ export const initialTeachers: Teacher[] = [
   ...Array.from({ length: 45 }, (_, index) => {
     const num = index + 1;
     const subjectsList = [
-      "Mathématiques", "Français", "Physique - Chimie", "Sciences de la Vie et de la Terre (SVT)", 
+      "Mathématiques", "Français", "PCT (Physique - Chimie - Technologie)", "Sciences de la Vie et de la Terre (SVT)", 
       "Histoire - Géographie", "Anglais", "Informatique & Algo", "Éducation Physique & Sportive (EPS)"
     ];
     const subjectName = subjectsList[index % subjectsList.length];
