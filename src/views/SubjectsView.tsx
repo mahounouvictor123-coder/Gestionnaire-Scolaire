@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../lib/store';
 import { SchoolLevel, Subject } from '../types';
 import { OFFICIAL_PRIMARY_SUBJECTS, OFFICIAL_MATERNELLE_SUBJECTS } from '../data/initialData';
+import { getClassSection } from '../lib/schoolUtils';
 import { 
   BookOpen, 
   Plus, 
@@ -17,11 +18,12 @@ import {
   School,
   Award,
   Pencil,
-  X
+  X,
+  FileText
 } from 'lucide-react';
 
 export const SubjectsView: React.FC = () => {
-  const { subjects, addSubject, updateSubject, deleteSubject } = useApp();
+  const { subjects, classes, addSubject, updateSubject, deleteSubject } = useApp();
 
   const [activeCycleTab, setActiveCycleTab] = useState<'PRIMAIRE' | 'MATERNELLE' | 'COLLEGE' | 'LYCEE' | 'ALL'>('PRIMAIRE');
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,6 +36,20 @@ export const SubjectsView: React.FC = () => {
   const [level, setLevel] = useState<SchoolLevel>('PRIMAIRE');
   const [category, setCategory] = useState<'LITTERAIRE' | 'SCIENTIFIQUE' | 'LANGUE' | 'DIVERS' | 'TECHNIQUE'>('LITTERAIRE');
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
+
+  // Synchroniser le cycle lors du clic sur un onglet
+  const handleSelectCycleTab = (tab: 'PRIMAIRE' | 'MATERNELLE' | 'COLLEGE' | 'LYCEE' | 'ALL') => {
+    setActiveCycleTab(tab);
+    if (tab !== 'ALL') {
+      setLevel(tab);
+    }
+  };
+
+  // Classes de la section sélectionnée qui recevront automatiquement la matière sur leur bulletin
+  const targetClassesForLevel = useMemo(() => {
+    const targetSection = level === 'FORMATION' ? 'LYCEE' : level;
+    return classes.filter(c => getClassSection(c) === targetSection);
+  }, [classes, level]);
 
   // Modal Modification d'une matière
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
@@ -56,23 +72,25 @@ export const SubjectsView: React.FC = () => {
     e.preventDefault();
     if (!editingSubject || !editName.trim()) return;
 
+    const targetCoeff = Math.max(1, parseInt(editCoefficient) || 1);
+
     updateSubject(editingSubject.id, {
       name: editName.trim(),
       code: editCode.trim().toUpperCase() || editName.substring(0, 4).toUpperCase(),
-      coefficient: Math.max(1, parseInt(editCoefficient) || 1),
+      coefficient: targetCoeff,
       level: editLevel,
       category: editCategory
     });
 
-    setNoticeMsg(`Matière "${editName.trim()}" modifiée avec succès !`);
+    setNoticeMsg(`Matière "${editName.trim()}" mise à jour (Coef. ${targetCoeff}) ! Répercutée directement sur les bulletins de la Section ${editLevel}.`);
     setEditingSubject(null);
-    setTimeout(() => setNoticeMsg(null), 3500);
+    setTimeout(() => setNoticeMsg(null), 4000);
   };
 
   const handleDeleteSubject = (sb: Subject) => {
-    if (window.confirm(`Confirmez-vous la suppression de la matière "${sb.name}" ?`)) {
+    if (window.confirm(`Confirmez-vous la suppression de la matière "${sb.name}" ? Elle sera retirée des bulletins de la section.`)) {
       deleteSubject(sb.id);
-      setNoticeMsg(`Matière "${sb.name}" supprimée de l'établissement.`);
+      setNoticeMsg(`Matière "${sb.name}" supprimée de l'établissement et des bulletins.`);
       setTimeout(() => setNoticeMsg(null), 3500);
     }
   };
@@ -81,13 +99,13 @@ export const SubjectsView: React.FC = () => {
   const filteredSubjects = subjects.filter(sb => {
     let matchesCycle = true;
     if (activeCycleTab === 'PRIMAIRE') {
-      matchesCycle = sb.level === 'PRIMAIRE';
+      matchesCycle = sb.level === 'PRIMAIRE' || sb.id.startsWith('sbj-prim-');
     } else if (activeCycleTab === 'MATERNELLE') {
-      matchesCycle = sb.level === 'MATERNELLE';
+      matchesCycle = sb.level === 'MATERNELLE' || sb.id.startsWith('sbj-mat-');
     } else if (activeCycleTab === 'COLLEGE') {
-      matchesCycle = sb.level === 'COLLEGE';
+      matchesCycle = sb.level === 'COLLEGE' || (sb.level === 'LYCEE' && ['MATH', 'FRAN', 'SVT', 'INFO', 'EPS'].includes((sb.code || '').toUpperCase()));
     } else if (activeCycleTab === 'LYCEE') {
-      matchesCycle = sb.level === 'LYCEE' || sb.level === 'FORMATION';
+      matchesCycle = sb.level === 'LYCEE' || sb.level === 'FORMATION' || (sb.level === 'COLLEGE' && ['PCT', 'HIST', 'ANG'].includes((sb.code || '').toUpperCase()));
     }
 
     const matchesCategory = selectedCategory === 'ALL' || sb.category === selectedCategory;
@@ -100,12 +118,15 @@ export const SubjectsView: React.FC = () => {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) return;
+    if (!name.trim()) return;
+
+    const targetCode = code.trim().toUpperCase() || name.trim().substring(0, 4).toUpperCase();
+    const targetCoeff = Math.max(1, parseInt(coefficient) || 1);
 
     addSubject({
-      name,
-      code: code || name.substring(0, 4).toUpperCase(),
-      coefficient: parseInt(coefficient) || 2,
+      name: name.trim(),
+      code: targetCode,
+      coefficient: targetCoeff,
       level,
       category,
     });
@@ -113,8 +134,8 @@ export const SubjectsView: React.FC = () => {
     setName('');
     setCode('');
     setShowAdd(false);
-    setNoticeMsg(`Matière "${name}" ajoutée avec succès pour le niveau ${level} !`);
-    setTimeout(() => setNoticeMsg(null), 3500);
+    setNoticeMsg(`✨ Matière "${name.trim()}" (Coef. ${targetCoeff}) ajoutée avec succès ! Elle s'affiche directement sur tous les bulletins de la Section ${level}.`);
+    setTimeout(() => setNoticeMsg(null), 4500);
   };
 
   const handleInjectPrimaryPreset = () => {
@@ -137,10 +158,10 @@ export const SubjectsView: React.FC = () => {
     setTimeout(() => setNoticeMsg(null), 3500);
   };
 
-  const primarySubjectsCount = subjects.filter(s => s.level === 'PRIMAIRE').length;
-  const maternelleSubjectsCount = subjects.filter(s => s.level === 'MATERNELLE').length;
-  const collegeSubjectsCount = subjects.filter(s => s.level === 'COLLEGE').length;
-  const lyceeSubjectsCount = subjects.filter(s => s.level === 'LYCEE').length;
+  const primarySubjectsCount = subjects.filter(s => s.level === 'PRIMAIRE' || s.id.startsWith('sbj-prim-')).length;
+  const maternelleSubjectsCount = subjects.filter(s => s.level === 'MATERNELLE' || s.id.startsWith('sbj-mat-')).length;
+  const collegeSubjectsCount = subjects.filter(s => s.level === 'COLLEGE' || (s.level === 'LYCEE' && ['MATH', 'FRAN', 'SVT', 'INFO', 'EPS'].includes((s.code || '').toUpperCase()))).length;
+  const lyceeSubjectsCount = subjects.filter(s => s.level === 'LYCEE' || s.level === 'FORMATION' || (s.level === 'COLLEGE' && ['PCT', 'HIST', 'ANG'].includes((s.code || '').toUpperCase()))).length;
 
   return (
     <div className="space-y-6">
@@ -169,7 +190,9 @@ export const SubjectsView: React.FC = () => {
 
           <button
             onClick={() => {
-              setLevel(activeCycleTab === 'PRIMAIRE' ? 'PRIMAIRE' : activeCycleTab === 'MATERNELLE' ? 'MATERNELLE' : activeCycleTab === 'LYCEE' ? 'LYCEE' : 'COLLEGE');
+              if (activeCycleTab !== 'ALL') {
+                setLevel(activeCycleTab);
+              }
               setShowAdd(!showAdd);
             }}
             className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm flex items-center space-x-2 shadow-md transition-all shrink-0 cursor-pointer"
@@ -191,7 +214,7 @@ export const SubjectsView: React.FC = () => {
       {/* Cycle Tabs Navigation (Scission Primaire / Maternelle / Secondaire) */}
       <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/70 rounded-2xl border border-slate-200 dark:border-slate-700">
         <button
-          onClick={() => setActiveCycleTab('PRIMAIRE')}
+          onClick={() => handleSelectCycleTab('PRIMAIRE')}
           className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
             activeCycleTab === 'PRIMAIRE'
               ? 'bg-amber-500 text-slate-950 shadow-md scale-100'
@@ -203,7 +226,7 @@ export const SubjectsView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveCycleTab('MATERNELLE')}
+          onClick={() => handleSelectCycleTab('MATERNELLE')}
           className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
             activeCycleTab === 'MATERNELLE'
               ? 'bg-rose-500 text-white shadow-md'
@@ -215,7 +238,7 @@ export const SubjectsView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveCycleTab('COLLEGE')}
+          onClick={() => handleSelectCycleTab('COLLEGE')}
           className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
             activeCycleTab === 'COLLEGE'
               ? 'bg-indigo-600 text-white shadow-md'
@@ -227,7 +250,7 @@ export const SubjectsView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveCycleTab('LYCEE')}
+          onClick={() => handleSelectCycleTab('LYCEE')}
           className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
             activeCycleTab === 'LYCEE'
               ? 'bg-blue-600 text-white shadow-md'
@@ -239,7 +262,7 @@ export const SubjectsView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveCycleTab('ALL')}
+          onClick={() => handleSelectCycleTab('ALL')}
           className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer ${
             activeCycleTab === 'ALL'
               ? 'bg-slate-900 text-white dark:bg-slate-700 shadow-md'
@@ -314,6 +337,24 @@ export const SubjectsView: React.FC = () => {
             <span className="text-[11px] font-bold text-slate-400">Pondération & Cycle</span>
           </div>
 
+          {/* Reassurance bannière ajout direct sur les bulletins */}
+          <div className="p-3.5 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 dark:from-emerald-950/40 dark:to-blue-950/30 rounded-2xl border border-emerald-300 dark:border-emerald-700/60 text-emerald-900 dark:text-emerald-200 text-xs flex items-center space-x-3 shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white font-black flex items-center justify-center shrink-0 shadow-sm text-sm">
+              ✓
+            </div>
+            <div>
+              <div className="font-black text-slate-900 dark:text-white flex items-center space-x-2">
+                <span>Ajout direct & automatique sur le bulletin</span>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 text-[10px] font-black">
+                  Section {level}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-0.5">
+                Cette matière apparaîtra immédiatement avec son coefficient ({coefficient || 2}) sur le bulletin officiel de toutes les classes de la <strong>Section {level}</strong> ({targetClassesForLevel.length > 0 ? targetClassesForLevel.map(c => c.name).join(', ') : 'Toutes les classes du cycle'}).
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-slate-500 mb-1">Intitulé de la matière *</label>
@@ -352,7 +393,7 @@ export const SubjectsView: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 mb-1">Niveau / Section *</label>
+              <label className="block text-[10px] font-bold text-slate-500 mb-1">Niveau / Section cible *</label>
               <select
                 value={level}
                 onChange={e => setLevel(e.target.value as SchoolLevel)}
@@ -374,7 +415,7 @@ export const SubjectsView: React.FC = () => {
                 className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-bold"
               >
                 <option value="LITTERAIRE">Lettres, Langues & Humanités (CE, Lecture, Français, Droit...)</option>
-                <option value="SCIENTIFIQUE">Sciences, Calcul & Technologie (Maths, EST, Algo, Stats...)</option>
+                <option value="SCIENTIFIQUE">Sciences, Calcul & Technologie (Maths, EST, PCT, Algo...)</option>
                 <option value="LANGUE">Langues Vivantes (Anglais, Espagnol, Allemand...)</option>
                 <option value="DIVERS">Arts, Sport & Éveil (EA, Sport, Musique...)</option>
                 <option value="TECHNIQUE">Disciplines Techniques & Gestion (Comptabilité, Web, Systèmes...)</option>
@@ -399,6 +440,19 @@ export const SubjectsView: React.FC = () => {
           </div>
         </form>
       )}
+
+      {/* Information sur la synchronisation directe aux bulletins */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 bg-blue-50/80 dark:bg-blue-950/40 rounded-2xl border border-blue-200 dark:border-blue-800 text-xs shadow-xs">
+        <div className="flex items-center space-x-2.5">
+          <FileText className="h-4 w-4 text-blue-600 shrink-0" />
+          <span className="text-slate-700 dark:text-slate-300 font-medium">
+            <strong>Synchronisation automatique active :</strong> Chaque matière créée ou modifiée dans une section est immédiatement reportée avec son coefficient sur les bulletins de notes de toutes les classes correspondantes.
+          </span>
+        </div>
+        <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-extrabold text-[10px] shrink-0 self-start sm:self-auto border border-emerald-300 dark:border-emerald-800">
+          <span>⚡ Bulletins synchronisés</span>
+        </span>
+      </div>
 
       {/* Grid or Table of Subjects */}
       <div className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -633,6 +687,13 @@ export const SubjectsView: React.FC = () => {
                     <option value="DIVERS">Arts & Sports</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs flex items-center space-x-2">
+                <CheckCircle2 className="h-4 w-4 text-amber-600 shrink-0" />
+                <span>
+                  La modification de l'intitulé ou du coefficient est automatiquement actualisée sur tous les bulletins scolaires de la <strong>Section {editLevel}</strong>.
+                </span>
               </div>
 
               <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">

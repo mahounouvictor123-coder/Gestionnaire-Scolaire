@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../lib/store';
 import { Student, Subject } from '../types';
-import { isPrimaryClass } from '../lib/schoolUtils';
+import { isPrimaryClass, isSubjectForClass, getClassSection } from '../lib/schoolUtils';
 import { PrintBulletinModal } from '../components/modals/PrintBulletinModal';
 import { ScanBulletinTemplateModal } from '../components/modals/ScanBulletinTemplateModal';
 import { SendBulletinParentModal } from '../components/modals/SendBulletinParentModal';
@@ -200,7 +200,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     grades,
     subjects,
     selectedTrimester,
-    activeTemplate
+    activeTemplate,
+    selectedClass
   );
 
   // Spécimen modèle d'élève officiel portant toutes les matières de l'école
@@ -229,17 +230,12 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     ? specimenStudent
     : (classStudents.find(s => s.id === previewStudentId) || classStudents[0] || specimenStudent);
 
-  // Toutes les matières définies par l'établissement pour ce niveau
-  const isSelectedPrimary = selectedClass ? isPrimaryClass(selectedClass) : false;
+  // Toutes les matières définies par l'établissement pour la section de cette classe
+  // Règle d'or : Toute matière ajoutée dans une section s'ajoute directement sur le bulletin de la section
   const definedClassSubjects = useMemo(() => {
-    const filtered = subjects.filter(s => {
-      if (isSelectedPrimary) {
-        return isPrimaryClass(s) || s.level === 'PRIMAIRE' || s.level === 'MATERNELLE' || s.id.startsWith('sbj-p-') || s.id.startsWith('sbj-mat-');
-      }
-      return !isPrimaryClass(s) && s.level !== 'PRIMAIRE' && s.level !== 'MATERNELLE' && !s.id.startsWith('sbj-p-') && !s.id.startsWith('sbj-mat-');
-    });
+    const filtered = subjects.filter(s => isSubjectForClass(s, selectedClass, subjects));
     return filtered.length > 0 ? filtered : subjects;
-  }, [subjects, isSelectedPrimary]);
+  }, [subjects, selectedClass]);
 
   const currentBulletinRankData = useMemo(() => {
     const found = classRankSummary.rankings.find(r => r.student.id === activeStudentForBulletin.id);
@@ -283,11 +279,11 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   }, [currentBulletinRankData.overallAverage, selectedTrimester, selectedClass, activeStudentForBulletin]);
 
   // Previous trimesters calculations for student history bar
-  const previewTri1Summary = useMemo(() => calculateClassRanks(classStudents, grades, subjects, 1, activeTemplate), [classStudents, grades, subjects, activeTemplate]);
+  const previewTri1Summary = useMemo(() => calculateClassRanks(classStudents, grades, subjects, 1, activeTemplate, selectedClass), [classStudents, grades, subjects, activeTemplate, selectedClass]);
   const previewTri1Student = previewTri1Summary.rankings.find(r => r.student.id === activeStudentForBulletin.id);
   const previewMoyTri1 = previewTri1Student?.overallAverage ?? (selectedTrimester === 1 ? currentBulletinRankData.overallAverage : 0);
 
-  const previewTri2Summary = useMemo(() => calculateClassRanks(classStudents, grades, subjects, 2, activeTemplate), [classStudents, grades, subjects, activeTemplate]);
+  const previewTri2Summary = useMemo(() => calculateClassRanks(classStudents, grades, subjects, 2, activeTemplate, selectedClass), [classStudents, grades, subjects, activeTemplate, selectedClass]);
   const previewTri2Student = previewTri2Summary.rankings.find(r => r.student.id === activeStudentForBulletin.id);
   const previewMoyTri2 = previewTri2Student?.overallAverage ?? (selectedTrimester === 2 ? currentBulletinRankData.overallAverage : 0);
 

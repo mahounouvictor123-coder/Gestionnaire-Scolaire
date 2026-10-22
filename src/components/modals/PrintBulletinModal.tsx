@@ -188,7 +188,8 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
     grades,
     subjects,
     trimester,
-    activeTemplate
+    activeTemplate,
+    classObj
   );
 
   // Find target student's rank result
@@ -216,11 +217,11 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
   );
 
   // Previous trimesters calculations for student history bar
-  const tri1Summary = calculateClassRanks(classStudents, grades, subjects, 1, activeTemplate);
+  const tri1Summary = calculateClassRanks(classStudents, grades, subjects, 1, activeTemplate, classObj);
   const tri1Student = tri1Summary.rankings.find(r => r.student.id === student.id);
   const moyTri1 = tri1Student?.overallAverage ?? (trimester === 1 ? studentRankData.overallAverage : 0);
 
-  const tri2Summary = calculateClassRanks(classStudents, grades, subjects, 2, activeTemplate);
+  const tri2Summary = calculateClassRanks(classStudents, grades, subjects, 2, activeTemplate, classObj);
   const tri2Student = tri2Summary.rankings.find(r => r.student.id === student.id);
   const moyTri2 = tri2Student?.overallAverage ?? (trimester === 2 ? studentRankData.overallAverage : 0);
 

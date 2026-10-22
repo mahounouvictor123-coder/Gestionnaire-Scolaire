@@ -112,6 +112,7 @@ export interface Subject {
   category: 'LITTERAIRE' | 'SCIENTIFIQUE' | 'TECHNIQUE' | 'LANGUE' | 'DIVERS';
   coefficient: number;
   level: SchoolLevel;
+  classIds?: string[]; // Classes ciblées spécifiques (si omis ou vide, s'applique à toute la section)
 }
 
 export type ExamType = 'INTERRO' | 'DEVOIR' | 'COMPOSITION' | 'TP' | 'PROJET';

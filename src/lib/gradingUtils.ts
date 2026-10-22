@@ -1,5 +1,5 @@
-import { Student, Grade, Subject, BulletinTemplate } from '../types';
-import { isPrimaryClass } from './schoolUtils';
+import { Student, Grade, Subject, BulletinTemplate, SchoolClass } from '../types';
+import { isPrimaryClass, isSubjectForClass } from './schoolUtils';
 
 export interface SubjectResult {
   subject: Subject;
@@ -247,7 +247,8 @@ export function calculateClassRanks(
   grades: Grade[],
   subjects: Subject[],
   trimester: number,
-  bulletinTemplate?: BulletinTemplate
+  bulletinTemplate?: BulletinTemplate,
+  schoolClass?: SchoolClass
 ): ClassRankSummary {
   const tmpl = bulletinTemplate || defaultBulletinTemplate();
 
@@ -263,20 +264,12 @@ export function calculateClassRanks(
     };
   }
 
-  // Determine if this is a primary or secondary class
-  const isPrimary = isPrimaryClass(students[0]);
+  // Référence de la classe pour déterminer la section (schoolClass ou premier élève)
+  const classRef = schoolClass || students[0];
 
-  // Filter subjects defined by the school for this educational level
-  // For secondary classes (Collège & Lycée), include ALL subjects defined by the school
-  const relevantSubjects = subjects.filter(sbj => {
-    if (isPrimary) {
-      return isPrimaryClass(sbj) || sbj.level === 'PRIMAIRE' || sbj.level === 'MATERNELLE' || sbj.id.startsWith('sbj-p-') || sbj.id.startsWith('sbj-mat-');
-    } else {
-  // Secondary: include all subjects that are NOT primary or maternelle
-      const isPri = isPrimaryClass(sbj) || sbj.level === 'PRIMAIRE' || sbj.level === 'MATERNELLE' || sbj.id.startsWith('sbj-p-') || sbj.id.startsWith('sbj-mat-');
-      return !isPri;
-    }
-  });
+  // Filtrage strict par section : Toute matière ajoutée dans une section
+  // (Maternelle, Primaire, Collège, Lycée) s'ajoute directement sur les bulletins de la section.
+  const relevantSubjects = subjects.filter(sbj => isSubjectForClass(sbj, classRef, subjects));
 
   // Always include any subjects that have registered grades for these students
   const studentIdsSet = new Set(students.map(s => s.id));
