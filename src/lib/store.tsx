@@ -174,6 +174,8 @@ interface AppContextType {
   updateStudent: (id: string, std: Partial<Student>) => void;
   deleteStudent: (id: string) => void;
   deleteMultipleStudents: (ids: string[]) => void;
+  restoreStudentsListBackup: () => { success: boolean; count: number; message: string };
+  permanentStudentsBackupCount: number;
 
   teachers: Teacher[];
   addTeacher: (tch: Omit<Teacher, 'id'>) => Teacher;
@@ -359,7 +361,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const LOCAL_STORAGE_KEY_PREFIX = 'GESTIONNAIRE_SCOLAIRE_V3';
 
 const cleanSchoolName = (name: string): string => {
-  if (!name || !name.trim()) return "GESTIONNAIRE SCOLAIRE";
+  if (!name || !name.trim() || name.trim() === "GESTIONNAIRE SCOLAIRE") return "COMPLEXE SCOLAIRE LE TEMPLE DU SAVOIR";
   return name.trim();
 };
 
@@ -794,16 +796,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_IS_AUTH`, JSON.stringify(false));
   };
 
-  // Helper to load school-scoped state
+  // Helper to load school-scoped state with automatic multi-key migration and backup recovery
   const loadScopedData = <T,>(key: string, defaultVal: T): T => {
-    const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${key}`);
+    // 1. Current version key
+    const primaryKey = `${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${key}`;
+    const saved = localStorage.getItem(primaryKey);
     if (saved) {
       try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return defaultVal;
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed as unknown as T;
+        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) return parsed as unknown as T;
+      } catch (e) {}
+    }
+
+    // 2. Counterpart alias for Temple du Savoir (sch-temple <-> sch-1786960279353)
+    if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+      const altId = currentSchoolId === 'sch-temple' ? 'sch-1786960279353' : 'sch-temple';
+      const altSaved = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${altId}_${key}`);
+      if (altSaved) {
+        try {
+          const parsed = JSON.parse(altSaved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            localStorage.setItem(primaryKey, altSaved);
+            return parsed as unknown as T;
+          }
+        } catch (e) {}
       }
     }
+
+    // 3. Fallback to permanent backups and legacy prefixes (V2, V1, un-prefixed)
+    const candidateKeys = [
+      `GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_${key}`,
+      `GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_${key}`,
+      `GESTIONNAIRE_SCOLAIRE_DATA_${currentSchoolId}_${key}`,
+      `GESTIONNAIRE_SCOLAIRE_V2_DATA_${currentSchoolId}_${key}`,
+      `GESTIONNAIRE_SCOLAIRE_V1_DATA_${currentSchoolId}_${key}`,
+      `GESTIONNAIRE_SCOLAIRE_${key}`
+    ];
+    for (const altKey of candidateKeys) {
+      try {
+        const raw = localStorage.getItem(altKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            localStorage.setItem(primaryKey, raw);
+            return parsed as unknown as T;
+          } else if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+            localStorage.setItem(primaryKey, raw);
+            return parsed as unknown as T;
+          }
+        }
+      } catch (e) {}
+    }
+
     return defaultVal;
   };
 
@@ -1524,14 +1569,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const handleCloudUpdate = <T,>(dataType: string, setter: React.Dispatch<React.SetStateAction<T>>) => {
       // Immediate asynchronous check for existing cloud data to prevent stale local overwriting
-      loadFromCloud(currentSchoolId, dataType).then((cloudData) => {
-        if (cloudData !== null && cloudData !== undefined) {
+      loadFromCloud(currentSchoolId, dataType).then(async (cloudData) => {
+        let finalData = cloudData;
+        // If current school has no cloud data yet and is Temple du Savoir, check counterpart alias
+        if ((finalData === null || finalData === undefined) && (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353')) {
+          const altId = currentSchoolId === 'sch-temple' ? 'sch-1786960279353' : 'sch-temple';
+          try {
+            const altData = await loadFromCloud(altId, dataType);
+            if (altData !== null && altData !== undefined) {
+              finalData = altData;
+            }
+          } catch (e) {}
+        }
+
+        if (finalData !== null && finalData !== undefined) {
           hasLoadedCloudRef.current[dataType] = true;
           isRemoteUpdateRef.current[dataType] = true;
           setter(prev => {
-            if (JSON.stringify(prev) !== JSON.stringify(cloudData)) {
-              localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${dataType}`, JSON.stringify(cloudData));
-              return cloudData;
+            // SAFE MERGE FOR STUDENTS SO NO ENROLLED STUDENTS ARE EVER LOST
+            if (dataType === 'STUDENTS' && Array.isArray(finalData) && finalData.length > 0) {
+              const prevList = Array.isArray(prev) ? prev : [];
+              const studentMap = new Map<string, Student>();
+              finalData.forEach((st: Student) => {
+                if (st && st.id) studentMap.set(st.id, st);
+              });
+              prevList.forEach((st: Student) => {
+                if (st && st.id && !studentMap.has(st.id)) {
+                  studentMap.set(st.id, st);
+                }
+              });
+              const merged = Array.from(studentMap.values());
+              try {
+                localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_STUDENTS`, JSON.stringify(merged));
+                localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(merged));
+                if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+                  localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_STUDENTS`, JSON.stringify(merged));
+                  localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_sch-temple_STUDENTS`, JSON.stringify(merged));
+                  localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_sch-1786960279353_STUDENTS`, JSON.stringify(merged));
+                }
+              } catch (e) {}
+              return merged as unknown as T;
+            }
+
+            if (JSON.stringify(prev) !== JSON.stringify(finalData)) {
+              localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${dataType}`, JSON.stringify(finalData));
+              return finalData;
             }
             return prev;
           });
@@ -1547,6 +1629,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           hasLoadedCloudRef.current[dataType] = true;
           isRemoteUpdateRef.current[dataType] = true;
           setter(prev => {
+            if (dataType === 'STUDENTS' && Array.isArray(data) && data.length > 0) {
+              const prevList = Array.isArray(prev) ? prev : [];
+              const studentMap = new Map<string, Student>();
+              data.forEach((st: Student) => {
+                if (st && st.id) studentMap.set(st.id, st);
+              });
+              prevList.forEach((st: Student) => {
+                if (st && st.id && !studentMap.has(st.id)) {
+                  studentMap.set(st.id, st);
+                }
+              });
+              const merged = Array.from(studentMap.values());
+              try {
+                localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_STUDENTS`, JSON.stringify(merged));
+                localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(merged));
+                if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+                  localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_STUDENTS`, JSON.stringify(merged));
+                }
+              } catch (e) {}
+              return merged as unknown as T;
+            }
+
             if (JSON.stringify(prev) !== JSON.stringify(data)) {
               localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${dataType}`, JSON.stringify(data));
               return data;
@@ -1747,10 +1851,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentSchoolId(targetSchool.id);
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_CURRENT_SCHOOL_ID`, targetSchool.id);
 
-    // Read target school's scoped state from localStorage
+    // Reset loaded cloud tracker so initial states don't overwrite cloud data before new school data is fetched
+    hasLoadedCloudRef.current = {};
+    isRemoteUpdateRef.current = {};
+
+    // Read target school's scoped state with alias and backup recovery
     const getTargetScoped = <T,>(key: string, defaultVal: T): T => {
-      const saved = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${targetSchoolId}_${key}`);
-      return saved ? JSON.parse(saved) : defaultVal;
+      const primaryKey = `${LOCAL_STORAGE_KEY_PREFIX}_DATA_${targetSchoolId}_${key}`;
+      const saved = localStorage.getItem(primaryKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed as unknown as T;
+          if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) return parsed as unknown as T;
+        } catch (e) {}
+      }
+      if (targetSchoolId === 'sch-temple' || targetSchoolId === 'sch-1786960279353') {
+        const altId = targetSchoolId === 'sch-temple' ? 'sch-1786960279353' : 'sch-temple';
+        const altSaved = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${altId}_${key}`);
+        if (altSaved) {
+          try {
+            const parsed = JSON.parse(altSaved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              localStorage.setItem(primaryKey, altSaved);
+              return parsed as unknown as T;
+            }
+          } catch (e) {}
+        }
+      }
+      const candidateKeys = [
+        `GESTIONNAIRE_PERMANENT_BACKUP_${targetSchoolId}_${key}`,
+        `GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_${key}`,
+        `GESTIONNAIRE_SCOLAIRE_DATA_${targetSchoolId}_${key}`,
+        `GESTIONNAIRE_SCOLAIRE_V2_DATA_${targetSchoolId}_${key}`,
+        `GESTIONNAIRE_SCOLAIRE_${key}`
+      ];
+      for (const altKey of candidateKeys) {
+        try {
+          const raw = localStorage.getItem(altKey);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              localStorage.setItem(primaryKey, raw);
+              return parsed as unknown as T;
+            } else if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+              localStorage.setItem(primaryKey, raw);
+              return parsed as unknown as T;
+            }
+          }
+        } catch (e) {}
+      }
+      return defaultVal;
     };
 
     const isTemple = targetSchoolId === 'sch-temple';
@@ -1848,16 +1999,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isRemoteUpdateRef.current['CLASSES'] = false;
       return;
     }
+    if (!hasLoadedCloudRef.current['CLASSES']) return;
     syncToCloud(currentSchoolId, 'CLASSES', classes);
+    if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'CLASSES', classes);
+    if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'CLASSES', classes);
   }, [classes, currentSchoolId]);
 
   useEffect(() => {
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_STUDENTS`, JSON.stringify(students));
+    // Permanent backup to guarantee survival across any update or cache clear
+    try {
+      if (Array.isArray(students) && students.length > 0) {
+        localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(students));
+        if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+          localStorage.setItem('GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_STUDENTS', JSON.stringify(students));
+          localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_sch-temple_STUDENTS`, JSON.stringify(students));
+          localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_sch-1786960279353_STUDENTS`, JSON.stringify(students));
+        }
+      }
+    } catch (e) {}
+
     if (isRemoteUpdateRef.current['STUDENTS']) {
       isRemoteUpdateRef.current['STUDENTS'] = false;
       return;
     }
+    // CRITICAL: NEVER push to cloud on initial mount or switch until cloud has loaded
+    if (!hasLoadedCloudRef.current['STUDENTS']) return;
+
     syncToCloud(currentSchoolId, 'STUDENTS', students);
+    if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'STUDENTS', students);
+    if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'STUDENTS', students);
   }, [students, currentSchoolId]);
 
   useEffect(() => {
@@ -1866,7 +2037,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isRemoteUpdateRef.current['TEACHERS'] = false;
       return;
     }
+    if (!hasLoadedCloudRef.current['TEACHERS']) return;
     syncToCloud(currentSchoolId, 'TEACHERS', teachers);
+    if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'TEACHERS', teachers);
+    if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'TEACHERS', teachers);
   }, [teachers, currentSchoolId]);
 
   useEffect(() => {
@@ -1875,7 +2049,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isRemoteUpdateRef.current['SUBJECTS'] = false;
       return;
     }
+    if (!hasLoadedCloudRef.current['SUBJECTS']) return;
     syncToCloud(currentSchoolId, 'SUBJECTS', subjects);
+    if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'SUBJECTS', subjects);
+    if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'SUBJECTS', subjects);
   }, [subjects, currentSchoolId]);
 
   useEffect(() => {
@@ -1884,7 +2061,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isRemoteUpdateRef.current['GRADES'] = false;
       return;
     }
+    if (!hasLoadedCloudRef.current['GRADES']) return;
     syncToCloud(currentSchoolId, 'GRADES', grades);
+    if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'GRADES', grades);
+    if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'GRADES', grades);
   }, [grades, currentSchoolId]);
 
   useEffect(() => {
@@ -1893,7 +2073,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isRemoteUpdateRef.current['PAYMENTS'] = false;
       return;
     }
+    if (!hasLoadedCloudRef.current['PAYMENTS']) return;
     syncToCloud(currentSchoolId, 'PAYMENTS', payments);
+    if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'PAYMENTS', payments);
+    if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'PAYMENTS', payments);
   }, [payments, currentSchoolId]);
 
   useEffect(() => {
@@ -2590,6 +2773,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStudents(prev => {
       const updated = [...prev, newStudent];
       syncToCloud(currentSchoolId, 'STUDENTS', updated);
+      if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'STUDENTS', updated);
+      if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'STUDENTS', updated);
+      try {
+        localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(updated));
+        if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+          localStorage.setItem('GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_STUDENTS', JSON.stringify(updated));
+        }
+      } catch (e) {}
       return updated;
     });
     
@@ -2597,6 +2788,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setClasses(prev => {
       const updated = prev.map(c => c.id === stdData.classId ? { ...c, studentCount: c.studentCount + 1 } : c);
       syncToCloud(currentSchoolId, 'CLASSES', updated);
+      if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'CLASSES', updated);
+      if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'CLASSES', updated);
       return updated;
     });
     return newStudent;
@@ -2628,6 +2821,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStudents(prev => {
       const updated = [...prev, ...created];
       syncToCloud(currentSchoolId, 'STUDENTS', updated);
+      if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'STUDENTS', updated);
+      if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'STUDENTS', updated);
+      try {
+        localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(updated));
+        if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+          localStorage.setItem('GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_STUDENTS', JSON.stringify(updated));
+        }
+      } catch (e) {}
       return updated;
     });
 
@@ -2640,6 +2841,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return c;
       });
       syncToCloud(currentSchoolId, 'CLASSES', updated);
+      if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'CLASSES', updated);
+      if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'CLASSES', updated);
       return updated;
     });
 
@@ -2657,11 +2860,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return c;
           });
           syncToCloud(currentSchoolId, 'CLASSES', updatedCls);
+          if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'CLASSES', updatedCls);
+          if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'CLASSES', updatedCls);
           return updatedCls;
         });
       }
       const updated = prev.map(s => s.id === id ? { ...s, ...std } : s);
       syncToCloud(currentSchoolId, 'STUDENTS', updated);
+      if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'STUDENTS', updated);
+      if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'STUDENTS', updated);
+      try {
+        localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(updated));
+        if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+          localStorage.setItem('GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_STUDENTS', JSON.stringify(updated));
+        }
+      } catch (e) {}
       return updated;
     });
   };
@@ -2672,12 +2885,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setClasses(prev => {
         const updated = prev.map(c => c.id === std.classId ? { ...c, studentCount: Math.max(0, c.studentCount - 1) } : c);
         syncToCloud(currentSchoolId, 'CLASSES', updated);
+        if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'CLASSES', updated);
+        if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'CLASSES', updated);
         return updated;
       });
     }
     setStudents(prev => {
       const updated = prev.filter(s => s.id !== id);
       syncToCloud(currentSchoolId, 'STUDENTS', updated);
+      if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'STUDENTS', updated);
+      if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'STUDENTS', updated);
+      try {
+        localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(updated));
+        if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+          localStorage.setItem('GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_STUDENTS', JSON.stringify(updated));
+        }
+      } catch (e) {}
       return updated;
     });
   };
@@ -2703,15 +2926,117 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return c;
       });
       syncToCloud(currentSchoolId, 'CLASSES', updated);
+      if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'CLASSES', updated);
+      if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'CLASSES', updated);
       return updated;
     });
 
     setStudents(prev => {
       const updated = prev.filter(s => !idSet.has(s.id));
       syncToCloud(currentSchoolId, 'STUDENTS', updated);
+      if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'STUDENTS', updated);
+      if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'STUDENTS', updated);
+      try {
+        localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(updated));
+        if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+          localStorage.setItem('GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_STUDENTS', JSON.stringify(updated));
+        }
+      } catch (e) {}
       return updated;
     });
   };
+
+  // Dedicated one-click restoration function to recover previous student lists
+  const restoreStudentsListBackup = () => {
+    const sources: Student[][] = [];
+
+    // 1. Permanent backup
+    try {
+      const p1 = localStorage.getItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`);
+      if (p1) {
+        const parsed = JSON.parse(p1);
+        if (Array.isArray(parsed) && parsed.length > 0) sources.push(parsed);
+      }
+    } catch (e) {}
+    try {
+      const p2 = localStorage.getItem('GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_STUDENTS');
+      if (p2) {
+        const parsed = JSON.parse(p2);
+        if (Array.isArray(parsed) && parsed.length > 0) sources.push(parsed);
+      }
+    } catch (e) {}
+
+    // 2. Counterpart alias
+    if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+      const altId = currentSchoolId === 'sch-temple' ? 'sch-1786960279353' : 'sch-temple';
+      try {
+        const alt = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${altId}_STUDENTS`);
+        if (alt) {
+          const parsed = JSON.parse(alt);
+          if (Array.isArray(parsed) && parsed.length > 0) sources.push(parsed);
+        }
+      } catch (e) {}
+    }
+
+    // 3. Legacy storage keys
+    const legacyKeys = [
+      `GESTIONNAIRE_SCOLAIRE_DATA_${currentSchoolId}_STUDENTS`,
+      `GESTIONNAIRE_SCOLAIRE_V2_DATA_${currentSchoolId}_STUDENTS`,
+      `GESTIONNAIRE_SCOLAIRE_STUDENTS`
+    ];
+    for (const k of legacyKeys) {
+      try {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) sources.push(parsed);
+        }
+      } catch (e) {}
+    }
+
+    // 4. Initial default students
+    sources.push(initialStudents);
+
+    // Merge into unique set preserving all enrolled students
+    const studentMap = new Map<string, Student>();
+    students.forEach(s => { if (s && s.id) studentMap.set(s.id, s); });
+    sources.forEach(list => {
+      if (Array.isArray(list)) {
+        list.forEach(s => {
+          if (s && s.id && !studentMap.has(s.id)) {
+            studentMap.set(s.id, s);
+          }
+        });
+      }
+    });
+
+    const merged = Array.from(studentMap.values());
+    if (merged.length > 0) {
+      setStudents(merged);
+      localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_STUDENTS`, JSON.stringify(merged));
+      localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(merged));
+      if (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353') {
+        localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_TEMPLE_STUDENTS`, JSON.stringify(merged));
+        syncToCloud('sch-temple', 'STUDENTS', merged);
+        syncToCloud('sch-1786960279353', 'STUDENTS', merged);
+      } else {
+        syncToCloud(currentSchoolId, 'STUDENTS', merged);
+      }
+      return {
+        success: true,
+        count: merged.length,
+        message: `Restauration réussie : ${merged.length} élèves conservés et synchronisés pour le Directeur, la Secrétaire et le Censeur.`
+      };
+    }
+
+    return {
+      success: false,
+      count: 0,
+      message: "Aucune liste antérieure n'a été trouvée dans les sauvegardes locales."
+    };
+  };
+
+  const permanentStudentsBackupCount = students.length;
 
   // Teacher actions
   const addTeacher = (tch: Omit<Teacher, 'id'>): Teacher => {
@@ -3668,6 +3993,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateStudent,
         deleteStudent,
         deleteMultipleStudents,
+        restoreStudentsListBackup,
+        permanentStudentsBackupCount,
 
         teachers,
         addTeacher,

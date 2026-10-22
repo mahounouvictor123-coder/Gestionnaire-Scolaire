@@ -618,13 +618,19 @@ export const initialGrades: Grade[] = [
   { id: "grd-p14", studentId: "std-prim-2", subjectId: "sbj-prim-eps", classId: "cls-cm2", trimester: 1, examType: "COMPOSITION", mark: 17.0, maxMark: 20, date: "2025-11-26", coefficient: 1 },
 
   // Student Marc-Aurele DIALLO (std-1) - 3ème
+  { id: "grd-1-int1", studentId: "std-1", subjectId: "sbj-1", classId: "cls-3", trimester: 1, examType: "INTERRO", evaluationNumber: 1, mark: 15.5, maxMark: 20, date: "2025-10-05", coefficient: 2, comment: "Interro 1" },
+  { id: "grd-1-int2", studentId: "std-1", subjectId: "sbj-1", classId: "cls-3", trimester: 1, examType: "INTERRO", evaluationNumber: 2, mark: 16.0, maxMark: 20, date: "2025-10-12", coefficient: 2, comment: "Interro 2" },
   { id: "grd-1", studentId: "std-1", subjectId: "sbj-1", classId: "cls-3", trimester: 1, examType: "DEVOIR", mark: 16.5, maxMark: 20, date: "2025-10-15", coefficient: 2 },
   { id: "grd-2", studentId: "std-1", subjectId: "sbj-1", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 17, maxMark: 20, date: "2025-11-20", coefficient: 3 },
+  { id: "grd-3-int1", studentId: "std-1", subjectId: "sbj-2", classId: "cls-3", trimester: 1, examType: "INTERRO", evaluationNumber: 1, mark: 13.5, maxMark: 20, date: "2025-10-08", coefficient: 2, comment: "Interro 1" },
+  { id: "grd-3-int2", studentId: "std-1", subjectId: "sbj-2", classId: "cls-3", trimester: 1, examType: "INTERRO", evaluationNumber: 2, mark: 14.5, maxMark: 20, date: "2025-10-16", coefficient: 2, comment: "Interro 2" },
   { id: "grd-3", studentId: "std-1", subjectId: "sbj-2", classId: "cls-3", trimester: 1, examType: "DEVOIR", mark: 14, maxMark: 20, date: "2025-10-18", coefficient: 2 },
   { id: "grd-4", studentId: "std-1", subjectId: "sbj-2", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 15, maxMark: 20, date: "2025-11-22", coefficient: 3 },
   { id: "grd-5", studentId: "std-1", subjectId: "sbj-6", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 18, maxMark: 20, date: "2025-11-25", coefficient: 2 },
   
   // Student Yasmine KOUAME (std-2) - Terminale D
+  { id: "grd-6-int1", studentId: "std-2", subjectId: "sbj-1", classId: "cls-tle-d", trimester: 1, examType: "INTERRO", evaluationNumber: 1, mark: 17.5, maxMark: 20, date: "2025-10-06", coefficient: 5, comment: "Interro 1" },
+  { id: "grd-6-int2", studentId: "std-2", subjectId: "sbj-1", classId: "cls-tle-d", trimester: 1, examType: "INTERRO", evaluationNumber: 2, mark: 18.0, maxMark: 20, date: "2025-10-14", coefficient: 5, comment: "Interro 2" },
   { id: "grd-6", studentId: "std-2", subjectId: "sbj-1", classId: "cls-tle-d", trimester: 1, examType: "COMPOSITION", mark: 18.5, maxMark: 20, date: "2025-11-20", coefficient: 5 },
   { id: "grd-7", studentId: "std-2", subjectId: "sbj-3", classId: "cls-tle-d", trimester: 1, examType: "COMPOSITION", mark: 17.5, maxMark: 20, date: "2025-11-21", coefficient: 4 },
   { id: "grd-8", studentId: "std-2", subjectId: "sbj-4", classId: "cls-tle-d", trimester: 1, examType: "DEVOIR", mark: 16, maxMark: 20, date: "2025-10-14", coefficient: 3 },

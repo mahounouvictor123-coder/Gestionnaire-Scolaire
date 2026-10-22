@@ -30,7 +30,8 @@ export interface InsertBulletinGradesModalProps {
 }
 
 interface SubjectGradeEntry {
-  interro: string;
+  interro1: string;
+  interro2: string;
   devoir: string;
   compo: string;
   comment: string;
@@ -38,7 +39,8 @@ interface SubjectGradeEntry {
 }
 
 interface ClassStudentGradeEntry {
-  interro: string;
+  interro1: string;
+  interro2: string;
   devoir: string;
   compo: string;
   comment: string;
@@ -137,14 +139,31 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
         (g.subjectName && g.subjectName.toLowerCase() === sbj.name.toLowerCase())
       );
 
-      const interroGrade = sbjGrades.find(g => isInterro(g.examType));
+      const interroGrades = sbjGrades
+        .filter(g => isInterro(g.examType))
+        .sort((a, b) => {
+          if (a.evaluationNumber && b.evaluationNumber) return a.evaluationNumber - b.evaluationNumber;
+          if (a.evaluationNumber === 1) return -1;
+          if (b.evaluationNumber === 1) return 1;
+          return (a.date || '').localeCompare(b.date || '');
+        });
+
+      const int1 = interroGrades.find(g => g.evaluationNumber === 1) ||
+        interroGrades.find(g => (g.comment || '').toLowerCase().includes('interro 1') || (g.comment || '').toLowerCase().includes('int 1') || (g.comment || '').toLowerCase().includes('interro n°1')) ||
+        interroGrades[0];
+
+      const int2 = interroGrades.find(g => g.evaluationNumber === 2) ||
+        interroGrades.find(g => (g.comment || '').toLowerCase().includes('interro 2') || (g.comment || '').toLowerCase().includes('int 2') || (g.comment || '').toLowerCase().includes('interro n°2')) ||
+        interroGrades.find(g => g !== int1);
+
       const devoirGrade = sbjGrades.find(g => isDevoir(g.examType));
       const compoGrade = sbjGrades.find(g => isCompo(g.examType));
       const comment = sbjGrades.find(g => g.comment && g.comment.trim().length > 0)?.comment || '';
       const teacherName = sbjGrades.find(g => g.teacherName)?.teacherName || '';
 
       initial[sbj.id] = {
-        interro: interroGrade ? String(interroGrade.mark) : '',
+        interro1: int1 ? String(int1.mark) : '',
+        interro2: int2 ? String(int2.mark) : '',
         devoir: devoirGrade ? String(devoirGrade.mark) : '',
         compo: compoGrade ? String(compoGrade.mark) : '',
         comment: comment,
@@ -171,13 +190,30 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
              (g.subjectId === sbj.id || g.subjectId === sbj.name || (sbj.code && g.subjectId === sbj.code) || (g.subjectName && g.subjectName.toLowerCase() === sbj.name.toLowerCase()))
       );
 
-      const interroGrade = studentGrades.find(g => isInterro(g.examType));
+      const interroGrades = studentGrades
+        .filter(g => isInterro(g.examType))
+        .sort((a, b) => {
+          if (a.evaluationNumber && b.evaluationNumber) return a.evaluationNumber - b.evaluationNumber;
+          if (a.evaluationNumber === 1) return -1;
+          if (b.evaluationNumber === 1) return 1;
+          return (a.date || '').localeCompare(b.date || '');
+        });
+
+      const int1 = interroGrades.find(g => g.evaluationNumber === 1) ||
+        interroGrades.find(g => (g.comment || '').toLowerCase().includes('interro 1') || (g.comment || '').toLowerCase().includes('int 1') || (g.comment || '').toLowerCase().includes('interro n°1')) ||
+        interroGrades[0];
+
+      const int2 = interroGrades.find(g => g.evaluationNumber === 2) ||
+        interroGrades.find(g => (g.comment || '').toLowerCase().includes('interro 2') || (g.comment || '').toLowerCase().includes('int 2') || (g.comment || '').toLowerCase().includes('interro n°2')) ||
+        interroGrades.find(g => g !== int1);
+
       const devoirGrade = studentGrades.find(g => isDevoir(g.examType));
       const compoGrade = studentGrades.find(g => isCompo(g.examType));
       const comment = studentGrades.find(g => g.comment && g.comment.trim().length > 0)?.comment || '';
 
       initial[st.id] = {
-        interro: interroGrade ? String(interroGrade.mark) : '',
+        interro1: int1 ? String(int1.mark) : '',
+        interro2: int2 ? String(int2.mark) : '',
         devoir: devoirGrade ? String(devoirGrade.mark) : '',
         compo: compoGrade ? String(compoGrade.mark) : '',
         comment: comment
@@ -206,7 +242,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
     setStudentFormEntries(prev => ({
       ...prev,
       [subjectId]: {
-        ...(prev[subjectId] || { interro: '', devoir: '', compo: '', comment: '', teacherName: '' }),
+        ...(prev[subjectId] || { interro1: '', interro2: '', devoir: '', compo: '', comment: '', teacherName: '' }),
         [field]: value
       }
     }));
@@ -216,7 +252,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
     setClassFormEntries(prev => ({
       ...prev,
       [studentId]: {
-        ...(prev[studentId] || { interro: '', devoir: '', compo: '', comment: '' }),
+        ...(prev[studentId] || { interro1: '', interro2: '', devoir: '', compo: '', comment: '' }),
         [field]: value
       }
     }));
@@ -249,11 +285,23 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
         teacherName: entry.teacherName.trim()
       };
 
-      if (entry.interro !== '' && !isNaN(parseFloat(entry.interro))) {
+      if (entry.interro1 !== '' && !isNaN(parseFloat(entry.interro1))) {
         gradesToSave.push({
           ...baseGrade,
           examType: 'INTERRO',
-          mark: Math.min(20, Math.max(0, parseFloat(entry.interro)))
+          evaluationNumber: 1,
+          comment: entry.comment ? `${entry.comment} [Interro 1]` : '[Interro 1]',
+          mark: Math.min(20, Math.max(0, parseFloat(entry.interro1)))
+        });
+      }
+
+      if (entry.interro2 !== '' && !isNaN(parseFloat(entry.interro2))) {
+        gradesToSave.push({
+          ...baseGrade,
+          examType: 'INTERRO',
+          evaluationNumber: 2,
+          comment: entry.comment ? `${entry.comment} [Interro 2]` : '[Interro 2]',
+          mark: Math.min(20, Math.max(0, parseFloat(entry.interro2)))
         });
       }
 
@@ -316,11 +364,23 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
         teacherName: ''
       };
 
-      if (entry.interro !== '' && !isNaN(parseFloat(entry.interro))) {
+      if (entry.interro1 !== '' && !isNaN(parseFloat(entry.interro1))) {
         gradesToSave.push({
           ...baseGrade,
           examType: 'INTERRO',
-          mark: Math.min(20, Math.max(0, parseFloat(entry.interro)))
+          evaluationNumber: 1,
+          comment: entry.comment ? `${entry.comment} [Interro 1]` : '[Interro 1]',
+          mark: Math.min(20, Math.max(0, parseFloat(entry.interro1)))
+        });
+      }
+
+      if (entry.interro2 !== '' && !isNaN(parseFloat(entry.interro2))) {
+        gradesToSave.push({
+          ...baseGrade,
+          examType: 'INTERRO',
+          evaluationNumber: 2,
+          comment: entry.comment ? `${entry.comment} [Interro 2]` : '[Interro 2]',
+          mark: Math.min(20, Math.max(0, parseFloat(entry.interro2)))
         });
       }
 
@@ -527,27 +587,42 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
-                      <th className="p-3 w-52">Discipline / Matière</th>
-                      <th className="p-3 text-center w-24">Interro (/20)</th>
-                      <th className="p-3 text-center w-24">Devoir (/20)</th>
-                      <th className="p-3 text-center w-24">Compo (/20)</th>
-                      <th className="p-3 text-center w-24">Moy. Prévue</th>
+                      <th className="p-3 w-48">Discipline / Matière</th>
+                      <th className="p-3 text-center w-20">Int 1 (/20)</th>
+                      <th className="p-3 text-center w-20">Int 2 (/20)</th>
+                      <th className="p-3 text-center w-20">Devoir (/20)</th>
+                      <th className="p-3 text-center w-20">Compo (/20)</th>
+                      <th className="p-3 text-center w-22 bg-blue-100/60 dark:bg-blue-950/40">Moy. /20</th>
+                      <th className="p-3 text-center w-24 bg-indigo-100/60 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200">Moy. Coeff</th>
                       <th className="p-3">Appréciation Enseignant sur le Bulletin</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {subjectsToEdit.map((sbj, idx) => {
-                      const entry = studentFormEntries[sbj.id] || { interro: '', devoir: '', compo: '', comment: '', teacherName: '' };
+                      const entry = studentFormEntries[sbj.id] || { interro1: '', interro2: '', devoir: '', compo: '', comment: '', teacherName: '' };
 
                       // Real-time projected average for this subject
-                      const intVal = entry.interro !== '' ? parseFloat(entry.interro) : undefined;
+                      const int1Val = entry.interro1 !== '' ? parseFloat(entry.interro1) : undefined;
+                      const int2Val = entry.interro2 !== '' ? parseFloat(entry.interro2) : undefined;
                       const devVal = entry.devoir !== '' ? parseFloat(entry.devoir) : undefined;
                       const compVal = entry.compo !== '' ? parseFloat(entry.compo) : undefined;
 
+                      let interroParts = 0;
+                      let interroSum = 0;
+                      if (int1Val !== undefined && !isNaN(int1Val)) {
+                        interroSum += int1Val;
+                        interroParts += 1;
+                      }
+                      if (int2Val !== undefined && !isNaN(int2Val)) {
+                        interroSum += int2Val;
+                        interroParts += 1;
+                      }
+                      const interroAvg = interroParts > 0 ? (interroSum / interroParts) : undefined;
+
                       let totalPts = 0;
                       let totalDiv = 0;
-                      if (intVal !== undefined && !isNaN(intVal)) {
-                        totalPts += intVal;
+                      if (interroAvg !== undefined) {
+                        totalPts += interroAvg;
                         totalDiv += 1;
                       }
                       if (devVal !== undefined && !isNaN(devVal)) {
@@ -560,6 +635,8 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                       }
 
                       const projectedAvg = totalDiv > 0 ? (totalPts / totalDiv) : null;
+                      const coeff = sbj.coefficient || 1;
+                      const projectedCoeff = projectedAvg !== null ? (projectedAvg * coeff) : null;
 
                       return (
                         <tr
@@ -571,11 +648,11 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                               {sbj.name}
                             </div>
                             <div className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">
-                              Coefficient : {sbj.coefficient || 1}
+                              Coefficient : {coeff}
                             </div>
                           </td>
 
-                          {/* Interro Input */}
+                          {/* Interro 1 Input */}
                           <td className="p-2 text-center">
                             <input
                               type="number"
@@ -583,9 +660,25 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                               min="0"
                               max="20"
                               placeholder="-"
-                              value={entry.interro}
-                              onChange={e => handleStudentEntryChange(sbj.id, 'interro', e.target.value)}
-                              className="w-20 px-2 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
+                              value={entry.interro1}
+                              onChange={e => handleStudentEntryChange(sbj.id, 'interro1', e.target.value)}
+                              className="w-16 px-1.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
+                              title="Note Interro 1"
+                            />
+                          </td>
+
+                          {/* Interro 2 Input */}
+                          <td className="p-2 text-center">
+                            <input
+                              type="number"
+                              step="0.25"
+                              min="0"
+                              max="20"
+                              placeholder="-"
+                              value={entry.interro2}
+                              onChange={e => handleStudentEntryChange(sbj.id, 'interro2', e.target.value)}
+                              className="w-16 px-1.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
+                              title="Note Interro 2"
                             />
                           </td>
 
@@ -599,7 +692,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                               placeholder="-"
                               value={entry.devoir}
                               onChange={e => handleStudentEntryChange(sbj.id, 'devoir', e.target.value)}
-                              className="w-20 px-2 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
+                              className="w-16 px-1.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
                             />
                           </td>
 
@@ -613,12 +706,12 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                               placeholder="-"
                               value={entry.compo}
                               onChange={e => handleStudentEntryChange(sbj.id, 'compo', e.target.value)}
-                              className="w-20 px-2 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
+                              className="w-16 px-1.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
                             />
                           </td>
 
                           {/* Projected Average */}
-                          <td className="p-2 text-center font-black">
+                          <td className="p-2 text-center font-black bg-blue-50/50 dark:bg-blue-950/20">
                             {projectedAvg !== null ? (
                               <span className={`px-2 py-1 rounded-lg text-xs font-mono font-black ${
                                 projectedAvg >= 14
@@ -628,6 +721,17 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                                   : 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
                               }`}>
                                 {projectedAvg.toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 italic text-[11px]">-</span>
+                            )}
+                          </td>
+
+                          {/* Projected Coeff Average */}
+                          <td className="p-2 text-center font-black bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200">
+                            {projectedCoeff !== null ? (
+                              <span className="font-mono font-black text-xs">
+                                {projectedCoeff.toFixed(2)}
                               </span>
                             ) : (
                               <span className="text-slate-400 italic text-[11px]">-</span>
@@ -687,27 +791,42 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
                     <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-black uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
-                      <th className="p-3 w-12 text-center">N°</th>
-                      <th className="p-3 w-56">Élève & Matricule</th>
-                      <th className="p-3 text-center w-24">Interro (/20)</th>
-                      <th className="p-3 text-center w-24">Devoir (/20)</th>
-                      <th className="p-3 text-center w-24">Compo (/20)</th>
-                      <th className="p-3 text-center w-24">Moy. Prévue</th>
+                      <th className="p-3 w-10 text-center">N°</th>
+                      <th className="p-3 w-52">Élève & Matricule</th>
+                      <th className="p-3 text-center w-20">Int 1 (/20)</th>
+                      <th className="p-3 text-center w-20">Int 2 (/20)</th>
+                      <th className="p-3 text-center w-20">Devoir (/20)</th>
+                      <th className="p-3 text-center w-20">Compo (/20)</th>
+                      <th className="p-3 text-center w-22 bg-blue-100/60 dark:bg-blue-950/40">Moy. /20</th>
+                      <th className="p-3 text-center w-24 bg-indigo-100/60 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200">Moy. Coeff</th>
                       <th className="p-3">Appréciation Trimestre</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                     {classStudents.map((st, idx) => {
-                      const entry = classFormEntries[st.id] || { interro: '', devoir: '', compo: '', comment: '' };
+                      const entry = classFormEntries[st.id] || { interro1: '', interro2: '', devoir: '', compo: '', comment: '' };
 
-                      const intVal = entry.interro !== '' ? parseFloat(entry.interro) : undefined;
+                      const int1Val = entry.interro1 !== '' ? parseFloat(entry.interro1) : undefined;
+                      const int2Val = entry.interro2 !== '' ? parseFloat(entry.interro2) : undefined;
                       const devVal = entry.devoir !== '' ? parseFloat(entry.devoir) : undefined;
                       const compVal = entry.compo !== '' ? parseFloat(entry.compo) : undefined;
 
+                      let interroParts = 0;
+                      let interroSum = 0;
+                      if (int1Val !== undefined && !isNaN(int1Val)) {
+                        interroSum += int1Val;
+                        interroParts += 1;
+                      }
+                      if (int2Val !== undefined && !isNaN(int2Val)) {
+                        interroSum += int2Val;
+                        interroParts += 1;
+                      }
+                      const interroAvg = interroParts > 0 ? (interroSum / interroParts) : undefined;
+
                       let totalPts = 0;
                       let totalDiv = 0;
-                      if (intVal !== undefined && !isNaN(intVal)) {
-                        totalPts += intVal;
+                      if (interroAvg !== undefined) {
+                        totalPts += interroAvg;
                         totalDiv += 1;
                       }
                       if (devVal !== undefined && !isNaN(devVal)) {
@@ -720,6 +839,8 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                       }
 
                       const projectedAvg = totalDiv > 0 ? (totalPts / totalDiv) : null;
+                      const curSbjCoeff = availableSubjects.find(s => s.id === activeSubjectId)?.coefficient || 1;
+                      const projectedCoeff = projectedAvg !== null ? (projectedAvg * curSbjCoeff) : null;
 
                       return (
                         <tr
@@ -748,7 +869,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                             </div>
                           </td>
 
-                          {/* Interro Input */}
+                          {/* Interro 1 Input */}
                           <td className="p-2 text-center">
                             <input
                               type="number"
@@ -756,9 +877,25 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                               min="0"
                               max="20"
                               placeholder="-"
-                              value={entry.interro}
-                              onChange={e => handleClassEntryChange(st.id, 'interro', e.target.value)}
-                              className="w-20 px-2 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
+                              value={entry.interro1}
+                              onChange={e => handleClassEntryChange(st.id, 'interro1', e.target.value)}
+                              className="w-16 px-1.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
+                              title="Note Interro 1"
+                            />
+                          </td>
+
+                          {/* Interro 2 Input */}
+                          <td className="p-2 text-center">
+                            <input
+                              type="number"
+                              step="0.25"
+                              min="0"
+                              max="20"
+                              placeholder="-"
+                              value={entry.interro2}
+                              onChange={e => handleClassEntryChange(st.id, 'interro2', e.target.value)}
+                              className="w-16 px-1.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
+                              title="Note Interro 2"
                             />
                           </td>
 
@@ -772,7 +909,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                               placeholder="-"
                               value={entry.devoir}
                               onChange={e => handleClassEntryChange(st.id, 'devoir', e.target.value)}
-                              className="w-20 px-2 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
+                              className="w-16 px-1.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
                             />
                           </td>
 
@@ -786,12 +923,12 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                               placeholder="-"
                               value={entry.compo}
                               onChange={e => handleClassEntryChange(st.id, 'compo', e.target.value)}
-                              className="w-20 px-2 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
+                              className="w-16 px-1.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-black text-center focus:ring-2 focus:ring-purple-500 text-xs"
                             />
                           </td>
 
                           {/* Projected Average */}
-                          <td className="p-2 text-center font-black">
+                          <td className="p-2 text-center font-black bg-blue-50/50 dark:bg-blue-950/20">
                             {projectedAvg !== null ? (
                               <span className={`px-2 py-1 rounded-lg text-xs font-mono font-black ${
                                 projectedAvg >= 14
@@ -801,6 +938,17 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                                   : 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
                               }`}>
                                 {projectedAvg.toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 italic text-[11px]">-</span>
+                            )}
+                          </td>
+
+                          {/* Projected Coeff Average */}
+                          <td className="p-2 text-center font-black bg-indigo-50/60 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200">
+                            {projectedCoeff !== null ? (
+                              <span className="font-mono font-black text-xs">
+                                {projectedCoeff.toFixed(2)}
                               </span>
                             ) : (
                               <span className="text-slate-400 italic text-[11px]">-</span>

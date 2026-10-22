@@ -23,7 +23,10 @@ import {
   X,
   Pencil,
   CheckSquare,
-  AlertTriangle
+  AlertTriangle,
+  ShieldCheck,
+  RotateCcw,
+  Download
 } from 'lucide-react';
 
 interface StudentsViewProps {
@@ -37,6 +40,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ onNavigateToScanRost
     updateStudent,
     deleteStudent,
     deleteMultipleStudents,
+    restoreStudentsListBackup,
     settings,
     currentSchool,
     parentActivations
@@ -204,6 +208,62 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ onNavigateToScanRost
     setTimeout(() => setFeedbackToast(null), 5000);
   };
 
+  const handleRestoreBackup = () => {
+    const res = restoreStudentsListBackup();
+    if (res.success) {
+      setFeedbackToast({
+        type: 'success',
+        message: `🛡️ ${res.message}`
+      });
+    } else {
+      setFeedbackToast({
+        type: 'info',
+        message: `ℹ️ ${res.message}`
+      });
+    }
+    setTimeout(() => setFeedbackToast(null), 7000);
+  };
+
+  const exportStudentsCsv = () => {
+    if (students.length === 0) {
+      setFeedbackToast({
+        type: 'info',
+        message: 'Aucun élève enregistré à exporter.'
+      });
+      setTimeout(() => setFeedbackToast(null), 4000);
+      return;
+    }
+    const headers = ["Matricule", "Nom", "Prénom", "Classe", "Niveau", "Genre", "Date de naissance", "Parent", "Téléphone Parent", "Statut"];
+    const rows = students.map(s => {
+      const cls = classes.find(c => c.id === s.classId)?.name || s.classId;
+      return [
+        `"${s.registrationNumber || ''}"`,
+        `"${s.lastName || ''}"`,
+        `"${s.firstName || ''}"`,
+        `"${cls}"`,
+        `"${s.level || ''}"`,
+        `"${s.gender || ''}"`,
+        `"${s.dateOfBirth || ''}"`,
+        `"${s.parentName || ''}"`,
+        `"${s.parentPhone || ''}"`,
+        `"${s.status || ''}"`
+      ].join(';');
+    });
+    const csvContent = "\uFEFF" + [headers.join(';'), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Registre_Eleves_${(currentSchool?.name || 'Ecole').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setFeedbackToast({
+      type: 'success',
+      message: `✓ Registre officiel de ${students.length} élèves exporté avec succès en fichier CSV / Excel !`
+    });
+    setTimeout(() => setFeedbackToast(null), 5000);
+  };
+
   const countPrimaire = students.filter(s => s.level === 'PRIMAIRE').length;
   const countMaternelle = students.filter(s => s.level === 'MATERNELLE').length;
   const countCollege = students.filter(s => s.level === 'COLLEGE').length;
@@ -223,7 +283,7 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ onNavigateToScanRost
             <span>Gestion Scindée du Dossier Scolaire des Élèves</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {students.length} élèves inscrits. Gestion séparée de la section Primaire / Maternelle et du Secondaire (Collège & Lycée).
+            {students.length} élèves inscrits • Établissement : <span className="font-bold text-emerald-600 dark:text-emerald-400">{currentSchool?.name}</span>
           </p>
         </div>
 
@@ -237,6 +297,24 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ onNavigateToScanRost
               <span>Supprimer ({selectedStudentIds.length}) sélectionnés</span>
             </button>
           )}
+
+          <button
+            onClick={exportStudentsCsv}
+            title="Exporter le registre en Excel / CSV pour conservation locale"
+            className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs sm:text-sm flex items-center space-x-2 transition-all cursor-pointer shadow-sm"
+          >
+            <Download className="h-4 w-4 text-slate-600 dark:text-slate-400" />
+            <span>Export Excel</span>
+          </button>
+
+          <button
+            onClick={handleRestoreBackup}
+            title="Restaurer la liste d'élèves conservée en cas de mise à jour ou problème de synchronisation"
+            className="px-3.5 py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 font-bold text-xs sm:text-sm flex items-center space-x-2 transition-all cursor-pointer shadow-sm"
+          >
+            <RotateCcw className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Restaurer Liste</span>
+          </button>
 
           <button
             onClick={() => {
@@ -269,6 +347,34 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ onNavigateToScanRost
             <UserPlus className="h-4 w-4" />
             <span>+ Saisie Unique</span>
           </button>
+        </div>
+      </div>
+
+      {/* Roster Persistence & Security Shield Banner */}
+      <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-indigo-950/40 border border-emerald-500/30 rounded-2xl p-3.5 sm:p-4 text-slate-200 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+        <div className="flex items-center space-x-3">
+          <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shrink-0">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-black uppercase text-emerald-400 tracking-wider">
+                Conservation & Protection Inviolable des Listes
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                Directeur • Secrétaire • Censeur
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-0.5">
+              Toutes les listes d'élèves inscrits sont automatiquement sauvegardées en double dans le Cloud et en local inviolable. Elles ne disparaissent jamais après les mises à jour.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+          <span className="text-xs font-extrabold text-emerald-300 px-3 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/30">
+            ✓ {students.length} élèves sécurisés
+          </span>
         </div>
       </div>
 

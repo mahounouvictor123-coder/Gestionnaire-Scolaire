@@ -4,8 +4,11 @@ import { isPrimaryClass } from './schoolUtils';
 export interface SubjectResult {
   subject: Subject;
   grades: Grade[];
+  interro1?: number;
+  interro2?: number;
   interroAverage?: number;
-  devoirMark?: number;
+  devoirMark?: number; // DEV 1
+  devoir2Mark?: number; // DEV 2
   compoMark?: number;
   average: number;
   weightedAverage: number;
@@ -13,6 +16,15 @@ export interface SubjectResult {
   subjectRank?: string;
   appreciation: string;
   teacherName?: string;
+}
+
+export interface SubjectGroup {
+  name: string;
+  categoryKey: 'SCIENTIFIQUE' | 'LITTERAIRE' | 'AUTRES';
+  items: SubjectResult[];
+  totalCoeff: number;
+  totalWeightedPoints: number;
+  groupAverage: number;
 }
 
 export interface StudentRankResult {
@@ -44,9 +56,12 @@ export function defaultBulletinTemplate(): BulletinTemplate {
     calculationFormula: 'WEIGHTED_COEFFICIENTS',
     columns: {
       showInterroAverage: true,
+      showInterro1: true,
+      showInterro2: true,
       showDevoirMark: true,
       showCompoMark: true,
       showCoefficients: true,
+      showWeightedAverage: true,
       showSubjectRank: true,
       showTeacherAppreciation: true
     },
@@ -73,6 +88,8 @@ export function calculateSubjectAverage(
     return {
       subject,
       grades: [],
+      interro1: undefined,
+      interro2: undefined,
       average: 0,
       weightedAverage: 0,
       coefficient: coeff,
@@ -101,7 +118,26 @@ export function calculateSubjectAverage(
     return u === 'COMPOSITION' || u.startsWith('COMPO') || u === 'EXAMEN' || u.startsWith('EXAM');
   };
 
-  const interros = studentGrades.filter(g => isInterro(g.examType));
+  const interros = studentGrades
+    .filter(g => isInterro(g.examType))
+    .sort((a, b) => {
+      if (a.evaluationNumber && b.evaluationNumber) return a.evaluationNumber - b.evaluationNumber;
+      if (a.evaluationNumber === 1) return -1;
+      if (b.evaluationNumber === 1) return 1;
+      return (a.date || '').localeCompare(b.date || '');
+    });
+
+  const int1Grade = interros.find(g => g.evaluationNumber === 1) ||
+    interros.find(g => (g.comment || '').toLowerCase().includes('interro 1') || (g.comment || '').toLowerCase().includes('int 1') || (g.comment || '').toLowerCase().includes('interro n°1')) ||
+    interros[0];
+
+  const int2Grade = interros.find(g => g.evaluationNumber === 2) ||
+    interros.find(g => (g.comment || '').toLowerCase().includes('interro 2') || (g.comment || '').toLowerCase().includes('int 2') || (g.comment || '').toLowerCase().includes('interro n°2')) ||
+    interros.find(g => g !== int1Grade);
+
+  const interro1Mark = int1Grade ? toScale20(int1Grade) : undefined;
+  const interro2Mark = int2Grade ? toScale20(int2Grade) : undefined;
+
   const devoirs = studentGrades.filter(g => isDevoir(g.examType));
   const compos = studentGrades.filter(g => isCompo(g.examType));
 
@@ -124,8 +160,9 @@ export function calculateSubjectAverage(
     const totalCoeffs = studentGrades.reduce((sum, g) => sum + (g.coefficient || 1), 0) || 1;
     finalAverage = totalWeighted / totalCoeffs;
   } else {
-    // Official African & French Curriculum Trimester Rule:
-    // (Moyenne Interros + Devoir + Compo * 2) / 4 (or available parts)
+    // Formule officielle demandée :
+    // La moyenne d'interro s'ajoute à la note de devoir et de composition, puis divisé par 3 :
+    // Moyenne = (Moyenne Interros + Note Devoir + Note Composition) / 3
     let totalParts = 0;
     let sumPoints = 0;
 
@@ -138,8 +175,8 @@ export function calculateSubjectAverage(
       totalParts += 1;
     }
     if (compoAvg !== undefined) {
-      sumPoints += compoAvg * 2;
-      totalParts += 2;
+      sumPoints += compoAvg;
+      totalParts += 1;
     }
 
     if (totalParts > 0) {
@@ -158,18 +195,21 @@ export function calculateSubjectAverage(
     .map(g => g.comment?.trim())
     .filter((c): c is string => Boolean(c && c.length > 0));
   const teacherComment = teacherComments.length > 0 ? teacherComments[teacherComments.length - 1] : '';
-  const teacherName = studentGrades.find(g => g.teacherName)?.teacherName;
+  const devoir1 = devoirs[0] ? toScale20(devoirs[0]) : undefined;
+  const devoir2 = devoirs[1] ? toScale20(devoirs[1]) : undefined;
 
   return {
     subject,
     grades: studentGrades,
+    interro1: interro1Mark,
+    interro2: interro2Mark,
     interroAverage: interroAvg,
-    devoirMark: devoirAvg,
+    devoirMark: devoir1 ?? devoirAvg,
+    devoir2Mark: devoir2,
     compoMark: compoAvg,
     average: finalAverage,
     weightedAverage: finalAverage * coeff,
     coefficient: coeff,
-    teacherName,
     appreciation: teacherComment || getSubjectAppreciation(finalAverage)
   };
 }
@@ -376,3 +416,193 @@ export function calculateClassRanks(
     passRate
   };
 }
+
+/**
+ * Group subjects into official Beninese secondary education clusters:
+ * 1. Matières Scientifiques (SVT, SPCT/PCT, Mathématiques)
+ * 2. Matières Littéraires (Lecture/Français, Hist-Géo, Communication Écrite, Anglais, Philosophie)
+ * 3. Autres Matières (Informatique, EPS, Conduite, Arts, Musique, etc.)
+ */
+export function groupSubjectResults(results: SubjectResult[]): SubjectGroup[] {
+  const isScientific = (s: Subject) => {
+    const cat = (s.category || '').toUpperCase();
+    if (cat === 'SCIENTIFIQUE') return true;
+    const n = (s.name || '').toUpperCase();
+    const c = (s.code || '').toUpperCase();
+    return (
+      n.includes('MATH') ||
+      c.includes('MATH') ||
+      n.includes('SVT') ||
+      c.includes('SVT') ||
+      n.includes('SPCT') ||
+      c.includes('SPCT') ||
+      n.includes('PCT') ||
+      c.includes('PCT') ||
+      n.includes('PHYSIQUE') ||
+      n.includes('CHIMIE') ||
+      n.includes('BIOLOGIE') ||
+      n.includes('TECHNO') ||
+      n.includes('SCIENCE')
+    );
+  };
+
+  const isLiterary = (s: Subject) => {
+    const cat = (s.category || '').toUpperCase();
+    if (cat === 'LITTERAIRE' || cat === 'LANGUE') return true;
+    const n = (s.name || '').toUpperCase();
+    const c = (s.code || '').toUpperCase();
+    return (
+      n.includes('FRANCAIS') ||
+      n.includes('FRANÇAIS') ||
+      n.includes('LECTURE') ||
+      n.includes('COMMUNICATION') ||
+      n.includes('HIST') ||
+      n.includes('GEO') ||
+      n.includes('ANGLAIS') ||
+      c.includes('ANG') ||
+      n.includes('PHILO') ||
+      n.includes('LITTERATURE') ||
+      n.includes('REDACTION') ||
+      n.includes('EXPRESSION') ||
+      n.includes('ESPAGNOL') ||
+      n.includes('ALLEMAND')
+    );
+  };
+
+  const scientific: SubjectResult[] = [];
+  const literary: SubjectResult[] = [];
+  const others: SubjectResult[] = [];
+
+  results.forEach(res => {
+    if (isScientific(res.subject)) {
+      scientific.push(res);
+    } else if (isLiterary(res.subject)) {
+      literary.push(res);
+    } else {
+      others.push(res);
+    }
+  });
+
+  const computeGroup = (
+    name: string,
+    categoryKey: 'SCIENTIFIQUE' | 'LITTERAIRE' | 'AUTRES',
+    items: SubjectResult[]
+  ): SubjectGroup => {
+    const totalCoeff = items.reduce((sum, item) => sum + item.coefficient, 0);
+    const totalWeightedPoints = items.reduce((sum, item) => sum + item.weightedAverage, 0);
+    const groupAverage = totalCoeff > 0 ? totalWeightedPoints / totalCoeff : 0;
+    return {
+      name,
+      categoryKey,
+      items,
+      totalCoeff,
+      totalWeightedPoints,
+      groupAverage
+    };
+  };
+
+  const groups: SubjectGroup[] = [];
+  if (scientific.length > 0) {
+    groups.push(computeGroup('Matières Scientifiques', 'SCIENTIFIQUE', scientific));
+  }
+  if (literary.length > 0) {
+    groups.push(computeGroup('Matières Littéraires', 'LITTERAIRE', literary));
+  }
+  if (others.length > 0) {
+    groups.push(computeGroup('Autres Matières...', 'AUTRES', others));
+  }
+
+  // Fallback if no category matched
+  if (groups.length === 0 && results.length > 0) {
+    groups.push(computeGroup('Toutes Matières', 'AUTRES', results));
+  }
+
+  return groups;
+}
+
+/**
+ * Next grade level promotion name (e.g. 6ème -> 5ème)
+ */
+export function getNextClassName(currentClassName: string = ''): string {
+  const norm = currentClassName.trim().toLowerCase();
+  if (norm.includes('6ème') || norm.includes('6eme') || norm.includes('6e')) return '5ème';
+  if (norm.includes('5ème') || norm.includes('5eme') || norm.includes('5e')) return '4ème';
+  if (norm.includes('4ème') || norm.includes('4eme') || norm.includes('4e')) return '3ème';
+  if (norm.includes('3ème') || norm.includes('3eme') || norm.includes('3e')) return 'Seconde';
+  if (norm.includes('2nde') || norm.includes('seconde')) return 'Première';
+  if (norm.includes('1ère') || norm.includes('premiere') || norm.includes('1ere')) return 'Terminale';
+  if (norm.includes('ci')) return 'CP';
+  if (norm.includes('cp')) return 'CE1';
+  if (norm.includes('ce1')) return 'CE2';
+  if (norm.includes('ce2')) return 'CM1';
+  if (norm.includes('cm1')) return 'CM2';
+  if (norm.includes('cm2')) return '6ème';
+  return 'classe supérieure';
+}
+
+/**
+ * Council decisions according to Benin academic norms:
+ * Mentions:
+ * - FELICITATIONS (>= 16)
+ * - ENCOURAGEMENTS (>= 14 and < 16)
+ * - TABLEAU D'HONNEUR (>= 12 and < 14)
+ * - AVERTISSEMENT (>= 8.5 and < 10)
+ * - BLAME (< 8.5)
+ * - RENVOI (severe infraction or exclusion)
+ */
+export function getCouncilDecisionMentions(
+  overallAverage: number,
+  trimester: number = 3,
+  className: string = '',
+  isExcluded: boolean = false
+) {
+  const felicitations = overallAverage >= 16;
+  const encouragements = overallAverage >= 14 && overallAverage < 16;
+  const tableauHonneur = overallAverage >= 12 && overallAverage < 14;
+  const avertissement = overallAverage >= 8.5 && overallAverage < 10;
+  const blame = overallAverage > 0 && overallAverage < 8.5 && !isExcluded;
+  const renvoi = isExcluded;
+
+  let appreciationDirecteur = 'Passable';
+  if (overallAverage >= 16) appreciationDirecteur = 'Excellent travail';
+  else if (overallAverage >= 14) appreciationDirecteur = 'Très satisfaisant';
+  else if (overallAverage >= 12) appreciationDirecteur = 'Satisfaisant';
+  else if (overallAverage >= 10) appreciationDirecteur = 'Passable';
+  else if (overallAverage >= 8.5) appreciationDirecteur = 'Insuffisant, doit progresser';
+  else if (overallAverage > 0) appreciationDirecteur = 'Travail très insuffisant';
+  else appreciationDirecteur = 'Non évalué';
+
+  let decision = 'Admis(e)';
+  const nextClass = getNextClassName(className);
+  if (trimester === 3) {
+    if (overallAverage >= 10) {
+      decision = `Passe en ${nextClass}`;
+    } else if (overallAverage > 0) {
+      decision = 'Redouble';
+    } else {
+      decision = 'En attente';
+    }
+  } else {
+    if (overallAverage >= 12) {
+      decision = 'Bon travail, continuer ainsi';
+    } else if (overallAverage >= 10) {
+      decision = 'Poursuivre les efforts';
+    } else if (overallAverage > 0) {
+      decision = 'Efforts soutenus requis';
+    } else {
+      decision = 'En attente';
+    }
+  }
+
+  return {
+    felicitations,
+    encouragements,
+    tableauHonneur,
+    avertissement,
+    blame,
+    renvoi,
+    appreciationDirecteur,
+    decision
+  };
+}
+

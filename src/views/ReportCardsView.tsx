@@ -9,7 +9,12 @@ import { AIGradesBulletinWhatsAppModal } from '../components/modals/AIGradesBull
 import { SchoolLogoImportModal } from '../components/modals/SchoolLogoImportModal';
 import { InsertBulletinGradesModal } from '../components/modals/InsertBulletinGradesModal';
 import { downloadSingleBulletinPdf, downloadClassBulletinsPdf } from '../lib/bulletinPdfExport';
-import { calculateClassRanks, defaultBulletinTemplate } from '../lib/gradingUtils';
+import { 
+  calculateClassRanks, 
+  defaultBulletinTemplate,
+  groupSubjectResults,
+  getCouncilDecisionMentions
+} from '../lib/gradingUtils';
 import {
   FileCheck,
   FileText,
@@ -64,6 +69,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     updateSubject,
     deleteSubject,
     currentSchool,
+    attendance,
     archivedReportCards,
     archiveReportCard,
     deleteArchivedReportCard
@@ -260,6 +266,57 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
         : "Aucune note enregistrée pour cet élève ce trimestre."
     };
   }, [classRankSummary, activeStudentForBulletin, definedClassSubjects]);
+
+  // Grouped Subjects into Official Clusters (Scientifiques, Littéraires, Autres)
+  const previewSubjectGroups = useMemo(() => {
+    return groupSubjectResults(currentBulletinRankData.subjectResults);
+  }, [currentBulletinRankData.subjectResults]);
+
+  // Council Decision Mentions (Bénin standard)
+  const previewCouncilDecision = useMemo(() => {
+    return getCouncilDecisionMentions(
+      currentBulletinRankData.overallAverage,
+      selectedTrimester,
+      selectedClass?.name || '',
+      activeStudentForBulletin.status === 'EXCLU'
+    );
+  }, [currentBulletinRankData.overallAverage, selectedTrimester, selectedClass, activeStudentForBulletin]);
+
+  // Previous trimesters calculations for student history bar
+  const previewTri1Summary = useMemo(() => calculateClassRanks(classStudents, grades, subjects, 1, activeTemplate), [classStudents, grades, subjects, activeTemplate]);
+  const previewTri1Student = previewTri1Summary.rankings.find(r => r.student.id === activeStudentForBulletin.id);
+  const previewMoyTri1 = previewTri1Student?.overallAverage ?? (selectedTrimester === 1 ? currentBulletinRankData.overallAverage : 0);
+
+  const previewTri2Summary = useMemo(() => calculateClassRanks(classStudents, grades, subjects, 2, activeTemplate), [classStudents, grades, subjects, activeTemplate]);
+  const previewTri2Student = previewTri2Summary.rankings.find(r => r.student.id === activeStudentForBulletin.id);
+  const previewMoyTri2 = previewTri2Student?.overallAverage ?? (selectedTrimester === 2 ? currentBulletinRankData.overallAverage : 0);
+
+  const previewMoyAnnuelle = useMemo(() => {
+    if (selectedTrimester === 3) {
+      let sum = 0; let count = 0;
+      if (previewMoyTri1 > 0) { sum += previewMoyTri1; count++; }
+      if (previewMoyTri2 > 0) { sum += previewMoyTri2; count++; }
+      if (currentBulletinRankData.overallAverage > 0) { sum += currentBulletinRankData.overallAverage; count++; }
+      return count > 0 ? sum / count : currentBulletinRankData.overallAverage;
+    } else if (selectedTrimester === 2) {
+      const valid = [previewMoyTri1, currentBulletinRankData.overallAverage].filter(m => m > 0);
+      return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : currentBulletinRankData.overallAverage;
+    }
+    return currentBulletinRankData.overallAverage;
+  }, [selectedTrimester, previewMoyTri1, previewMoyTri2, currentBulletinRankData.overallAverage]);
+
+  const previewAbsences = (attendance || []).filter(a => a.entityId === activeStudentForBulletin.id && a.status === 'ABSENT').length;
+  const previewDelays = (attendance || []).filter(a => a.entityId === activeStudentForBulletin.id && a.status === 'RETARD').length;
+  const isPreviewRedoublant = activeStudentForBulletin.status === 'TRANSFERE' || (activeStudentForBulletin.medicalNotes && activeStudentForBulletin.medicalNotes.toLowerCase().includes('redoubl'));
+
+  const previewSchoolNameDisplay = (settings.schoolName && settings.schoolName !== 'GESTIONNAIRE SCOLAIRE') 
+    ? settings.schoolName 
+    : (currentSchool?.name || 'COMPLEXE SCOLAIRE LE TEMPLE DU SAVOIR');
+  const previewSchoolMotto = currentSchool?.motto || settings.motto || 'SAVOIR - AGIR - ETRE - FAIRE';
+  const previewSchoolArrêté = currentSchool?.officialCode || 'Arr: 417/MESFTPRIJ/DC/SGM/DESG/DEP/DPP/SGSI/SA du 05/12/2014';
+  const previewSchoolCity = currentSchool?.city || (settings.city ? settings.city.split('-')[0].trim() : 'Godomey');
+  const previewSchoolPhone = currentSchool?.phone || settings.phone || '+229 95 05 65 92 / 96 28 75 45';
+  const previewDirectorName = currentSchool?.directorName || settings.directorName || 'Adébayo I. BAKARY';
 
   const handlePrintClassRanking = () => {
     window.print();
@@ -803,351 +860,414 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
             </div>
           )}
 
-          {/* DOCUMENT BULLETIN OFFICIEL DRESSÉ */}
+          {/* DOCUMENT BULLETIN OFFICIEL DRESSÉ (Norme Bénin) */}
           <div 
-            className="p-8 sm:p-10 bg-white text-slate-900 rounded-3xl border border-slate-200 shadow-xl relative overflow-hidden print:p-0 print:border-none print:shadow-none" 
+            className="p-4 sm:p-6 bg-white text-slate-900 rounded-3xl border border-slate-300 shadow-xl relative overflow-hidden text-xs leading-normal print:p-0 print:border-none print:shadow-none" 
             id="bulletin-document-view"
           >
-            {/* Filigrane (Watermark) officiel portant en filigrane le nom de l'école */}
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center overflow-hidden select-none z-0">
-              <div className="text-center transform -rotate-25 opacity-[0.05] font-black text-slate-900 uppercase text-4xl sm:text-6xl md:text-7xl tracking-widest leading-relaxed select-none">
-                {(settings.schoolName && settings.schoolName !== 'GESTIONNAIRE SCOLAIRE') ? settings.schoolName : (currentSchool?.name || 'ÉTABLISSEMENT SCOLAIRE')}
+            {/* Filigrane d'arrière-plan officiel type Wexomin */}
+            <div className="absolute inset-0 pointer-events-none opacity-[0.035] overflow-hidden select-none z-0">
+              <div className="grid grid-cols-5 gap-6 p-2 text-[9px] font-black text-slate-800 uppercase tracking-widest rotate-[-18deg] select-none scale-110">
+                {Array.from({ length: 120 }).map((_, i) => (
+                  <span key={i}>WEXOMIN</span>
+                ))}
               </div>
             </div>
 
             {/* Contenu du Bulletin au premier plan */}
-            <div className="relative z-10 space-y-6">
+            <div className="relative z-10">
               
-              {/* Entête Officielle avec Logo de l'École */}
-              <div className="flex items-start justify-between border-b-2 border-blue-900 pb-4">
-                <div className="flex items-center space-x-4">
+              {/* 1. EN-TÊTE OFFICIEL BÉNIN */}
+              <div className="grid grid-cols-12 gap-2 items-start border-b border-slate-800 pb-2 mb-2">
+                {/* Logo de l'établissement à gauche */}
+                <div className="col-span-3 flex flex-col items-center justify-center text-center">
                   <div 
-                    className="relative group cursor-pointer shrink-0" 
+                    className="relative group cursor-pointer" 
                     onClick={() => setIsLogoModalOpen(true)}
                     title="Cliquer pour changer ou importer le logo officiel de l'école"
                   >
                     <img
                       src={currentSchool?.logoUrl || settings.logoUrl || '/icon.svg'}
-                      alt={currentSchool?.name || settings.schoolName}
-                      className="h-20 w-20 object-contain rounded-xl ring-2 ring-blue-900/20 bg-white p-1"
+                      alt="Logo"
+                      className="h-16 w-16 sm:h-20 sm:w-20 object-contain rounded-full border-2 border-slate-800 p-1 bg-white shadow-xs"
                     />
-                    <span className="absolute -bottom-1 -right-1 p-1 bg-indigo-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity print:hidden shadow-md">
-                      <ImageIcon className="h-2.5 w-2.5" />
+                    <span className="absolute -bottom-1 -right-1 p-1 bg-indigo-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity print:hidden shadow-xs">
+                      <ImageIcon className="h-2 w-2" />
                     </span>
                   </div>
-                  <div>
-                    <h1 className="text-xl font-extrabold text-blue-900 uppercase tracking-tight">
-                      {(settings.schoolName && settings.schoolName !== 'GESTIONNAIRE SCOLAIRE') ? settings.schoolName : (currentSchool?.name || 'ÉTABLISSEMENT SCOLAIRE')}
-                    </h1>
-                    <p className="text-xs font-semibold text-emerald-700 italic">{currentSchool?.motto || settings.motto}</p>
-                    <p className="text-xs text-slate-600 mt-1">{currentSchool?.address || settings.address} • Tel: {currentSchool?.phone || settings.phone}</p>
-                    <p className="text-xs text-slate-500">{currentSchool?.city} ({currentSchool?.country || 'Afrique'})</p>
-                  </div>
+                  <p className="text-[8.5px] font-bold text-slate-700 uppercase tracking-tight mt-1 max-w-[130px] leading-tight">
+                    {previewSchoolMotto}
+                  </p>
+                  <p className="text-[7.5px] text-slate-500 font-semibold tracking-tighter">
+                    DISCIPLINE • TRAVAIL • SUCCÈS
+                  </p>
                 </div>
 
-                <div className="text-right space-y-1">
-                  <div className="inline-block bg-blue-900 text-white font-black text-sm px-4 py-1.5 rounded-lg uppercase tracking-wider shadow-sm">
-                    {activeTemplate.headerTitle || `BULLETIN TRIMESTRE ${selectedTrimester}`}
+                {/* Bloc Central République & Ministère & Complexe Scolaire */}
+                <div className="col-span-9 text-center space-y-0.5">
+                  <h2 className="text-xs sm:text-sm font-black tracking-widest uppercase text-slate-950">
+                    RÉPUBLIQUE DU BÉNIN
+                  </h2>
+                  <div className="text-[10px] tracking-widest text-slate-600 font-serif">
+                    ************
                   </div>
-                  <p className="text-xs font-bold text-slate-700">Année Académique : {settings.academicYear}</p>
-                  <p className="text-[11px] font-extrabold text-indigo-800">
-                    Trimestre {selectedTrimester} • Classe de {selectedClass?.name}
+                  <p className="text-[8px] sm:text-[9px] font-semibold text-slate-800 uppercase leading-snug px-2">
+                    Ministère des Enseignements Secondaire, Technique et de la Formation Professionnelle, de la Reconversion et de l'Insertion des Jeunes
                   </p>
-                  <div className="mt-1 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 inline-block text-left shadow-xs">
-                    <span className="text-[10px] uppercase font-black text-blue-700 block">Élève Titulaire :</span>
-                    <strong className="text-sm font-black text-blue-950 uppercase tracking-wide">
-                      {activeStudentForBulletin.lastName.toUpperCase()} {activeStudentForBulletin.firstName}
-                    </strong>
+                  <div className="text-[10px] tracking-widest text-slate-600 font-serif">
+                    ************
+                  </div>
+                  <h1 className="text-sm sm:text-base font-black uppercase text-slate-950 tracking-tight">
+                    {previewSchoolNameDisplay}
+                  </h1>
+                  <p className="text-[8.5px] font-bold text-slate-700">
+                    {previewSchoolArrêté}
+                  </p>
+                  <p className="text-[9.5px] font-extrabold text-slate-900">
+                    {previewSchoolCity}
+                  </p>
+                  <p className="text-[8.5px] font-semibold text-slate-700">
+                    Tél: {previewSchoolPhone}
+                  </p>
+                </div>
+              </div>
+
+              {/* 2. BANDEAU TITRE DU BULLETIN */}
+              <div className="text-center my-1.5 space-y-0.5">
+                <h2 className="text-sm sm:text-base font-black uppercase tracking-wider text-slate-950 underline underline-offset-2 decoration-1">
+                  BULLETIN DE NOTES
+                </h2>
+                <div className="flex items-center justify-center space-x-6 text-[10.5px] font-bold text-slate-900">
+                  <span>ANNÉE SCOLAIRE : <strong className="font-black">{settings.academicYear || '2023-2024'}</strong></span>
+                  <span>CLASSE : <strong className="font-black">{selectedClass?.name || '6ème'}</strong></span>
+                  <span>
+                    <strong className="text-xs font-black underline mr-1">{selectedTrimester}</strong> 
+                    ème TRIMESTRE
+                  </span>
+                </div>
+              </div>
+
+              {/* 3. BLOC IDENTITÉ DE L'ÉLÈVE (Gauche: Nom/Prénoms/Matricule/Sexe - Droite: Statut & Effectif) */}
+              <div className="grid grid-cols-12 gap-3 items-center border border-slate-800 bg-slate-50/60 p-2 mb-2">
+                {/* Colonne gauche (table d'identification) */}
+                <div className="col-span-8 text-[11px]">
+                  <table className="w-full border-collapse">
+                    <tbody>
+                      <tr>
+                        <td className="w-24 font-bold text-slate-700 py-0.5">Nom :</td>
+                        <td className="font-black uppercase text-slate-950 text-xs py-0.5">{activeStudentForBulletin.lastName}</td>
+                      </tr>
+                      <tr>
+                        <td className="w-24 font-bold text-slate-700 py-0.5">Prénoms :</td>
+                        <td className="font-extrabold text-slate-900 py-0.5">{activeStudentForBulletin.firstName}</td>
+                      </tr>
+                      <tr>
+                        <td className="w-24 font-bold text-slate-700 py-0.5">N° Matricule :</td>
+                        <td className="font-mono font-black text-slate-950 py-0.5">{activeStudentForBulletin.registrationNumber || '2361077'}</td>
+                      </tr>
+                      <tr>
+                        <td className="w-24 font-bold text-slate-700 py-0.5">Sexe :</td>
+                        <td className="font-black text-slate-950 py-0.5">{activeStudentForBulletin.gender || 'M'}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Colonne droite (Nouveau / Redoublant & Effectif) */}
+                <div className="col-span-4 border-l border-slate-400 pl-3 flex flex-col justify-center space-y-1.5 text-[10.5px] font-extrabold text-slate-900">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-24">NOUVEAU</span>
+                    <span className="w-4 h-4 border border-slate-900 flex items-center justify-center font-black text-[11px] bg-white">
+                      {!isPreviewRedoublant ? '✓' : ''}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="w-24">REDOUBLANT</span>
+                    <span className="w-4 h-4 border border-slate-900 flex items-center justify-center font-black text-[11px] bg-white">
+                      {isPreviewRedoublant ? '✓' : ''}
+                    </span>
+                  </div>
+                  <div className="pt-0.5 text-slate-950 text-[11px]">
+                    <span>EFFECTIF : </span>
+                    <strong className="font-black text-xs ml-1">{classRankSummary.totalStudents || 14}</strong>
                   </div>
                 </div>
               </div>
 
-              {/* Bandeau d'Identification de l'Élève & Rang - NOM DE L'ÉLÈVE BIEN VISIBLE */}
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs">
-                <div className="flex items-center space-x-3">
-                  <img
-                    src={activeStudentForBulletin.photoUrl}
-                    alt={activeStudentForBulletin.firstName}
-                    className="h-12 w-12 rounded-xl object-cover ring-2 ring-blue-900/30 shrink-0"
-                  />
-                  <div>
-                    <p className="text-slate-500 font-bold uppercase text-[10px]">Nom & Prénoms de l'Élève</p>
-                    <p className="font-black text-base text-blue-950 uppercase tracking-tight">
-                      {activeStudentForBulletin.lastName.toUpperCase()} {activeStudentForBulletin.firstName}
-                    </p>
-                    <p className="text-slate-600 font-bold text-xs mt-0.5">
-                      Matricule : <span className="text-blue-700 font-black">{activeStudentForBulletin.registrationNumber}</span>
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-slate-500 font-bold uppercase text-[10px]">Classe & Sexe</p>
-                  <p className="font-bold text-slate-900">{selectedClass?.name || activeStudentForBulletin.level}</p>
-                  <p className="text-slate-600 mt-0.5">
-                    Sexe : {activeStudentForBulletin.gender} | Né(e) le : {activeStudentForBulletin.dateOfBirth}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-slate-500 font-bold uppercase text-[10px]">Classement dans la Classe</p>
-                  <p className="font-black text-base text-purple-900 flex items-center space-x-1">
-                    <Trophy className="h-4 w-4 text-amber-500 inline" />
-                    <span>RANG : {currentBulletinRankData.rank}</span>
-                  </p>
-                  <p className="text-slate-600 font-semibold text-[11px]">
-                    sur {classRankSummary.totalStudents || 1} élève(s)
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-slate-500 font-bold uppercase text-[10px]">Responsable Légal</p>
-                  <p className="font-bold text-slate-900">{activeStudentForBulletin.parentName}</p>
-                  <p className="text-slate-600 mt-0.5">Tél : {activeStudentForBulletin.parentPhone}</p>
-                </div>
-              </div>
-
-              {/* Tableau de toutes les matières arrêtées par l'école avec possibilité de modifier ou supprimer */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse border border-slate-300">
+              {/* 4. TABLEAU DES NOTES PAR REGROUPEMENT DISCIPLINAIRE (Norme Bénin) */}
+              <div className="overflow-x-auto mb-1">
+                <table className="w-full text-[10px] border-collapse border border-slate-800">
                   <thead>
-                    <tr className="bg-blue-900 text-white font-bold uppercase tracking-wider text-left">
-                      <th className="p-2 border border-slate-300">
-                        <div className="flex items-center justify-between">
-                          <span>Matières Définies par l'École</span>
-                          <div className="flex items-center space-x-1.5 print:hidden">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setInsertGradesStudent(activeStudentForBulletin.id === 'specimen-student' ? (classStudents[0] || null) : activeStudentForBulletin);
-                                setInsertGradesTargetSubject(null);
-                                setIsInsertGradesModalOpen(true);
-                              }}
-                              className="px-2.5 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[10px] inline-flex items-center space-x-1 transition-all cursor-pointer shadow-xs"
-                              title="Saisir ou corriger les notes de cet élève"
-                            >
-                              <Edit3 className="h-3 w-3" />
-                              <span>📝 Saisir les Notes</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setShowSubjectManagerModal(true)}
-                              className="px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 text-white font-extrabold text-[10px] inline-flex items-center space-x-1 transition-all cursor-pointer"
-                              title="Modifier les coefficients ou supprimer des matières"
-                            >
-                              <Pencil className="h-3 w-3 text-amber-300" />
-                              <span>⚙️ Gérer Matières</span>
-                            </button>
-                          </div>
-                        </div>
-                      </th>
-                      {activeTemplate.columns.showCoefficients && (
-                        <th className="p-2 border border-slate-300 text-center w-16">Coeff</th>
-                      )}
-                      {activeTemplate.columns.showInterroAverage && (
-                        <th className="p-2 border border-slate-300 text-center w-20">Interro</th>
-                      )}
-                      {activeTemplate.columns.showDevoirMark && (
-                        <th className="p-2 border border-slate-300 text-center w-20">Devoir</th>
-                      )}
-                      {activeTemplate.columns.showCompoMark && (
-                        <th className="p-2 border border-slate-300 text-center w-20">Compo</th>
-                      )}
-                      <th className="p-2 border border-slate-300 text-center w-24">Moy. /20</th>
-                      {activeTemplate.columns.showSubjectRank && (
-                        <th className="p-2 border border-slate-300 text-center w-20">Rang</th>
-                      )}
-                      {activeTemplate.columns.showTeacherAppreciation && (
-                        <th className="p-2 border border-slate-300">Appréciation Enseignant</th>
-                      )}
+                    <tr className="bg-slate-200 text-slate-950 font-black uppercase tracking-tight text-center border-b border-slate-800">
+                      <th className="p-1 border border-slate-700 text-left w-36">MATIERES</th>
+                      <th className="p-1 border border-slate-700 w-10">COEF</th>
+                      <th className="p-1 border border-slate-700 w-11" title="Note d'interrogation 1">Int 1</th>
+                      <th className="p-1 border border-slate-700 w-11" title="Note d'interrogation 2">Int 2</th>
+                      <th className="p-1 border border-slate-700 w-12" title="Moyenne des interrogations">Moy. INT</th>
+                      <th className="p-1 border border-slate-700 w-11">DEV 1</th>
+                      <th className="p-1 border border-slate-700 w-11">DEV 2</th>
+                      <th className="p-1 border border-slate-700 w-12">COMPO</th>
+                      <th className="p-1 border border-slate-700 w-14 font-black">MOY/20</th>
+                      <th className="p-1 border border-slate-700 w-14 font-black bg-slate-300">Moy. Coef</th>
+                      <th className="p-1 border border-slate-700 w-11">RANG</th>
+                      <th className="p-1 border border-slate-700 text-left">APPRECIATIONS</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {currentBulletinRankData.subjectResults.length > 0 ? (
-                      currentBulletinRankData.subjectResults.map((item, idx) => (
-                        <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                          <td className="p-2 border border-slate-300 font-bold text-slate-900">
-                            <div className="flex items-center justify-between group">
-                              <span>{item.subject.name}</span>
-                              <div className="flex items-center space-x-1 print:hidden">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setInsertGradesStudent(activeStudentForBulletin.id === 'specimen-student' ? (classStudents[0] || null) : activeStudentForBulletin);
-                                    setInsertGradesTargetSubject(item.subject);
-                                    setIsInsertGradesModalOpen(true);
-                                  }}
-                                  className="px-1.5 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] inline-flex items-center space-x-0.5 cursor-pointer border border-emerald-200"
-                                  title={`Saisir / Modifier les notes en ${item.subject.name}`}
-                                >
-                                  <Edit3 className="h-2.5 w-2.5 text-emerald-600" />
-                                  <span>Notes</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEditSubject(item.subject)}
-                                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                                  title={`Modifier "${item.subject.name}" (nom ou coefficient)`}
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteSubjectFromBulletin(item.subject)}
-                                  className="p-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-700 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                                  title={`Supprimer "${item.subject.name}"`}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
-                            </div>
-                          </td>
-                          {activeTemplate.columns.showCoefficients && (
-                            <td className="p-2 border border-slate-300 text-center font-semibold">
-                              {item.coefficient}
-                            </td>
-                          )}
-                          {activeTemplate.columns.showInterroAverage && (
-                            <td className="p-2 border border-slate-300 text-center">
-                              {item.grades.length > 0 && item.interroAverage !== undefined
-                                ? item.interroAverage.toFixed(2)
-                                : '-'}
-                            </td>
-                          )}
-                          {activeTemplate.columns.showDevoirMark && (
-                            <td className="p-2 border border-slate-300 text-center">
-                              {item.grades.length > 0 && item.devoirMark !== undefined
-                                ? item.devoirMark.toFixed(2)
-                                : '-'}
-                            </td>
-                          )}
-                          {activeTemplate.columns.showCompoMark && (
-                            <td className="p-2 border border-slate-300 text-center">
-                              {item.grades.length > 0 && item.compoMark !== undefined
-                                ? item.compoMark.toFixed(2)
-                                : '-'}
-                            </td>
-                          )}
-                          <td className="p-2 border border-slate-300 text-center font-black text-blue-900">
-                            {item.grades.length > 0 ? (
-                              item.average.toFixed(2)
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setInsertGradesStudent(activeStudentForBulletin.id === 'specimen-student' ? (classStudents[0] || null) : activeStudentForBulletin);
-                                  setInsertGradesTargetSubject(item.subject);
-                                  setIsInsertGradesModalOpen(true);
-                                }}
-                                className="text-emerald-700 hover:text-emerald-800 text-[10px] font-extrabold underline cursor-pointer print:no-underline print:text-slate-400"
-                                title={`Cliquer pour saisir les notes en ${item.subject.name}`}
-                              >
-                                + Saisir Note
-                              </button>
-                            )}
-                          </td>
-                          {activeTemplate.columns.showSubjectRank && (
-                            <td className="p-2 border border-slate-300 text-center font-extrabold text-purple-700">
-                              {item.grades.length > 0 ? (item.subjectRank || '-') : '-'}
-                            </td>
-                          )}
-                          {activeTemplate.columns.showTeacherAppreciation && (
-                            <td className="p-2 border border-slate-300 italic text-slate-700">
-                              {item.grades.length > 0 ? (
-                                <div className="space-y-0.5">
-                                  <div>{item.appreciation}</div>
-                                  {item.teacherName && (
-                                    <div className="text-[10px] text-slate-500 font-medium not-italic">
-                                      {item.teacherName}
+                    {previewSubjectGroups.length > 0 ? (
+                      previewSubjectGroups.map((group, gIdx) => (
+                        <React.Fragment key={gIdx}>
+                          {group.items.map((item, idx) => {
+                            const interroAvgVal = item.interroAverage !== undefined ? item.interroAverage.toFixed(2) : (item.interro1 !== undefined ? item.interro1.toFixed(2) : '-');
+                            const dev1Val = item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-';
+                            const dev2Val = item.devoir2Mark !== undefined ? item.devoir2Mark.toFixed(2) : '-';
+                            const compoVal = item.compoMark !== undefined ? item.compoMark.toFixed(2) : '-';
+
+                            return (
+                              <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                                <td className="p-1 border border-slate-700 font-bold text-slate-900">
+                                  <div className="flex items-center justify-between group">
+                                    <span>{item.subject.name}</span>
+                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1 print:hidden">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setInsertGradesStudent(activeStudentForBulletin.id === 'specimen-student' ? (classStudents[0] || null) : activeStudentForBulletin);
+                                          setInsertGradesTargetSubject(item.subject);
+                                          setIsInsertGradesModalOpen(true);
+                                        }}
+                                        className="p-0.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 cursor-pointer text-[9px]"
+                                        title="Saisir/Modifier notes"
+                                      >
+                                        <Edit3 className="h-2.5 w-2.5" />
+                                      </button>
                                     </div>
-                                  )}
-                                </div>
-                              ) : '-'}
+                                  </div>
+                                </td>
+                                <td className="p-1 border border-slate-700 text-center font-bold text-slate-800">
+                                  {item.coefficient}
+                                </td>
+                                <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
+                                  {item.interro1 !== undefined ? item.interro1.toFixed(2) : '-'}
+                                </td>
+                                <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
+                                  {item.interro2 !== undefined ? item.interro2.toFixed(2) : '-'}
+                                </td>
+                                <td className="p-1 border border-slate-700 text-center font-bold text-slate-900">
+                                  {interroAvgVal}
+                                </td>
+                                <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
+                                  {dev1Val}
+                                </td>
+                                <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
+                                  {dev2Val}
+                                </td>
+                                <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
+                                  {compoVal}
+                                </td>
+                                <td className="p-1 border border-slate-700 text-center font-black text-slate-950 bg-slate-100/50">
+                                  {item.grades.length > 0 ? item.average.toFixed(2) : '-'}
+                                </td>
+                                <td className="p-1 border border-slate-700 text-center font-black text-slate-950 bg-slate-200/60">
+                                  {item.grades.length > 0 ? item.weightedAverage.toFixed(2) : '-'}
+                                </td>
+                                <td className="p-1 border border-slate-700 text-center font-bold text-slate-800">
+                                  {item.grades.length > 0 ? (item.subjectRank || '-') : '-'}
+                                </td>
+                                <td className="p-1 border border-slate-700 italic text-slate-700 text-[9.5px]">
+                                  {item.grades.length > 0 ? item.appreciation : '-'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {/* Sous-total du groupe (Matières Scientifiques, Matières Littéraires, Autres Matières) */}
+                          <tr className="bg-slate-100/80 font-bold text-slate-900 border-t border-b border-slate-600 text-[9.5px]">
+                            <td className="p-1 border border-slate-700 italic font-extrabold text-slate-900">
+                              {group.name}
                             </td>
-                          )}
-                        </tr>
+                            <td className="p-1 border border-slate-700 text-center font-black">
+                              {group.totalCoeff}
+                            </td>
+                            <td colSpan={6} className="p-1 border border-slate-700 bg-slate-50/50"></td>
+                            <td className="p-1 border border-slate-700 text-center font-black text-slate-950">
+                              {group.groupAverage > 0 ? group.groupAverage.toFixed(2) : '-'}
+                            </td>
+                            <td className="p-1 border border-slate-700 text-center font-black text-slate-950 bg-slate-200/40">
+                              {group.totalWeightedPoints > 0 ? group.totalWeightedPoints.toFixed(2) : '-'}
+                            </td>
+                            <td colSpan={2} className="p-1 border border-slate-700"></td>
+                          </tr>
+                        </React.Fragment>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={8} className="p-4 text-center text-slate-500 italic">
-                          Aucune matière configurée pour cette classe.
+                        <td colSpan={12} className="p-4 text-center text-slate-500 italic">
+                          Aucune matière configurée pour ce trimestre.
                         </td>
                       </tr>
                     )}
                   </tbody>
                   <tfoot>
-                    <tr className="bg-slate-100 font-extrabold text-slate-900">
-                      <td className="p-2 border border-slate-300">TOTAL GÉNÉRAL</td>
-                      {activeTemplate.columns.showCoefficients && (
-                        <td className="p-2 border border-slate-300 text-center">
-                          {currentBulletinRankData.totalCoefficients}
-                        </td>
-                      )}
-                      <td 
-                        colSpan={(activeTemplate.columns.showInterroAverage ? 1 : 0) + (activeTemplate.columns.showDevoirMark ? 1 : 0) + (activeTemplate.columns.showCompoMark ? 1 : 0) + 1} 
-                        className="p-2 border border-slate-300 text-center text-sm font-black text-blue-900"
-                      >
-                        MOYENNE : {currentBulletinRankData.overallAverage > 0 ? `${currentBulletinRankData.overallAverage.toFixed(2)} / 20` : '- / 20'}
+                    {/* Ligne TOTAL GÉNÉRAL / TOUTES MATIÈRES */}
+                    <tr className="bg-slate-200 font-black text-slate-950 border-t-2 border-slate-800 text-[10.5px]">
+                      <td className="p-1.5 border border-slate-700 uppercase">
+                        Toutes Matières
                       </td>
-                      {activeTemplate.columns.showSubjectRank && (
-                        <td className="p-2 border border-slate-300 text-center font-black text-purple-900">
-                          {currentBulletinRankData.rank}
-                        </td>
-                      )}
-                      {activeTemplate.columns.showTeacherAppreciation && (
-                        <td className="p-2 border border-slate-300 text-emerald-800 font-extrabold uppercase">
-                          {currentBulletinRankData.mention}
-                        </td>
-                      )}
+                      <td className="p-1.5 border border-slate-700 text-center font-black text-xs">
+                        {currentBulletinRankData.totalCoefficients}
+                      </td>
+                      <td colSpan={6} className="p-1.5 border border-slate-700 text-right uppercase tracking-wider pr-3">
+                        TOTAL GENERAL :
+                      </td>
+                      <td className="p-1.5 border border-slate-700 text-center font-black text-xs" colSpan={2}>
+                        {currentBulletinRankData.totalWeightedPoints.toFixed(2)}
+                      </td>
+                      <td colSpan={2} className="p-1.5 border border-slate-700"></td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
 
-              {/* Ligne de Statistiques de la Classe */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-900 font-bold">
-                <div>Moyenne Classe : <span className="font-black text-slate-900">{classRankSummary.classAverage.toFixed(2)} / 20</span></div>
-                <div>Plus Forte Moy. : <span className="font-black text-emerald-700">{classRankSummary.highestAverage.toFixed(2)} / 20</span></div>
-                <div>Plus Faible Moy. : <span className="font-black text-red-700">{classRankSummary.lowestAverage.toFixed(2)} / 20</span></div>
-                <div>Taux de Réussite : <span className="font-black text-purple-700">{classRankSummary.passRate.toFixed(1)}%</span></div>
+              {/* 5. BANDEAU DES STATISTIQUES OFFICIELLES (5 cases horizontales quadrillées) */}
+              <div className="grid grid-cols-5 border border-slate-800 text-[10px] sm:text-[10.5px] font-bold text-center divide-x divide-slate-800 bg-slate-100 my-1.5">
+                <div className="p-1 leading-tight">
+                  <span className="block text-slate-700 font-extrabold text-[9px] uppercase">MOYENNE TRIMESTRIELLE</span>
+                  <span className="font-black text-slate-950 text-xs sm:text-sm">{currentBulletinRankData.overallAverage.toFixed(2)}</span>
+                </div>
+                <div className="p-1 leading-tight">
+                  <span className="block text-slate-700 font-extrabold text-[9px] uppercase">RANG TRIM</span>
+                  <span className="font-black text-slate-950 text-xs sm:text-sm">{currentBulletinRankData.rank}</span>
+                </div>
+                <div className="p-1 leading-tight">
+                  <span className="block text-slate-700 font-extrabold text-[9px] uppercase">FORTE MOYENNE</span>
+                  <span className="font-black text-emerald-800 text-xs sm:text-sm">{classRankSummary.highestAverage.toFixed(2)}</span>
+                </div>
+                <div className="p-1 leading-tight">
+                  <span className="block text-slate-700 font-extrabold text-[9px] uppercase">FAIBLE MOYENNE</span>
+                  <span className="font-black text-red-800 text-xs sm:text-sm">{classRankSummary.lowestAverage.toFixed(2)}</span>
+                </div>
+                <div className="p-1 leading-tight">
+                  <span className="block text-slate-700 font-extrabold text-[9px] uppercase">MOYENNE DE LA CLASSE</span>
+                  <span className="font-black text-blue-900 text-xs sm:text-sm">{classRankSummary.classAverage.toFixed(2)}</span>
+                </div>
               </div>
 
-              {/* Appréciation du Conseil & Signature / Cachet */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2 border-t border-slate-200 text-xs">
-                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                  <h4 className="font-bold text-blue-900 uppercase">Appréciation Générale du Conseil de Classe</h4>
-                  <p className="italic text-slate-700 leading-relaxed">
-                    "{currentBulletinRankData.generalAppreciation}"
-                  </p>
-                  <div className="pt-2 flex items-center space-x-2 text-[11px] text-slate-500">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    <span>Décision du Conseil : <strong>{currentBulletinRankData.mention}</strong></span>
+              {/* 6. PIED DE PAGE : DÉCISION DU CONSEIL DES PROFESSEURS & SIGNATURE DU DIRECTEUR */}
+              <div className="grid grid-cols-12 gap-3 my-1.5">
+                
+                {/* Cadre Gauche : Décision du Conseil des Professeurs & Appréciation */}
+                <div className="col-span-6 border border-slate-800 p-2 space-y-1.5 text-xs bg-white">
+                  <div className="text-center font-black uppercase text-[10.5px] tracking-wide border-b border-slate-700 pb-1 text-slate-950">
+                    DÉCISION DU CONSEIL DES PROFESSEURS
+                  </div>
+                  
+                  {/* Table des Mentions */}
+                  <table className="w-full text-[10px] border-collapse border border-slate-700">
+                    <tbody>
+                      <tr>
+                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">FÉLICITATIONS</td>
+                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.felicitations ? 'X' : ''}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">ENCOURAGEMENTS</td>
+                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.encouragements ? 'X' : ''}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">TABLEAU D'HONNEUR</td>
+                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.tableauHonneur ? 'X' : ''}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">AVERTISSEMENT</td>
+                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.avertissement ? 'X' : ''}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">BLÂME</td>
+                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.blame ? 'X' : ''}</td>
+                      </tr>
+                      <tr>
+                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">RENVOI</td>
+                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.renvoi ? 'X' : ''}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* Appréciation du Directeur & Décision de promotion */}
+                  <div className="border-t border-slate-700 pt-1.5 space-y-1 text-[10.5px]">
+                    <div className="font-black text-slate-900 underline text-[10px] uppercase">
+                      Appréciation du Directeur
+                    </div>
+                    <div className="flex items-center">
+                      <span className="text-slate-700 font-semibold w-20">Travail....</span>
+                      <strong className="font-black text-slate-950">{previewCouncilDecision.appreciationDirecteur}</strong>
+                    </div>
+                    <div className="flex items-center">
+                      <span className="text-slate-900 font-black w-20 uppercase">DÉCISION :</span>
+                      <strong className="font-black uppercase text-blue-950 text-xs">{previewCouncilDecision.decision}</strong>
+                    </div>
                   </div>
                 </div>
 
-                <div className="text-center flex flex-col items-center justify-between p-2">
-                  <p className="font-bold text-slate-800">
-                    Fait à {currentSchool?.city || settings.city.split('-')[0].trim()}, le {new Date().toLocaleDateString('fr-FR')}
-                  </p>
-                  <p className="font-bold text-blue-900 text-xs uppercase mt-2">
-                    {activeTemplate.directorTitle || 'Le Directeur Général'}
-                  </p>
-                  
-                  {showSignatureOnDoc ? (
-                    <div className="relative mt-2">
-                      <img
-                        src={activeSignatureUrl}
-                        alt="Signature"
-                        className="h-16 opacity-90 object-contain ring-1 ring-slate-100 rounded p-1 bg-white"
-                      />
-                      <div className="absolute inset-0 border-2 border-emerald-600 rounded-full w-20 h-20 opacity-25 -rotate-12 left-1/2 -translate-x-1/2 pointer-events-none" />
+                {/* Cadre Droit : Signature et Cachet du Directeur */}
+                <div className="col-span-6 border border-slate-800 p-2 flex flex-col justify-between text-xs text-center bg-white">
+                  <div>
+                    <div className="font-black uppercase text-[10.5px] tracking-wide border-b border-slate-700 pb-1 text-slate-950">
+                      SIGNATURE ET CACHET DU DIRECTEUR
                     </div>
-                  ) : (
-                    <div className="h-16 w-36 border-2 border-dashed border-slate-300 rounded-lg mt-2 flex items-center justify-center text-[10px] text-slate-400 italic">
-                      [Emplacement Signature & Cachet]
-                    </div>
-                  )}
+                    <p className="font-bold text-slate-800 text-[10.5px] mt-1.5">
+                      {previewSchoolCity.toUpperCase()}, le {new Date().toLocaleDateString('fr-FR')}
+                    </p>
+                  </div>
+
+                  {/* Emplacement Signature & Cachet officiel */}
+                  <div className="my-1 min-h-[68px] flex items-center justify-center relative">
+                    {showSignatureOnDoc && activeSignatureUrl ? (
+                      <div className="relative">
+                        <img
+                          src={activeSignatureUrl}
+                          alt="Signature & Cachet"
+                          className="h-16 max-w-[160px] object-contain opacity-95"
+                        />
+                        <div className="absolute inset-0 border-2 border-emerald-700 rounded-full w-20 h-20 opacity-20 -rotate-12 left-1/2 -translate-x-1/2 pointer-events-none" />
+                      </div>
+                    ) : (
+                      <div className="border border-dashed border-slate-400 w-44 h-16 rounded flex items-center justify-center text-[10px] text-slate-400 italic">
+                        [Signature et Cachet Officiel]
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="border-t border-slate-400 pt-1">
+                    <p className="font-black text-slate-950 text-[11px] uppercase tracking-wide">
+                      {previewDirectorName}
+                    </p>
+                  </div>
                 </div>
+
+              </div>
+
+              {/* 7. BANDEAU HISTORIQUE DES TRIMESTRES & DISCIPLINE (ABSENCES / RETARDS) */}
+              <div className="border border-slate-800 p-1.5 text-[10px] sm:text-[10.5px] font-bold text-slate-900 bg-slate-50 space-y-1">
+                <div className="flex flex-wrap items-center justify-between px-1">
+                  <span>Moy 1er Tri : <strong className="font-black text-slate-950">{previewMoyTri1 > 0 ? previewMoyTri1.toFixed(2) : '-'}</strong></span>
+                  <span>Moy 2e Tri : <strong className="font-black text-slate-950">{previewMoyTri2 > 0 ? previewMoyTri2.toFixed(2) : '-'}</strong></span>
+                  <span>Moy Annuelle : <strong className="font-black text-blue-950 text-[11px]">{previewMoyAnnuelle > 0 ? previewMoyAnnuelle.toFixed(2) : '-'}</strong></span>
+                  <span>Rang : <strong className="font-black text-purple-950 text-[11px]">{currentBulletinRankData.rank}</strong></span>
+                </div>
+                <div className="flex items-center justify-between px-1 border-t border-slate-300 pt-1 text-[10px] text-slate-700">
+                  <span>Nbre d'absences : <strong className="text-slate-950 font-black">{previewAbsences}</strong></span>
+                  <span>Nbre de retards : <strong className="text-slate-950 font-black">{previewDelays}</strong></span>
+                </div>
+              </div>
+
+              {/* 8. MENTION LÉGALE & SIGNATURE LOGICIEL (Wexomin / TIC Solution) */}
+              <div className="text-center mt-2 space-y-0.5">
+                <p className="text-[9.5px] font-bold text-slate-800 italic">
+                  NB: Conservez précieusement ce bulletin, aucun double ne sera établi.
+                </p>
+                <p className="text-[8px] text-slate-500 font-mono tracking-tight">
+                  wexomin 1.1.7.1 Powered by TIC SOLUTION Tel (+229) 62 80 97 78 / 95 08 07 99 e-mail: ticsolution13@gmail.com
+                </p>
               </div>
 
             </div>

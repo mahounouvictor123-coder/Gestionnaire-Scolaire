@@ -124,6 +124,7 @@ function MainApp() {
   const handleStaffUnlockSuccess = (staffUser: any) => {
     if (pendingStaffLock) {
       const { schoolId, role, directView } = pendingStaffLock;
+      switchSchool(schoolId);
       unlockSchool(schoolId, '12345678');
       setCurrentUser(staffUser);
       try {
@@ -351,6 +352,7 @@ function MainApp() {
           'Secrétariat Général'
         );
 
+        switchSchool(schoolId);
         unlockSchool(schoolId, '12345678');
         const staffUser = {
           id: `usr-${roleParam.toLowerCase()}-${Date.now()}`,

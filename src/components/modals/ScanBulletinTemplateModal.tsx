@@ -80,9 +80,12 @@ export const ScanBulletinTemplateModal: React.FC<ScanBulletinTemplateModalProps>
         calculationFormula: 'PRIMARY_SIMPLE_AVERAGE',
         columns: {
           showInterroAverage: true,
+          showInterro1: true,
+          showInterro2: true,
           showDevoirMark: true,
           showCompoMark: true,
           showCoefficients: false,
+          showWeightedAverage: false,
           showSubjectRank: true,
           showTeacherAppreciation: true
         },
@@ -98,9 +101,12 @@ export const ScanBulletinTemplateModal: React.FC<ScanBulletinTemplateModalProps>
         calculationFormula: 'INTERRO_DEVOIR_COMPO',
         columns: {
           showInterroAverage: true,
+          showInterro1: true,
+          showInterro2: true,
           showDevoirMark: true,
           showCompoMark: true,
           showCoefficients: true,
+          showWeightedAverage: true,
           showSubjectRank: true,
           showTeacherAppreciation: true
         },
@@ -116,9 +122,12 @@ export const ScanBulletinTemplateModal: React.FC<ScanBulletinTemplateModalProps>
         calculationFormula: 'WEIGHTED_COEFFICIENTS',
         columns: {
           showInterroAverage: true,
+          showInterro1: true,
+          showInterro2: true,
           showDevoirMark: true,
           showCompoMark: true,
           showCoefficients: true,
+          showWeightedAverage: true,
           showSubjectRank: true,
           showTeacherAppreciation: true
         },
@@ -441,6 +450,32 @@ export const ScanBulletinTemplateModal: React.FC<ScanBulletinTemplateModalProps>
                   <label className="flex items-center space-x-2 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer">
                     <input
                       type="checkbox"
+                      checked={template.columns.showInterro1 !== false}
+                      onChange={(e) => setTemplate({
+                        ...template,
+                        columns: { ...template.columns, showInterro1: e.target.checked }
+                      })}
+                      className="rounded text-purple-600"
+                    />
+                    <span>Note Interro 1</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={template.columns.showInterro2 !== false}
+                      onChange={(e) => setTemplate({
+                        ...template,
+                        columns: { ...template.columns, showInterro2: e.target.checked }
+                      })}
+                      className="rounded text-purple-600"
+                    />
+                    <span>Note Interro 2</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
                       checked={template.columns.showInterroAverage}
                       onChange={(e) => setTemplate({
                         ...template,
@@ -488,6 +523,19 @@ export const ScanBulletinTemplateModal: React.FC<ScanBulletinTemplateModalProps>
                       className="rounded text-purple-600"
                     />
                     <span>Coefficients</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={template.columns.showWeightedAverage !== false}
+                      onChange={(e) => setTemplate({
+                        ...template,
+                        columns: { ...template.columns, showWeightedAverage: e.target.checked }
+                      })}
+                      className="rounded text-purple-600"
+                    />
+                    <span>Moyenne Coefficiée</span>
                   </label>
 
                   <label className="flex items-center space-x-2 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer">

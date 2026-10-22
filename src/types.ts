@@ -135,6 +135,7 @@ export interface Grade {
   className?: string;
   comment?: string;
   isLockedByDeadline?: boolean;
+  evaluationNumber?: number; // 1 pour Interro 1, 2 pour Interro 2
 }
 
 export interface ReportCard {
@@ -421,9 +422,12 @@ export interface BulletinTemplate {
   calculationFormula: 'WEIGHTED_COEFFICIENTS' | 'INTERRO_DEVOIR_COMPO' | 'PRIMARY_SIMPLE_AVERAGE' | 'CUSTOM';
   columns: {
     showInterroAverage: boolean;
+    showInterro1?: boolean;
+    showInterro2?: boolean;
     showDevoirMark: boolean;
     showCompoMark: boolean;
     showCoefficients: boolean;
+    showWeightedAverage?: boolean; // Moyenne Coefficiée
     showSubjectRank: boolean;
     showTeacherAppreciation: boolean;
   };

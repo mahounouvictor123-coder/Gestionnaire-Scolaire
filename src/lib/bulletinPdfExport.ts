@@ -1,7 +1,12 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Student, SchoolClass, School, SchoolSettings, BulletinTemplate } from '../types';
-import { StudentRankResult, ClassRankSummary } from './gradingUtils';
+import { 
+  StudentRankResult, 
+  ClassRankSummary,
+  groupSubjectResults,
+  getCouncilDecisionMentions
+} from './gradingUtils';
 
 export interface BulletinPdfOptions {
   studentRank: StudentRankResult;
@@ -46,194 +51,267 @@ export function addBulletinPageToPdf(
   } = options;
 
   const student = studentRank.student;
-  const schoolName = cleanText(school?.name || settings.schoolName || 'ÉTABLISSEMENT SCOLAIRE');
-  const motto = cleanText(school?.motto || settings.motto || 'Discipline - Travail - Succès');
-  const address = cleanText(school?.address || settings.address || '');
-  const phone = cleanText(school?.phone || settings.phone || '');
-  const city = cleanText(school?.city || (settings.city ? settings.city.split('-')[0].trim() : ''));
-  const academicYear = cleanText(settings.academicYear || '2025-2026');
-  const className = cleanText(schoolClass?.name || student.level || 'Classe');
-  const headerTitle = cleanText(template?.headerTitle || `BULLETIN TRIMESTRIEL DE NOTES - TRIMESTRE ${trimester}`);
+  const schoolName = cleanText((settings.schoolName && settings.schoolName !== 'GESTIONNAIRE SCOLAIRE') ? settings.schoolName : (school?.name || 'COMPLEXE SCOLAIRE LE TEMPLE DU SAVOIR'));
+  const motto = cleanText(school?.motto || settings.motto || 'SAVOIR - AGIR - ETRE - FAIRE');
+  const arrêté = cleanText(school?.officialCode || 'Arr: 417/MESFTPRIJ/DC/SGM/DESG/DEP/DPP/SGSI/SA du 05/12/2014');
+  const phone = cleanText(school?.phone || settings.phone || '+229 95 05 65 92 / 96 28 75 45');
+  const city = cleanText(school?.city || (settings.city ? settings.city.split('-')[0].trim() : 'Godomey'));
+  const academicYear = cleanText(settings.academicYear || '2023-2024');
+  const className = cleanText(schoolClass?.name || student.level || '6ème');
   const directorTitle = cleanText(template?.directorTitle || 'Le Directeur Général');
+  const directorName = cleanText(school?.directorName || settings.directorName || 'Adébayo I. BAKARY');
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 12;
+  const margin = 10;
+  const contentWidth = pageWidth - (margin * 2);
 
-  // 1. Watermark Filigrane (School name angled in light gray)
+  // 1. Watermark Filigrane (Repeated subtle WEXOMIN in background)
   doc.saveGraphicsState();
-  doc.setTextColor(242, 244, 248);
+  doc.setTextColor(242, 243, 245);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(36);
-  // Center diagonal watermark
-  const watermarkText = schoolName.length > 25 ? schoolName.substring(0, 25) + '...' : schoolName;
-  doc.text(watermarkText.toUpperCase(), pageWidth / 2, pageHeight / 2, {
-    align: 'center',
-    angle: 35
-  });
+  doc.setFontSize(28);
+  doc.text('WEXOMIN', pageWidth / 2, pageHeight / 2 - 30, { align: 'center', angle: 30 });
+  doc.text('WEXOMIN', pageWidth / 2, pageHeight / 2 + 30, { align: 'center', angle: 30 });
   doc.restoreGraphicsState();
 
-  // 2. Official Header
-  // Top border line
-  doc.setDrawColor(26, 54, 93); // Dark Navy Blue
-  doc.setLineWidth(1.5);
-  doc.line(margin, margin + 26, pageWidth - margin, margin + 26);
+  // 2. Official Header (République du Bénin & Ministère & Complexe Scolaire)
+  // Left: Circular Logo box
+  const logoBoxWidth = 32;
+  const headerCenterWidth = contentWidth - logoBoxWidth;
 
-  // School Information (Left)
-  doc.setTextColor(26, 54, 93);
+  // School crest circular representation
+  doc.setDrawColor(30, 41, 59);
+  doc.setLineWidth(0.4);
+  doc.circle(margin + 16, margin + 12, 10, 'S');
+  doc.setFontSize(5);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text(schoolName.toUpperCase(), margin, margin + 5);
+  doc.setTextColor(51, 65, 85);
+  doc.text('COMPLEXE', margin + 16, margin + 9, { align: 'center' });
+  doc.text('SCOLAIRE', margin + 16, margin + 12, { align: 'center' });
+  doc.text('SAVOIR', margin + 16, margin + 15, { align: 'center' });
 
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(8);
-  doc.setTextColor(5, 122, 85); // Emerald Green
-  doc.text(motto, margin, margin + 10);
-
+  doc.setFontSize(5.5);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(80, 90, 105);
-  const contactLine = [address, phone ? `Tél: ${phone}` : '', city].filter(Boolean).join(' • ');
-  doc.text(contactLine, margin, margin + 15);
+  doc.setTextColor(71, 85, 105);
+  doc.text(motto, margin + 16, margin + 25, { align: 'center' });
+  doc.setFontSize(5);
+  doc.text('DISCIPLINE • TRAVAIL', margin + 16, margin + 28, { align: 'center' });
 
-  // Bulletin Title & Academic Year (Right)
-  doc.setFillColor(26, 54, 93);
-  doc.roundedRect(pageWidth - margin - 72, margin + 1, 72, 8, 1.5, 1.5, 'F');
-  doc.setTextColor(255, 255, 255);
+  // Center: Header Texts
+  const headerCenterX = margin + logoBoxWidth + (headerCenterWidth / 2);
+  let curY = margin + 3;
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.text(headerTitle.toUpperCase(), pageWidth - margin - 36, margin + 6, { align: 'center' });
-
-  doc.setTextColor(26, 54, 93);
-  doc.setFontSize(8);
-  doc.text(`Année Scolaire : ${academicYear}`, pageWidth - margin, margin + 14, { align: 'right' });
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(80, 70, 160);
-  doc.text(`Trimestre ${trimester} • Classe de ${className}`, pageWidth - margin, margin + 19, { align: 'right' });
-
-  // 3. Student Identification Card Block
-  const idBoxY = margin + 29;
-  const idBoxHeight = 24;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(203, 213, 225);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(margin, idBoxY, pageWidth - (margin * 2), idBoxHeight, 2, 2, 'FD');
-
-  const colWidth = (pageWidth - (margin * 2)) / 4;
-
-  // Col 1: Student Name & Matricule
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text("NOM ET PRÉNOMS DE L'ÉLÈVE", margin + 3, idBoxY + 5);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(10);
   doc.setTextColor(15, 23, 42);
-  const fullName = `${student.lastName.toUpperCase()} ${student.firstName}`;
-  doc.text(fullName.length > 28 ? fullName.substring(0, 28) + '...' : fullName, margin + 3, idBoxY + 11);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text("Matricule : ", margin + 3, idBoxY + 17);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(26, 54, 93);
-  doc.text(student.registrationNumber || 'N/A', margin + 16, idBoxY + 17);
+  doc.text('RÉPUBLIQUE DU BÉNIN', headerCenterX, curY, { align: 'center' });
+  curY += 3;
 
-  // Col 2: Classe & Sexe / Date Naissance
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(6.5);
+  doc.setFontSize(7);
   doc.setTextColor(100, 116, 139);
-  doc.text("CLASSE & CARACTÉRISTIQUES", margin + colWidth + 3, idBoxY + 5);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(15, 23, 42);
-  doc.text(`Classe : ${className}`, margin + colWidth + 3, idBoxY + 11);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(80, 90, 105);
-  doc.text(`Sexe : ${student.gender || 'M'} | Né(e) : ${student.dateOfBirth || '-'}`, margin + colWidth + 3, idBoxY + 17);
+  doc.text('************', headerCenterX, curY, { align: 'center' });
+  curY += 3;
 
-  // Col 3: Official Class Rank
-  doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 41, 59);
+  doc.text(
+    'Ministère des Enseignements Secondaire, Technique et de la Formation Professionnelle,',
+    headerCenterX,
+    curY,
+    { align: 'center' }
+  );
+  curY += 2.5;
+  doc.text(
+    "de la Reconversion et de l'Insertion des Jeunes",
+    headerCenterX,
+    curY,
+    { align: 'center' }
+  );
+  curY += 3;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(7);
   doc.setTextColor(100, 116, 139);
-  doc.text("RANG DANS LA CLASSE", margin + (colWidth * 2) + 3, idBoxY + 5);
+  doc.text('************', headerCenterX, curY, { align: 'center' });
+  curY += 3.5;
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(109, 40, 217); // Purple
-  doc.text(`RANG : ${studentRank.rank || '-'}`, margin + (colWidth * 2) + 3, idBoxY + 12);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`sur ${classSummary?.totalStudents || 1} élève(s)`, margin + (colWidth * 2) + 3, idBoxY + 17);
+  doc.setTextColor(15, 23, 42);
+  doc.text(schoolName.toUpperCase(), headerCenterX, curY, { align: 'center' });
+  curY += 3;
 
-  // Col 4: Legal Parent / Responsable
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
-  doc.setTextColor(100, 116, 139);
-  doc.text("PARENT / TUTEUR LÉGAL", margin + (colWidth * 3) + 3, idBoxY + 5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(arrêté, headerCenterX, curY, { align: 'center' });
+  curY += 2.8;
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(15, 23, 42);
-  const parentName = student.parentName || 'Parent / Tuteur';
-  doc.text(parentName.length > 22 ? parentName.substring(0, 22) + '...' : parentName, margin + (colWidth * 3) + 3, idBoxY + 11);
+  doc.text(city, headerCenterX, curY, { align: 'center' });
+  curY += 2.8;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Tél: ${phone}`, headerCenterX, curY, { align: 'center' });
+  curY += 3;
+
+  // Header separator line
+  doc.setDrawColor(30, 41, 59);
+  doc.setLineWidth(0.4);
+  doc.line(margin, curY, margin + contentWidth, curY);
+  curY += 3.5;
+
+  // 3. Bulletin Title & Subtitle Banner
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text('BULLETIN DE NOTES', pageWidth / 2, curY, { align: 'center' });
+  curY += 3.5;
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text(
+    `ANNÉE SCOLAIRE: ${academicYear}      CLASSE: ${className}      ${trimester} ème TRIMESTRE`,
+    pageWidth / 2,
+    curY,
+    { align: 'center' }
+  );
+  curY += 3;
+
+  // 4. Student Identification Box (Left) & Nouveau / Redoublant (Right)
+  const idBoxY = curY;
+  const idBoxHeight = 16;
+  doc.setFillColor(250, 250, 252);
+  doc.setDrawColor(30, 41, 59);
+  doc.setLineWidth(0.4);
+  doc.rect(margin, idBoxY, contentWidth, idBoxHeight, 'FD');
+
+  const idLeftWidth = contentWidth * 0.65;
+  const idRightWidth = contentWidth * 0.35;
+  doc.line(margin + idLeftWidth, idBoxY, margin + idLeftWidth, idBoxY + idBoxHeight);
+
+  // Left Details: Nom, Prénoms, Matricule, Sexe
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
-  doc.setTextColor(100, 116, 139);
-  doc.text(`Tél : ${student.parentPhone || '-'}`, margin + (colWidth * 3) + 3, idBoxY + 17);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Nom :', margin + 3, idBoxY + 3.8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(student.lastName.toUpperCase(), margin + 24, idBoxY + 3.8);
 
-  // 4. Grades Table using autoTable
-  const tableStartY = idBoxY + idBoxHeight + 4;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Prénoms :', margin + 3, idBoxY + 7.6);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(student.firstName, margin + 24, idBoxY + 7.6);
 
-  const showCoeff = template?.columns?.showCoefficients !== false;
-  const showInterro = template?.columns?.showInterroAverage !== false;
-  const showDevoir = template?.columns?.showDevoirMark !== false;
-  const showCompo = template?.columns?.showCompoMark !== false;
-  const showRank = template?.columns?.showSubjectRank !== false;
-  const showAppreciation = template?.columns?.showTeacherAppreciation !== false;
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('N° Matricule :', margin + 3, idBoxY + 11.4);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(student.registrationNumber || '2361077', margin + 24, idBoxY + 11.4);
 
-  const headRow: string[] = ['DISCIPLINES / MATIÈRES'];
-  if (showCoeff) headRow.push('COEFF');
-  if (showInterro) headRow.push('INTERRO');
-  if (showDevoir) headRow.push('DEVOIR');
-  if (showCompo) headRow.push('COMPO');
-  headRow.push('MOY. /20');
-  if (showRank) headRow.push('RANG');
-  if (showAppreciation) headRow.push('APPRÉCIATION DE L\'ENSEIGNANT');
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+  doc.text('Sexe :', margin + 3, idBoxY + 14.8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(student.gender || 'M', margin + 24, idBoxY + 14.8);
 
-  const tableBody = studentRank.subjectResults.map(item => {
-    const row: string[] = [item.subject.name];
-    if (showCoeff) row.push(String(item.coefficient || 1));
-    if (showInterro) {
-      row.push(item.interroAverage !== undefined ? item.interroAverage.toFixed(2) : '-');
-    }
-    if (showDevoir) {
-      row.push(item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-');
-    }
-    if (showCompo) {
-      row.push(item.compoMark !== undefined ? item.compoMark.toFixed(2) : '-');
-    }
-    row.push(item.grades.length > 0 ? item.average.toFixed(2) : '-');
-    if (showRank) {
-      row.push(item.grades.length > 0 ? (item.subjectRank || '-') : '-');
-    }
-    if (showAppreciation) {
-      const teacherSuffix = item.teacherName ? ` (${item.teacherName})` : '';
-      row.push(item.grades.length > 0 ? `${item.appreciation}${teacherSuffix}` : '-');
-    }
-    return row;
+  // Right Details: Nouveau / Redoublant & Effectif
+  const isRedoublant = student.status === 'TRANSFERE' || (student.medicalNotes && student.medicalNotes.toLowerCase().includes('redoubl'));
+  const rightX = margin + idLeftWidth + 4;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(15, 23, 42);
+  doc.text('NOUVEAU', rightX, idBoxY + 4.5);
+  doc.rect(rightX + 30, idBoxY + 2.2, 3, 3);
+  if (!isRedoublant) {
+    doc.text('X', rightX + 30.7, idBoxY + 4.5);
+  }
+
+  doc.text('REDOUBLANT', rightX, idBoxY + 9);
+  doc.rect(rightX + 30, idBoxY + 6.7, 3, 3);
+  if (isRedoublant) {
+    doc.text('X', rightX + 30.7, idBoxY + 9);
+  }
+
+  doc.text(`EFFECTIF :  ${classSummary?.totalStudents || 14}`, rightX, idBoxY + 13.8);
+
+  // 5. Grades Table with Group Clusters (Scientifiques, Littéraires, Autres)
+  const tableStartY = idBoxY + idBoxHeight + 2;
+
+  const headRow = [
+    'MATIERES',
+    'COEF',
+    'INT 1',
+    'INT 2',
+    'Moy. INT',
+    'DEV 1',
+    'DEV 2',
+    'COMPO',
+    'MOY/20',
+    'Moy. Coef',
+    'RANG',
+    'APPRECIATIONS'
+  ];
+
+  const subjectGroups = groupSubjectResults(studentRank.subjectResults);
+  const tableBody: any[] = [];
+
+  subjectGroups.forEach(group => {
+    // Add subjects in this group
+    group.items.forEach(item => {
+      const interroAvgVal = item.interroAverage !== undefined ? item.interroAverage.toFixed(2) : (item.interro1 !== undefined ? item.interro1.toFixed(2) : '-');
+      const dev1Val = item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-';
+      const dev2Val = item.devoir2Mark !== undefined ? item.devoir2Mark.toFixed(2) : '-';
+      const compoVal = item.compoMark !== undefined ? item.compoMark.toFixed(2) : '-';
+
+      tableBody.push([
+        item.subject.name,
+        String(item.coefficient || 1),
+        item.interro1 !== undefined ? item.interro1.toFixed(2) : '-',
+        item.interro2 !== undefined ? item.interro2.toFixed(2) : '-',
+        interroAvgVal,
+        dev1Val,
+        dev2Val,
+        compoVal,
+        item.grades.length > 0 ? item.average.toFixed(2) : '-',
+        item.grades.length > 0 ? item.weightedAverage.toFixed(2) : '-',
+        item.grades.length > 0 ? (item.subjectRank || '-') : '-',
+        item.grades.length > 0 ? item.appreciation : '-'
+      ]);
+    });
+
+    // Subtotal row for group
+    tableBody.push([
+      { content: group.name, styles: { fontStyle: 'bolditalic' as const, fillColor: [241, 245, 249] } },
+      { content: String(group.totalCoeff), styles: { fontStyle: 'bold' as const, halign: 'center' as const, fillColor: [241, 245, 249] } },
+      { content: '', colSpan: 6, styles: { fillColor: [241, 245, 249] } },
+      { content: group.groupAverage > 0 ? group.groupAverage.toFixed(2) : '-', styles: { fontStyle: 'bold' as const, halign: 'center' as const, fillColor: [241, 245, 249] } },
+      { content: group.totalWeightedPoints > 0 ? group.totalWeightedPoints.toFixed(2) : '-', styles: { fontStyle: 'bold' as const, halign: 'center' as const, fillColor: [241, 245, 249] } },
+      { content: '', colSpan: 2, styles: { fillColor: [241, 245, 249] } }
+    ]);
   });
 
   // Footer Row
-  const footRow: string[] = ['TOTAL GÉNÉRAL'];
-  if (showCoeff) footRow.push(String(studentRank.totalCoefficients || 1));
-  const middleSpanCount = (showInterro ? 1 : 0) + (showDevoir ? 1 : 0) + (showCompo ? 1 : 0);
-  for (let i = 0; i < middleSpanCount; i++) {
-    footRow.push('');
-  }
-  footRow.push(`MOYENNE : ${studentRank.overallAverage > 0 ? studentRank.overallAverage.toFixed(2) : '-'} / 20`);
-  if (showRank) footRow.push(`RANG : ${studentRank.rank}`);
-  if (showAppreciation) footRow.push(`MENTION : ${studentRank.mention}`);
+  const footRow = [
+    { content: `Toutes Matières: ${studentRank.totalCoefficients}`, styles: { halign: 'left' as const, fontStyle: 'bold' as const } },
+    { content: '', colSpan: 6, styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+    { content: 'TOTAL GENERAL :', styles: { halign: 'right' as const, fontStyle: 'bold' as const } },
+    { content: studentRank.totalWeightedPoints.toFixed(2), colSpan: 2, styles: { halign: 'center' as const, fontStyle: 'bold' as const } },
+    { content: '', colSpan: 2 }
+  ];
 
   autoTable(doc, {
     startY: tableStartY,
@@ -243,120 +321,220 @@ export function addBulletinPageToPdf(
     foot: [footRow],
     theme: 'grid',
     headStyles: {
-      fillColor: [26, 54, 93],
-      textColor: [255, 255, 255],
+      fillColor: [226, 232, 240],
+      textColor: [15, 23, 42],
       fontStyle: 'bold',
-      fontSize: 7.5,
+      fontSize: 6.2,
       halign: 'center',
-      cellPadding: 2
+      cellPadding: 1.2,
+      lineColor: [30, 41, 59],
+      lineWidth: 0.25
     },
     styles: {
-      fontSize: 7.5,
-      cellPadding: 2,
-      lineColor: [203, 213, 225],
-      lineWidth: 0.3,
-      textColor: [30, 41, 59]
+      fontSize: 6.2,
+      cellPadding: 1.1,
+      lineColor: [30, 41, 59],
+      lineWidth: 0.25,
+      textColor: [15, 23, 42]
     },
     alternateRowStyles: {
-      fillColor: [248, 250, 252]
+      fillColor: [255, 255, 255]
     },
     footStyles: {
-      fillColor: [241, 245, 249],
-      textColor: [26, 54, 93],
+      fillColor: [226, 232, 240],
+      textColor: [15, 23, 42],
       fontStyle: 'bold',
-      fontSize: 8,
+      fontSize: 6.5,
       halign: 'center',
-      cellPadding: 2.5
+      cellPadding: 1.3,
+      lineColor: [30, 41, 59],
+      lineWidth: 0.25
     },
     columnStyles: {
-      0: { halign: 'left', fontStyle: 'bold', cellWidth: 'auto' }
+      0: { halign: 'left', cellWidth: 40 },
+      1: { halign: 'center', cellWidth: 10 },
+      2: { halign: 'center', cellWidth: 11 },
+      3: { halign: 'center', cellWidth: 11 },
+      4: { halign: 'center', cellWidth: 12 },
+      5: { halign: 'center', cellWidth: 11 },
+      6: { halign: 'center', cellWidth: 11 },
+      7: { halign: 'center', cellWidth: 12 },
+      8: { halign: 'center', cellWidth: 13, fontStyle: 'bold' },
+      9: { halign: 'center', cellWidth: 14, fontStyle: 'bold' },
+      10: { halign: 'center', cellWidth: 11 },
+      11: { halign: 'left', cellWidth: 'auto' }
     }
   });
 
-  const finalY = (doc as any).lastAutoTable.finalY + 3;
+  const finalY = (doc as any).lastAutoTable.finalY + 1.5;
 
-  // 5. Class Statistics Summary Strip
-  if (classSummary) {
-    const statBoxHeight = 8;
-    doc.setFillColor(239, 246, 255);
-    doc.setDrawColor(191, 219, 254);
-    doc.roundedRect(margin, finalY, pageWidth - (margin * 2), statBoxHeight, 1.5, 1.5, 'FD');
+  // 6. Class Statistics 5-Cell Strip
+  const statBoxHeight = 7.5;
+  const statColWidth = contentWidth / 5;
 
-    const statCol = (pageWidth - (margin * 2)) / 4;
-    doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(30, 58, 138);
+  doc.setDrawColor(30, 41, 59);
+  doc.setLineWidth(0.3);
+  doc.setFillColor(241, 245, 249);
+  doc.rect(margin, finalY, contentWidth, statBoxHeight, 'FD');
 
-    doc.text(`Moyenne Classe : ${classSummary.classAverage.toFixed(2)} / 20`, margin + 4, finalY + 5.5);
-    doc.text(`Plus Forte Moyenne : ${classSummary.highestAverage.toFixed(2)} / 20`, margin + statCol + 4, finalY + 5.5);
-    doc.text(`Plus Faible Moyenne : ${classSummary.lowestAverage.toFixed(2)} / 20`, margin + (statCol * 2) + 4, finalY + 5.5);
-    doc.text(`Taux de Réussite : ${classSummary.passRate.toFixed(1)}% (${classSummary.passedCount} admis)`, margin + (statCol * 3) + 4, finalY + 5.5);
+  for (let i = 1; i < 5; i++) {
+    doc.line(margin + (statColWidth * i), finalY, margin + (statColWidth * i), finalY + statBoxHeight);
   }
 
-  // 6. Council Appreciation & Director Signature
-  const footerY = finalY + (classSummary ? 11 : 3);
-  const footerBoxWidth = (pageWidth - (margin * 2) - 8) / 2;
-
-  // Left Box: Conseil de classe
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(margin, footerY, footerBoxWidth, 24, 2, 2, 'FD');
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(26, 54, 93);
-  doc.text("APPRÉCIATION DU CONSEIL DE CLASSE", margin + 3, footerY + 5);
-
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(7.5);
-  doc.setTextColor(51, 65, 85);
-  const appreciationText = studentRank.generalAppreciation || "Travail régulier, poursuivez vos efforts.";
-  const splitAppreciation = doc.splitTextToSize(`"${appreciationText}"`, footerBoxWidth - 6);
-  doc.text(splitAppreciation, margin + 3, footerY + 11);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7.5);
-  doc.setTextColor(5, 122, 85);
-  doc.text(`DÉCISION : ${studentRank.mention}`, margin + 3, footerY + 20);
-
-  // Right Box: Date & Signature
-  const rightBoxX = margin + footerBoxWidth + 8;
+  doc.setFontSize(5.5);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  doc.setTextColor(51, 65, 85);
-  const dateFormatted = new Date().toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
+  doc.setTextColor(71, 85, 105);
+
+  const statItems = [
+    { label: 'MOYENNE TRIMESTRIELLE', value: studentRank.overallAverage.toFixed(2) },
+    { label: 'RANG TRIM', value: studentRank.rank },
+    { label: 'FORTE MOYENNE', value: (classSummary?.highestAverage || 0).toFixed(2) },
+    { label: 'FAIBLE MOYENNE', value: (classSummary?.lowestAverage || 0).toFixed(2) },
+    { label: 'MOYENNE DE LA CLASSE', value: (classSummary?.classAverage || 0).toFixed(2) }
+  ];
+
+  statItems.forEach((st, idx) => {
+    const boxCenterX = margin + (statColWidth * idx) + (statColWidth / 2);
+    doc.text(st.label, boxCenterX, finalY + 2.8, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(st.value, boxCenterX, finalY + 6.3, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(5.5);
+    doc.setTextColor(71, 85, 105);
   });
-  doc.text(`Fait à ${city || 'la Direction'}, le ${dateFormatted}`, rightBoxX + (footerBoxWidth / 2), footerY + 5, { align: 'center' });
+
+  // 7. Decision du Conseil des Professeurs (Left) & Signature du Directeur (Right)
+  const bottomY = finalY + statBoxHeight + 2;
+  const bottomBoxWidth = (contentWidth - 3) / 2;
+  const bottomBoxHeight = 35;
+
+  const council = getCouncilDecisionMentions(
+    studentRank.overallAverage,
+    trimester,
+    className,
+    student.status === 'EXCLU'
+  );
+
+  // Left Box: Conseil
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(30, 41, 59);
+  doc.setLineWidth(0.3);
+  doc.rect(margin, bottomY, bottomBoxWidth, bottomBoxHeight, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.setTextColor(26, 54, 93);
-  doc.text(directorTitle.toUpperCase(), rightBoxX + (footerBoxWidth / 2), footerY + 11, { align: 'center' });
+  doc.setFontSize(6.8);
+  doc.setTextColor(15, 23, 42);
+  doc.text('DECISION DU CONSEIL DES PROFESSEURS', margin + (bottomBoxWidth / 2), bottomY + 3.5, { align: 'center' });
+  doc.line(margin, bottomY + 5, margin + bottomBoxWidth, bottomY + 5);
 
-  // Signature & Cachet stamp box
-  doc.setDrawColor(203, 213, 225);
-  doc.setLineDashPattern([2, 2], 0);
-  doc.roundedRect(rightBoxX + 10, footerY + 14, footerBoxWidth - 20, 10, 1.5, 1.5, 'D');
-  doc.setLineDashPattern([], 0);
+  // Mentions sub-table
+  const mentionRowHeight = 2.8;
+  const mentionsList = [
+    { label: 'FELICITATIONS', checked: council.felicitations },
+    { label: 'ENCOURAGEMENTS', checked: council.encouragements },
+    { label: "TABLEAU D'HONNEUR", checked: council.tableauHonneur },
+    { label: 'AVERTISSEMENT', checked: council.avertissement },
+    { label: 'BLAME', checked: council.blame },
+    { label: 'RENVOI', checked: council.renvoi }
+  ];
 
-  doc.setFont('helvetica', 'italic');
+  let mY = bottomY + 5;
+  mentionsList.forEach(m => {
+    doc.rect(margin + 2, mY, bottomBoxWidth - 4, mentionRowHeight);
+    doc.line(margin + bottomBoxWidth - 12, mY, margin + bottomBoxWidth - 12, mY + mentionRowHeight);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.8);
+    doc.text(m.label, margin + 4, mY + 2.1);
+    if (m.checked) {
+      doc.text('X', margin + bottomBoxWidth - 7, mY + 2.1, { align: 'center' });
+    }
+    mY += mentionRowHeight;
+  });
+
+  // Appreciation du Directeur & Décision
+  const appY = mY + 2.5;
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.5);
-  doc.setTextColor(148, 163, 184);
-  doc.text('[ Signature & Cachet Officiel ]', rightBoxX + (footerBoxWidth / 2), footerY + 20, { align: 'center' });
+  doc.text('Appréciation du Directeur', margin + 3, appY);
 
-  // Bottom Notice
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.2);
+  doc.text('Travail....', margin + 3, appY + 3.5);
+  doc.setFont('helvetica', 'bold');
+  doc.text(council.appreciationDirecteur, margin + 20, appY + 3.5);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('DECISION :', margin + 3, appY + 7);
+  doc.setTextColor(26, 54, 93);
+  doc.text(council.decision.toUpperCase(), margin + 20, appY + 7);
+  doc.setTextColor(15, 23, 42);
+
+  // Right Box: Signature et Cachet du Directeur
+  const signatureBoxX = margin + bottomBoxWidth + 3;
+  doc.setFillColor(255, 255, 255);
+  doc.rect(signatureBoxX, bottomY, bottomBoxWidth, bottomBoxHeight, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.8);
+  doc.text('SIGNATURE ET CACHET DU DIRECTEUR', signatureBoxX + (bottomBoxWidth / 2), bottomY + 3.5, { align: 'center' });
+  doc.line(signatureBoxX, bottomY + 5, signatureBoxX + bottomBoxWidth, bottomY + 5);
+
+  const dateFormatted = new Date().toLocaleDateString('fr-FR');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6.5);
+  doc.text(`${city.toUpperCase()}, le ${dateFormatted}`, signatureBoxX + (bottomBoxWidth / 2), bottomY + 9, { align: 'center' });
+
+  // Stamp Box / Signature area
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineDashPattern([1.5, 1.5], 0);
+  doc.rect(signatureBoxX + (bottomBoxWidth / 2) - 20, bottomY + 12, 40, 13);
+  doc.setLineDashPattern([], 0);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(5.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text('[ Signature & Cachet Officiel ]', signatureBoxX + (bottomBoxWidth / 2), bottomY + 19, { align: 'center' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(directorName, signatureBoxX + (bottomBoxWidth / 2), bottomY + 31, { align: 'center' });
+
+  // 8. Trimester History & Absences Strip
+  const historyY = bottomY + bottomBoxHeight + 1.5;
+  const historyHeight = 7;
+  doc.setFillColor(250, 250, 252);
+  doc.setDrawColor(30, 41, 59);
+  doc.rect(margin, historyY, contentWidth, historyHeight, 'FD');
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6);
-  doc.setTextColor(148, 163, 184);
-  doc.text(
-    `Document officiel généré par le Système de Gestion Scolaire • Tous droits réservés • Édition du ${new Date().toLocaleDateString('fr-FR')}`,
-    pageWidth / 2,
-    pageHeight - 6,
-    { align: 'center' }
-  );
+  doc.setTextColor(51, 65, 85);
+
+  const moyTri1Text = trimester === 1 ? studentRank.overallAverage.toFixed(2) : '-';
+  const moyTri2Text = trimester === 2 ? studentRank.overallAverage.toFixed(2) : '-';
+  const moyAnnuelleText = studentRank.overallAverage.toFixed(2);
+
+  doc.text(`Moy 1er Tri: ${moyTri1Text}`, margin + 5, historyY + 2.8);
+  doc.text(`Moy 2e Tri: ${moyTri2Text}`, margin + 45, historyY + 2.8);
+  doc.text(`Moy Annuelle: ${moyAnnuelleText}`, margin + 85, historyY + 2.8);
+  doc.text(`Rang: ${studentRank.rank}`, margin + 130, historyY + 2.8);
+
+  doc.line(margin, historyY + 3.8, margin + contentWidth, historyY + 3.8);
+  doc.text("Nbre d'absences : 0", margin + 5, historyY + 6);
+  doc.text("Nbre de retards : 0", margin + 85, historyY + 6);
+
+  // 9. Legal Notice & Software Credits
+  doc.setFont('helvetica', 'bolditalic');
+  doc.setFontSize(6);
+  doc.setTextColor(51, 65, 85);
+  doc.text('NB: Conservez précieusement ce bulletin, aucun double ne sera établi.', pageWidth / 2, pageHeight - 7, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5);
+  doc.setTextColor(100, 116, 139);
+  doc.text('wexomin 1.1.7.1 Powered by TIC SOLUTION Tel (+229) 62 80 97 78 / 95 08 07 99 e-mail: ticsolution13@gmail.com', pageWidth / 2, pageHeight - 4, { align: 'center' });
 }
 
 /**

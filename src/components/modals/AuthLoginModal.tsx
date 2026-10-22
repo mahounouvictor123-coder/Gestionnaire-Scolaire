@@ -194,35 +194,21 @@ export const AuthLoginModal: React.FC<AuthLoginModalProps> = ({
                     <Building2 className="h-3.5 w-3.5 text-emerald-600" />
                     <span>Établissement Scolaire</span>
                   </label>
-                  {localStorage.getItem('GESTIONNAIRE_PROMOTER_AUTH') === 'true' ? (
-                    <select
-                      value={selectedSchoolId}
-                      onChange={e => setSelectedSchoolId(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-extrabold text-xs focus:ring-2 focus:ring-emerald-500"
-                    >
-                      {schools.map(sch => (
-                        <option key={sch.id} value={sch.id}>
-                          🏫 {sch.name} ({sch.city || 'Bénin'})
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center space-x-3">
-                      <img
-                        src={currentSchool?.logoUrl}
-                        alt={currentSchool?.name}
-                        className="h-7 w-7 rounded-lg object-cover bg-white shrink-0 border border-slate-200 dark:border-slate-700"
-                      />
-                      <div className="min-w-0">
-                        <p className="text-xs font-black text-slate-900 dark:text-white truncate">
-                          {currentSchool?.name}
-                        </p>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                          {currentSchool?.city} • {currentSchool?.officialCode || 'Bénin'}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                  <select
+                    value={selectedSchoolId}
+                    onChange={e => {
+                      const newSchoolId = e.target.value;
+                      setSelectedSchoolId(newSchoolId);
+                      switchSchool(newSchoolId);
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-extrabold text-xs focus:ring-2 focus:ring-emerald-500"
+                  >
+                    {schools.map(sch => (
+                      <option key={sch.id} value={sch.id}>
+                        🏫 {sch.name} ({sch.city || 'Bénin'})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Role Selection */}
