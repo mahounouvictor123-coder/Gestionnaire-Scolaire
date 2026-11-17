@@ -127,13 +127,7 @@ export function calculateSubjectAverage(
       return (a.date || '').localeCompare(b.date || '');
     });
 
-  const int1Grade = interros.find(g => g.evaluationNumber === 1) ||
-    interros.find(g => (g.comment || '').toLowerCase().includes('interro 1') || (g.comment || '').toLowerCase().includes('int 1') || (g.comment || '').toLowerCase().includes('interro n°1')) ||
-    interros[0];
-
-  const int2Grade = interros.find(g => g.evaluationNumber === 2) ||
-    interros.find(g => (g.comment || '').toLowerCase().includes('interro 2') || (g.comment || '').toLowerCase().includes('int 2') || (g.comment || '').toLowerCase().includes('interro n°2')) ||
-    interros.find(g => g !== int1Grade);
+  const { int1: int1Grade, int2: int2Grade } = resolveInterroSlots(interros);
 
   const interro1Mark = int1Grade ? toScale20(int1Grade) : undefined;
   const interro2Mark = int2Grade ? toScale20(int2Grade) : undefined;
@@ -620,5 +614,170 @@ export function mergeCouncilDecision(
     ...override
   };
 }
+
+function resolveInterroSlots(interros: Grade[]): { int1?: Grade; int2?: Grade } {
+  const isMarkedInt1 = (g: Grade) => {
+    const c = (g.comment || '').toLowerCase();
+    return g.evaluationNumber === 1 || c.includes('interro 1') || c.includes('int 1') || c.includes('interro n°1');
+  };
+  const isMarkedInt2 = (g: Grade) => {
+    const c = (g.comment || '').toLowerCase();
+    return g.evaluationNumber === 2 || c.includes('interro 2') || c.includes('int 2') || c.includes('interro n°2');
+  };
+
+  const explicitInt1 = interros.find(g => g.evaluationNumber === 1) || interros.find(isMarkedInt1);
+  const explicitInt2 = interros.find(g => g.evaluationNumber === 2) || interros.find(g => isMarkedInt2(g) && g !== explicitInt1);
+
+  const int1 = explicitInt1 || interros.find(g => g !== explicitInt2 && !isMarkedInt2(g));
+  const int2 = explicitInt2 || interros.find(g => g !== int1 && !isMarkedInt1(g));
+
+  return { int1, int2 };
+}
+
+export type BulletinGradeSlot = 'INT1' | 'INT2' | 'DEVOIR' | 'COMPO';
+
+/**
+ * Met à jour, ajoute ou supprime une note directement depuis une cellule du bulletin
+ * (Int 1, Int 2, DEVOIR, COMPO) en cohérence exacte avec calculateSubjectAverage.
+ */
+export function applyInlineBulletinGrade(params: {
+  slot: BulletinGradeSlot;
+  newMark: number | null;
+  student: Student;
+  subject: Subject;
+  subjectGrades: Grade[];
+  classId: string;
+  className: string;
+  trimester: 1 | 2 | 3;
+  addGrade: (grd: Omit<Grade, 'id'>) => void;
+  updateGrade: (id: string, grd: Partial<Grade>) => void;
+  deleteGrade: (id: string) => void;
+}) {
+  const {
+    slot,
+    newMark,
+    student,
+    subject,
+    subjectGrades,
+    classId,
+    className,
+    trimester,
+    addGrade,
+    updateGrade,
+    deleteGrade
+  } = params;
+
+  const isInterro = (t: string) => {
+    const u = (t || '').toUpperCase().trim();
+    return u === 'INTERRO' || u === 'TP' || u.startsWith('INTERRO') || u.startsWith('TEST') || u.startsWith('EVAL') || u.startsWith('INT');
+  };
+  const isDevoir = (t: string) => {
+    const u = (t || '').toUpperCase().trim();
+    return u === 'DEVOIR' || u.startsWith('DEVOIR') || u === 'DS' || u.startsWith('DS');
+  };
+  const isCompo = (t: string) => {
+    const u = (t || '').toUpperCase().trim();
+    return u === 'COMPOSITION' || u.startsWith('COMPO') || u === 'EXAMEN' || u.startsWith('EXAM');
+  };
+
+  const today = new Date().toISOString().split('T')[0];
+
+  if (slot === 'INT1' || slot === 'INT2') {
+    const interros = subjectGrades
+      .filter(g => isInterro(g.examType))
+      .sort((a, b) => {
+        if (a.evaluationNumber && b.evaluationNumber) return a.evaluationNumber - b.evaluationNumber;
+        if (a.evaluationNumber === 1) return -1;
+        if (b.evaluationNumber === 1) return 1;
+        return (a.date || '').localeCompare(b.date || '');
+      });
+
+    const { int1, int2 } = resolveInterroSlots(interros);
+
+    const target = slot === 'INT1' ? int1 : int2;
+    const evalNum = slot === 'INT1' ? 1 : 2;
+
+    if (newMark === null) {
+      if (target) deleteGrade(target.id);
+      return;
+    }
+
+    if (target) {
+      updateGrade(target.id, { mark: newMark, maxMark: 20, evaluationNumber: evalNum });
+    } else {
+      addGrade({
+        studentId: student.id,
+        subjectId: subject.id,
+        subjectName: subject.name,
+        classId,
+        className,
+        trimester,
+        examType: 'INTERRO',
+        evaluationNumber: evalNum,
+        mark: newMark,
+        maxMark: 20,
+        date: today,
+        coefficient: subject.coefficient || 1,
+        comment: `[Interro ${evalNum}]`
+      });
+    }
+    return;
+  }
+
+  if (slot === 'DEVOIR') {
+    const devoirs = subjectGrades.filter(g => isDevoir(g.examType));
+    if (newMark === null) {
+      devoirs.forEach(d => deleteGrade(d.id));
+      return;
+    }
+    if (devoirs.length > 0) {
+      updateGrade(devoirs[0].id, { mark: newMark, maxMark: 20 });
+      devoirs.slice(1).forEach(extra => deleteGrade(extra.id));
+    } else {
+      addGrade({
+        studentId: student.id,
+        subjectId: subject.id,
+        subjectName: subject.name,
+        classId,
+        className,
+        trimester,
+        examType: 'DEVOIR',
+        mark: newMark,
+        maxMark: 20,
+        date: today,
+        coefficient: subject.coefficient || 1,
+        comment: '[Devoir]'
+      });
+    }
+    return;
+  }
+
+  // COMPO
+  const compos = subjectGrades.filter(g => isCompo(g.examType));
+  if (newMark === null) {
+    compos.forEach(c => deleteGrade(c.id));
+    return;
+  }
+  if (compos.length > 0) {
+    updateGrade(compos[0].id, { mark: newMark, maxMark: 20 });
+    compos.slice(1).forEach(extra => deleteGrade(extra.id));
+  } else {
+    addGrade({
+      studentId: student.id,
+      subjectId: subject.id,
+      subjectName: subject.name,
+      classId,
+      className,
+      trimester,
+      examType: 'COMPOSITION',
+      mark: newMark,
+      maxMark: 20,
+      date: today,
+      coefficient: subject.coefficient || 1,
+      comment: '[Composition]'
+    });
+  }
+}
+
 
 

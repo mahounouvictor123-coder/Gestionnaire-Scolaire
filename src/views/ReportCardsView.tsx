@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../lib/store';
-import { Student, Subject, CouncilDecisionData } from '../types';
+import { Student, Subject, Grade, CouncilDecisionData } from '../types';
 import { isPrimaryClass, isSubjectForClass, getClassSection, getCleanStudentNames, getStudentRepeaterStatus } from '../lib/schoolUtils';
 import { PrintBulletinModal } from '../components/modals/PrintBulletinModal';
 import { ScanBulletinTemplateModal } from '../components/modals/ScanBulletinTemplateModal';
 import { SchoolLogoImportModal } from '../components/modals/SchoolLogoImportModal';
 import { InsertBulletinGradesModal } from '../components/modals/InsertBulletinGradesModal';
 import { InlineCoeffInput } from '../components/InlineCoeffInput';
+import { InlineGradeInput } from '../components/InlineGradeInput';
 import { downloadSingleBulletinPdf, downloadClassBulletinsPdf } from '../lib/bulletinPdfExport';
 import { 
   calculateClassRanks, 
@@ -14,7 +15,9 @@ import {
   groupSubjectResults,
   getCouncilDecisionMentions,
   mergeCouncilDecision,
-  getNextClassName
+  getNextClassName,
+  applyInlineBulletinGrade,
+  BulletinGradeSlot
 } from '../lib/gradingUtils';
 import {
   FileCheck,
@@ -61,6 +64,9 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     classes,
     settings,
     grades,
+    addGrade,
+    updateGrade,
+    deleteGrade,
     subjects,
     addSubject,
     updateSubject,
@@ -159,6 +165,28 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     setSubjectNotice(`Matière "${newSubjectName.trim()}" ajoutée avec succès au bulletin !`);
     setNewSubjectName('');
     setTimeout(() => setSubjectNotice(null), 3000);
+  };
+
+  const handleInlineGradeChange = (
+    subject: Subject,
+    subjectGrades: Grade[],
+    slot: BulletinGradeSlot,
+    newMark: number | null
+  ) => {
+    if (activeStudentForBulletin.id === 'specimen-student') return;
+    applyInlineBulletinGrade({
+      slot,
+      newMark,
+      student: activeStudentForBulletin,
+      subject,
+      subjectGrades,
+      classId: selectedClass?.id || activeStudentForBulletin.classId || '',
+      className: selectedClass?.name || '',
+      trimester: selectedTrimester,
+      addGrade,
+      updateGrade,
+      deleteGrade,
+    });
   };
 
   // Archives Tab Filter State
@@ -1050,10 +1078,10 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                     <tr className="bg-slate-200 text-slate-950 font-black uppercase tracking-tight text-center border-b border-slate-800">
                       <th className="p-1 border border-slate-700 text-left w-36">MATIERES</th>
                       <th className="p-1 border border-slate-700 w-10">COEF</th>
-                      <th className="p-1 border border-slate-700 w-11" title="Note d'interrogation 1">Int 1</th>
-                      <th className="p-1 border border-slate-700 w-11" title="Note d'interrogation 2">Int 2</th>
+                      <th className="p-1 border border-slate-700 w-12" title="Note d'interrogation 1">Int 1</th>
+                      <th className="p-1 border border-slate-700 w-12" title="Note d'interrogation 2">Int 2</th>
                       <th className="p-1 border border-slate-700 w-12" title="Moyenne des interrogations">Moy. INT</th>
-                      <th className="p-1 border border-slate-700 w-11">DEVOIR</th>
+                      <th className="p-1 border border-slate-700 w-12">DEVOIR</th>
                       <th className="p-1 border border-slate-700 w-12">COMPO</th>
                       <th className="p-1 border border-slate-700 w-14 font-black">MOY/20</th>
                       <th className="p-1 border border-slate-700 w-14 font-black bg-slate-300">Moy. Coef</th>
@@ -1067,8 +1095,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                         <React.Fragment key={gIdx}>
                           {group.items.map((item, idx) => {
                             const interroAvgVal = item.interroAverage !== undefined ? item.interroAverage.toFixed(2) : (item.interro1 !== undefined ? item.interro1.toFixed(2) : '-');
-                            const devVal = item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-';
-                            const compoVal = item.compoMark !== undefined ? item.compoMark.toFixed(2) : '-';
+                            const isSpecimen = activeStudentForBulletin.id === 'specimen-student';
+                            const disabledTip = 'Sélectionnez un élève réel dans la liste pour saisir ses notes';
 
                             return (
                               <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
@@ -1102,19 +1130,39 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                                   />
                                 </td>
                                 <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                  {item.interro1 !== undefined ? item.interro1.toFixed(2) : '-'}
+                                  <InlineGradeInput
+                                    value={item.interro1}
+                                    disabled={isSpecimen}
+                                    title={isSpecimen ? disabledTip : `Note Int 1 en ${item.subject.name} (/20)`}
+                                    onSave={(mark) => handleInlineGradeChange(item.subject, item.grades, 'INT1', mark)}
+                                  />
                                 </td>
                                 <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                  {item.interro2 !== undefined ? item.interro2.toFixed(2) : '-'}
+                                  <InlineGradeInput
+                                    value={item.interro2}
+                                    disabled={isSpecimen}
+                                    title={isSpecimen ? disabledTip : `Note Int 2 en ${item.subject.name} (/20)`}
+                                    onSave={(mark) => handleInlineGradeChange(item.subject, item.grades, 'INT2', mark)}
+                                  />
                                 </td>
                                 <td className="p-1 border border-slate-700 text-center font-bold text-slate-900">
                                   {interroAvgVal}
                                 </td>
                                 <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                  {devVal}
+                                  <InlineGradeInput
+                                    value={item.devoirMark}
+                                    disabled={isSpecimen}
+                                    title={isSpecimen ? disabledTip : `Note Devoir en ${item.subject.name} (/20)`}
+                                    onSave={(mark) => handleInlineGradeChange(item.subject, item.grades, 'DEVOIR', mark)}
+                                  />
                                 </td>
                                 <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                  {compoVal}
+                                  <InlineGradeInput
+                                    value={item.compoMark}
+                                    disabled={isSpecimen}
+                                    title={isSpecimen ? disabledTip : `Note Composition en ${item.subject.name} (/20)`}
+                                    onSave={(mark) => handleInlineGradeChange(item.subject, item.grades, 'COMPO', mark)}
+                                  />
                                 </td>
                                 <td className="p-1 border border-slate-700 text-center font-black text-slate-950 bg-slate-100/50">
                                   {item.grades.length > 0 ? item.average.toFixed(2) : '-'}

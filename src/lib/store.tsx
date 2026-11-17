@@ -3118,15 +3118,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Grade actions
+  const matchesGradeSlot = (ex: Grade, target: Omit<Grade, 'id'>) => {
+    if (ex.studentId !== target.studentId) return false;
+    const sameSubject =
+      ex.subjectId === target.subjectId ||
+      Boolean(target.subjectName && ex.subjectName === target.subjectName);
+    if (!sameSubject) return false;
+    if (Number(ex.trimester) !== Number(target.trimester)) return false;
+    if (ex.examType !== target.examType) return false;
+    if (target.evaluationNumber !== undefined || ex.evaluationNumber !== undefined) {
+      return (ex.evaluationNumber ?? 1) === (target.evaluationNumber ?? 1);
+    }
+    return true;
+  };
+
   const addGrade = (grd: Omit<Grade, 'id'>) => {
     const nowIso = new Date().toISOString();
     setGrades(prev => {
-      const existingIdx = prev.findIndex(ex => 
-        ex.studentId === grd.studentId && 
-        (ex.subjectId === grd.subjectId || (grd.subjectName && ex.subjectName === grd.subjectName)) && 
-        Number(ex.trimester) === Number(grd.trimester) && 
-        ex.examType === grd.examType
-      );
+      const existingIdx = prev.findIndex(ex => matchesGradeSlot(ex, grd));
       let updated: Grade[];
       if (existingIdx !== -1) {
         updated = [...prev];
@@ -3153,12 +3162,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setGrades(prev => {
       let updated = [...prev];
       grds.forEach((g, idx) => {
-        const existingIdx = updated.findIndex(ex => 
-          ex.studentId === g.studentId && 
-          (ex.subjectId === g.subjectId || (g.subjectName && ex.subjectName === g.subjectName)) && 
-          Number(ex.trimester) === Number(g.trimester) && 
-          ex.examType === g.examType
-        );
+        const existingIdx = updated.findIndex(ex => matchesGradeSlot(ex, g));
         if (existingIdx !== -1) {
           updated[existingIdx] = {
             ...updated[existingIdx],

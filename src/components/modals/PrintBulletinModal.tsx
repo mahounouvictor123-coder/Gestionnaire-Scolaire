@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { useApp } from '../../lib/store';
-import { Student, SchoolClass, Subject, CouncilDecisionData } from '../../types';
+import { Student, SchoolClass, Subject, Grade, CouncilDecisionData } from '../../types';
 import { 
   calculateClassRanks, 
   defaultBulletinTemplate,
@@ -8,12 +8,15 @@ import {
   getCouncilDecisionMentions,
   mergeCouncilDecision,
   getNextClassName,
+  applyInlineBulletinGrade,
+  BulletinGradeSlot,
   SubjectGroup
 } from '../../lib/gradingUtils';
 import { getCleanStudentNames, getStudentRepeaterStatus } from '../../lib/schoolUtils';
 import { SchoolLogoImportModal } from './SchoolLogoImportModal';
 import { InsertBulletinGradesModal } from './InsertBulletinGradesModal';
 import { InlineCoeffInput } from '../InlineCoeffInput';
+import { InlineGradeInput } from '../InlineGradeInput';
 import { downloadSingleBulletinPdf } from '../../lib/bulletinPdfExport';
 import { 
   X, 
@@ -65,7 +68,10 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
     settings, 
     updateSettings, 
     subjects, 
-    grades, 
+    grades,
+    addGrade,
+    updateGrade,
+    deleteGrade,
     students,
     attendance,
     currentSchool, 
@@ -85,6 +91,28 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
   // Saisie et modification des notes directement depuis ce bulletin
   const [isInsertGradesOpen, setIsInsertGradesOpen] = useState(false);
   const [targetSubjectForGrades, setTargetSubjectForGrades] = useState<Subject | null>(null);
+
+  const handleInlineGradeChange = (
+    subject: Subject,
+    subjectGrades: Grade[],
+    slot: BulletinGradeSlot,
+    newMark: number | null
+  ) => {
+    if (student.id === 'specimen-student') return;
+    applyInlineBulletinGrade({
+      slot,
+      newMark,
+      student,
+      subject,
+      subjectGrades,
+      classId: classObj.id || student.classId || '',
+      className: classObj.name || '',
+      trimester: (Number(trimester) === 2 ? 2 : Number(trimester) === 3 ? 3 : 1) as 1 | 2 | 3,
+      addGrade,
+      updateGrade,
+      deleteGrade,
+    });
+  };
 
   // Gestion des matières (Modifier ou Supprimer depuis le bulletin)
   const [showSubjectManagerModal, setShowSubjectManagerModal] = useState(false);
@@ -624,10 +652,10 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                   <tr className="bg-slate-200 text-slate-950 font-black uppercase tracking-tight text-center border-b border-slate-800">
                     <th className="p-1 border border-slate-700 text-left w-36">MATIERES</th>
                     <th className="p-1 border border-slate-700 w-10">COEF</th>
-                    <th className="p-1 border border-slate-700 w-11" title="Note d'interrogation 1">Int 1</th>
-                    <th className="p-1 border border-slate-700 w-11" title="Note d'interrogation 2">Int 2</th>
+                    <th className="p-1 border border-slate-700 w-12" title="Note d'interrogation 1">Int 1</th>
+                    <th className="p-1 border border-slate-700 w-12" title="Note d'interrogation 2">Int 2</th>
                     <th className="p-1 border border-slate-700 w-12" title="Moyenne des interrogations">Moy. INT</th>
-                    <th className="p-1 border border-slate-700 w-11">DEVOIR</th>
+                    <th className="p-1 border border-slate-700 w-12">DEVOIR</th>
                     <th className="p-1 border border-slate-700 w-12">COMPO</th>
                     <th className="p-1 border border-slate-700 w-14 font-black">MOY/20</th>
                     <th className="p-1 border border-slate-700 w-14 font-black bg-slate-300">Moy. Coef</th>
@@ -641,8 +669,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                       <React.Fragment key={gIdx}>
                         {group.items.map((item, idx) => {
                           const interroAvgVal = item.interroAverage !== undefined ? item.interroAverage.toFixed(2) : (item.interro1 !== undefined ? item.interro1.toFixed(2) : '-');
-                          const devVal = item.devoirMark !== undefined ? item.devoirMark.toFixed(2) : '-';
-                          const compoVal = item.compoMark !== undefined ? item.compoMark.toFixed(2) : '-';
+                          const isSpecimen = student.id === 'specimen-student';
 
                           return (
                             <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
@@ -676,19 +703,39 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                                 />
                               </td>
                               <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                {item.interro1 !== undefined ? item.interro1.toFixed(2) : '-'}
+                                <InlineGradeInput
+                                  value={item.interro1}
+                                  disabled={isSpecimen}
+                                  title={`Note Int 1 en ${item.subject.name} (/20)`}
+                                  onSave={(mark) => handleInlineGradeChange(item.subject, item.grades, 'INT1', mark)}
+                                />
                               </td>
                               <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                {item.interro2 !== undefined ? item.interro2.toFixed(2) : '-'}
+                                <InlineGradeInput
+                                  value={item.interro2}
+                                  disabled={isSpecimen}
+                                  title={`Note Int 2 en ${item.subject.name} (/20)`}
+                                  onSave={(mark) => handleInlineGradeChange(item.subject, item.grades, 'INT2', mark)}
+                                />
                               </td>
                               <td className="p-1 border border-slate-700 text-center font-bold text-slate-900">
                                 {interroAvgVal}
                               </td>
                               <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                {devVal}
+                                <InlineGradeInput
+                                  value={item.devoirMark}
+                                  disabled={isSpecimen}
+                                  title={`Note Devoir en ${item.subject.name} (/20)`}
+                                  onSave={(mark) => handleInlineGradeChange(item.subject, item.grades, 'DEVOIR', mark)}
+                                />
                               </td>
                               <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
-                                {compoVal}
+                                <InlineGradeInput
+                                  value={item.compoMark}
+                                  disabled={isSpecimen}
+                                  title={`Note Composition en ${item.subject.name} (/20)`}
+                                  onSave={(mark) => handleInlineGradeChange(item.subject, item.grades, 'COMPO', mark)}
+                                />
                               </td>
                               <td className="p-1 border border-slate-700 text-center font-black text-slate-950 bg-slate-100/50">
                                 {item.grades.length > 0 ? item.average.toFixed(2) : '-'}
