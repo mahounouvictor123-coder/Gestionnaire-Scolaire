@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../lib/store';
 import { SchoolLevel, Subject } from '../types';
 import { OFFICIAL_PRIMARY_SUBJECTS, OFFICIAL_MATERNELLE_SUBJECTS } from '../data/initialData';
-import { getClassSection } from '../lib/schoolUtils';
+import { getClassSection, isSubjectForClass } from '../lib/schoolUtils';
+import { sortSubjectsForCollege } from '../lib/gradingUtils';
 import { 
   BookOpen, 
   Plus, 
@@ -96,25 +97,30 @@ export const SubjectsView: React.FC = () => {
   };
 
   // Filter subjects based on cycle tab, category, and search
-  const filteredSubjects = subjects.filter(sb => {
-    let matchesCycle = true;
-    if (activeCycleTab === 'PRIMAIRE') {
-      matchesCycle = sb.level === 'PRIMAIRE' || sb.id.startsWith('sbj-prim-');
-    } else if (activeCycleTab === 'MATERNELLE') {
-      matchesCycle = sb.level === 'MATERNELLE' || sb.id.startsWith('sbj-mat-');
-    } else if (activeCycleTab === 'COLLEGE') {
-      matchesCycle = sb.level === 'COLLEGE' || (sb.level === 'LYCEE' && ['MATH', 'FRAN', 'SVT', 'INFO', 'EPS'].includes((sb.code || '').toUpperCase()));
-    } else if (activeCycleTab === 'LYCEE') {
-      matchesCycle = sb.level === 'LYCEE' || sb.level === 'FORMATION' || (sb.level === 'COLLEGE' && ['PCT', 'HIST', 'ANG'].includes((sb.code || '').toUpperCase()));
-    }
+  const filteredSubjects = subjects
+    .filter(sb => {
+      let matchesCycle = true;
+      if (activeCycleTab === 'PRIMAIRE') {
+        matchesCycle = sb.level === 'PRIMAIRE' || sb.id.startsWith('sbj-prim-');
+      } else if (activeCycleTab === 'MATERNELLE') {
+        matchesCycle = sb.level === 'MATERNELLE' || sb.id.startsWith('sbj-mat-');
+      } else if (activeCycleTab === 'COLLEGE') {
+        matchesCycle = isSubjectForClass(sb, { level: 'COLLEGE', name: '6ème' }, subjects);
+      } else if (activeCycleTab === 'LYCEE') {
+        matchesCycle = sb.level === 'LYCEE' || sb.level === 'FORMATION' || (sb.level === 'COLLEGE' && ['PCT', 'HIST', 'ANG'].includes((sb.code || '').toUpperCase()));
+      }
 
-    const matchesCategory = selectedCategory === 'ALL' || sb.category === selectedCategory;
-    const matchesSearch = 
-      sb.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sb.code.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === 'ALL' || sb.category === selectedCategory;
+      const matchesSearch = 
+        sb.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        sb.code.toLowerCase().includes(searchTerm.toLowerCase());
 
-    return matchesCycle && matchesCategory && matchesSearch;
-  });
+      return matchesCycle && matchesCategory && matchesSearch;
+    });
+
+  const displayedSubjects = activeCycleTab === 'COLLEGE'
+    ? sortSubjectsForCollege(filteredSubjects)
+    : filteredSubjects;
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,7 +166,7 @@ export const SubjectsView: React.FC = () => {
 
   const primarySubjectsCount = subjects.filter(s => s.level === 'PRIMAIRE' || s.id.startsWith('sbj-prim-')).length;
   const maternelleSubjectsCount = subjects.filter(s => s.level === 'MATERNELLE' || s.id.startsWith('sbj-mat-')).length;
-  const collegeSubjectsCount = subjects.filter(s => s.level === 'COLLEGE' || (s.level === 'LYCEE' && ['MATH', 'FRAN', 'SVT', 'INFO', 'EPS'].includes((s.code || '').toUpperCase()))).length;
+  const collegeSubjectsCount = subjects.filter(s => isSubjectForClass(s, { level: 'COLLEGE', name: '6ème' }, subjects)).length;
   const lyceeSubjectsCount = subjects.filter(s => s.level === 'LYCEE' || s.level === 'FORMATION' || (s.level === 'COLLEGE' && ['PCT', 'HIST', 'ANG'].includes((s.code || '').toUpperCase()))).length;
 
   return (
@@ -467,8 +473,8 @@ export const SubjectsView: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredSubjects.length > 0 ? (
-              filteredSubjects.map(sb => {
+            {displayedSubjects.length > 0 ? (
+              displayedSubjects.map(sb => {
                 const isPrimary = sb.level === 'PRIMAIRE';
                 const isMaternelle = sb.level === 'MATERNELLE';
                 const isCollege = sb.level === 'COLLEGE';

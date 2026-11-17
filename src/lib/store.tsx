@@ -92,6 +92,7 @@ import {
   defaultStaffRolePermissions,
   OFFICIAL_PRIMARY_SUBJECTS,
   OFFICIAL_MATERNELLE_SUBJECTS,
+  OFFICIAL_COLLEGE_SUBJECTS,
   initialOfficialAnnouncements
 } from '../data/initialData';
 
@@ -880,13 +881,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   });
 
-  const ensurePrimaryAndMaternelleSubjects = (subjs: Subject[]): Subject[] => {
+  const getDeletedOfficialSubjectIds = (schoolId: string = currentSchoolId): string[] => {
+    try {
+      const raw = localStorage.getItem(`${LOCAL_STORAGE_KEY_PREFIX}_DELETED_SBJ_${schoolId}`);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const markOfficialSubjectDeleted = (subjectId: string, schoolId: string = currentSchoolId) => {
+    try {
+      const current = getDeletedOfficialSubjectIds(schoolId);
+      if (!current.includes(subjectId)) {
+        localStorage.setItem(
+          `${LOCAL_STORAGE_KEY_PREFIX}_DELETED_SBJ_${schoolId}`,
+          JSON.stringify([...current, subjectId])
+        );
+      }
+    } catch {}
+  };
+
+  const ensurePrimaryAndMaternelleSubjects = (subjs: Subject[], schoolId: string = currentSchoolId): Subject[] => {
     if (!Array.isArray(subjs) || subjs.length === 0) return initialSubjects;
     let list = [...subjs];
+    const deletedSet = new Set(getDeletedOfficialSubjectIds(schoolId));
 
     // Guarantee PCT subject presence and SCIENTIFIQUE category for secondary
     const hasPCT = list.some(s => s.code === 'PCT' || s.name.toUpperCase().includes('PCT'));
-    if (!hasPCT) {
+    if (!hasPCT && !deletedSet.has('sbj-3')) {
       const pcIdx = list.findIndex(s => s.code === 'PC' || s.name.toLowerCase().includes('physique'));
       if (pcIdx !== -1) {
         list[pcIdx] = {
@@ -901,7 +926,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           code: 'PCT',
           name: 'PCT (Physique - Chimie - Technologie)',
           category: 'SCIENTIFIQUE',
-          coefficient: 4,
+          coefficient: 3,
           level: 'COLLEGE'
         });
       }
@@ -909,10 +934,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       list = list.map(s => (s.code === 'PCT' || s.name.toUpperCase().includes('PCT')) ? { ...s, category: 'SCIENTIFIQUE' } : s);
     }
 
-    const hasPrimaryCE = list.some(s => s.code === 'CE' || s.name.toLowerCase().includes('communication'));
+    // Guarantee Collège (6ème à 3ème) official subjects without duplicating user-created equivalents
+    const normSubj = (v: string = '') => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const collegeSubjs = list.filter(s => s.level === 'COLLEGE' || s.id.startsWith('sbj-col-'));
+    const hasCollegeEquivalent = (official: Subject): boolean => {
+      if (list.some(s => s.id === official.id)) return true;
+      const offCode = normSubj(official.code);
+      const offName = normSubj(official.name);
+      return collegeSubjs.some(s => {
+        const sc = normSubj(s.code);
+        const sn = normSubj(s.name);
+        if (sc === offCode) return true;
+        if (offCode === 'ce' && (sn.includes('communication') || sn.includes('expression ecrite'))) return true;
+        if (offCode === 'lect' && sn.includes('lecture')) return true;
+        if (offCode === 'ang' && (sn.includes('anglais') || sn.includes('english'))) return true;
+        if (offCode === 'esp' && (sn.includes('espagnol') || sn.includes('spanish'))) return true;
+        if (offCode === 'hist' && (sn.includes('histoire') || sn.includes('geograph'))) return true;
+        if (offCode === 'pct' && (sn.includes('pct') || sn.includes('physique'))) return true;
+        if (offCode === 'cond' && sn.includes('conduite')) return true;
+        return sn === offName;
+      });
+    };
+
+    const missingCollege = OFFICIAL_COLLEGE_SUBJECTS.filter(
+      off => !deletedSet.has(off.id) && !hasCollegeEquivalent(off)
+    );
+    if (missingCollege.length > 0) {
+      list = [...list, ...missingCollege];
+    }
+
+    const hasPrimaryCE = list.some(s => (s.level === 'PRIMAIRE' || s.id.startsWith('sbj-prim-')) && (s.code === 'CE' || s.name.toLowerCase().includes('communication')));
     if (!hasPrimaryCE) {
       const existingIds = new Set(list.map(s => s.id));
-      const missing = [...OFFICIAL_PRIMARY_SUBJECTS, ...OFFICIAL_MATERNELLE_SUBJECTS].filter(s => !existingIds.has(s.id));
+      const missing = [...OFFICIAL_PRIMARY_SUBJECTS, ...OFFICIAL_MATERNELLE_SUBJECTS].filter(
+        s => !existingIds.has(s.id) && !deletedSet.has(s.id)
+      );
       return [...missing, ...list];
     }
     return list;
@@ -1589,15 +1645,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_CURRENT_SCHOOL_ID`, currentSchoolId);
   }, [currentSchoolId]);
 
+  const lastLocalMutationAtRef = useRef<Record<string, number>>({});
+
   // Subscribe to real-time Cloud updates for all datasets of current active school
   useEffect(() => {
     if (!currentSchoolId) return;
 
     const unsubs: (() => void)[] = [];
 
-    const handleCloudUpdate = <T,>(dataType: string, setter: React.Dispatch<React.SetStateAction<T>>) => {
+    const handleCloudUpdate = <T,>(
+      dataType: string,
+      setter: React.Dispatch<React.SetStateAction<T>>,
+      transform?: (raw: T) => T
+    ) => {
       // Immediate asynchronous check for existing cloud data to prevent stale local overwriting
       loadFromCloud(currentSchoolId, dataType).then(async (cloudData) => {
+        if (Date.now() - (lastLocalMutationAtRef.current[dataType] || 0) < 3500) {
+          hasLoadedCloudRef.current[dataType] = true;
+          return;
+        }
         let finalData = cloudData;
         // If current school has no cloud data yet and is Temple du Savoir, check counterpart alias
         if ((finalData === null || finalData === undefined) && (currentSchoolId === 'sch-temple' || currentSchoolId === 'sch-1786960279353')) {
@@ -1612,13 +1678,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         if (finalData !== null && finalData !== undefined) {
           hasLoadedCloudRef.current[dataType] = true;
-          isRemoteUpdateRef.current[dataType] = true;
+          const normalizedData = transform ? transform(finalData as T) : (finalData as T);
           setter(prev => {
             // SAFE MERGE FOR STUDENTS SO NO ENROLLED STUDENTS ARE EVER LOST
-            if (dataType === 'STUDENTS' && Array.isArray(finalData) && finalData.length > 0) {
+            if (dataType === 'STUDENTS' && Array.isArray(normalizedData) && normalizedData.length > 0) {
               const prevList = Array.isArray(prev) ? prev : [];
               const studentMap = new Map<string, Student>();
-              finalData.forEach((st: Student) => {
+              normalizedData.forEach((st: Student) => {
                 if (st && st.id) studentMap.set(st.id, st);
               });
               prevList.forEach((st: Student) => {
@@ -1627,6 +1693,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
               });
               const merged = Array.from(studentMap.values());
+              isRemoteUpdateRef.current[dataType] = true;
               try {
                 localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_STUDENTS`, JSON.stringify(merged));
                 localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(merged));
@@ -1639,9 +1706,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               return merged as unknown as T;
             }
 
-            if (JSON.stringify(prev) !== JSON.stringify(finalData)) {
-              localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${dataType}`, JSON.stringify(finalData));
-              return finalData;
+            if (JSON.stringify(prev) !== JSON.stringify(normalizedData)) {
+              isRemoteUpdateRef.current[dataType] = true;
+              localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${dataType}`, JSON.stringify(normalizedData));
+              return normalizedData;
             }
             return prev;
           });
@@ -1654,13 +1722,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       unsubs.push(subscribeToCloud(currentSchoolId, dataType, (data) => {
         if (data !== null && data !== undefined) {
+          if (Date.now() - (lastLocalMutationAtRef.current[dataType] || 0) < 3500) {
+            return;
+          }
           hasLoadedCloudRef.current[dataType] = true;
-          isRemoteUpdateRef.current[dataType] = true;
+          const normalizedData = transform ? transform(data as T) : (data as T);
           setter(prev => {
-            if (dataType === 'STUDENTS' && Array.isArray(data) && data.length > 0) {
+            if (dataType === 'STUDENTS' && Array.isArray(normalizedData) && normalizedData.length > 0) {
               const prevList = Array.isArray(prev) ? prev : [];
               const studentMap = new Map<string, Student>();
-              data.forEach((st: Student) => {
+              normalizedData.forEach((st: Student) => {
                 if (st && st.id) studentMap.set(st.id, st);
               });
               prevList.forEach((st: Student) => {
@@ -1669,6 +1740,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
               });
               const merged = Array.from(studentMap.values());
+              isRemoteUpdateRef.current[dataType] = true;
               try {
                 localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_STUDENTS`, JSON.stringify(merged));
                 localStorage.setItem(`GESTIONNAIRE_PERMANENT_BACKUP_${currentSchoolId}_STUDENTS`, JSON.stringify(merged));
@@ -1679,9 +1751,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               return merged as unknown as T;
             }
 
-            if (JSON.stringify(prev) !== JSON.stringify(data)) {
-              localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${dataType}`, JSON.stringify(data));
-              return data;
+            if (JSON.stringify(prev) !== JSON.stringify(normalizedData)) {
+              isRemoteUpdateRef.current[dataType] = true;
+              localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_${dataType}`, JSON.stringify(normalizedData));
+              return normalizedData;
             }
             return prev;
           });
@@ -1693,7 +1766,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     handleCloudUpdate('CLASSES', setClasses);
     handleCloudUpdate('STUDENTS', setStudents);
     handleCloudUpdate('TEACHERS', setTeachers);
-    handleCloudUpdate('SUBJECTS', setSubjects);
+    handleCloudUpdate<Subject[]>('SUBJECTS', setSubjects, (cloudSubjs) =>
+      ensurePrimaryAndMaternelleSubjects(cloudSubjs, currentSchoolId)
+    );
     handleCloudUpdate('GRADES', setGrades);
     handleCloudUpdate('PAYMENTS', setPayments);
     handleCloudUpdate('EXPENSES', setExpenses);
@@ -1973,7 +2048,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setClasses(getTargetScoped('CLASSES', initialClasses));
     setStudents(getTargetScoped('STUDENTS', initialStudents));
     setTeachers(getTargetScoped('TEACHERS', initialTeachers));
-    setSubjects(ensurePrimaryAndMaternelleSubjects(getTargetScoped('SUBJECTS', initialSubjects)));
+    setSubjects(ensurePrimaryAndMaternelleSubjects(getTargetScoped('SUBJECTS', initialSubjects), targetSchoolId));
     setGrades(getTargetScoped('GRADES', initialGrades));
     setPayments(getTargetScoped('PAYMENTS', initialPayments));
     setExpenses(getTargetScoped('EXPENSES', initialExpenses));
@@ -3093,28 +3168,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Subject actions
   const addSubject = (sbj: Omit<Subject, 'id'>) => {
+    lastLocalMutationAtRef.current['SUBJECTS'] = Date.now();
+    hasLoadedCloudRef.current['SUBJECTS'] = true;
+    isRemoteUpdateRef.current['SUBJECTS'] = false;
     const newSbj: Subject = { ...sbj, id: `sbj-${Date.now()}` };
-    setSubjects(prev => {
-      const updated = [...prev, newSbj];
-      syncToCloud(currentSchoolId, 'SUBJECTS', updated);
-      return updated;
-    });
+    setSubjects(prev => [...prev, newSbj]);
   };
 
   const updateSubject = (id: string, updates: Partial<Subject>) => {
-    setSubjects(prev => {
-      const updated = prev.map(s => s.id === id ? { ...s, ...updates } : s);
-      syncToCloud(currentSchoolId, 'SUBJECTS', updated);
-      return updated;
-    });
+    lastLocalMutationAtRef.current['SUBJECTS'] = Date.now();
+    hasLoadedCloudRef.current['SUBJECTS'] = true;
+    isRemoteUpdateRef.current['SUBJECTS'] = false;
+    setSubjects(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
   };
 
   const deleteSubject = (id: string) => {
-    setSubjects(prev => {
-      const updated = prev.filter(s => s.id !== id);
-      syncToCloud(currentSchoolId, 'SUBJECTS', updated);
-      return updated;
-    });
+    lastLocalMutationAtRef.current['SUBJECTS'] = Date.now();
+    hasLoadedCloudRef.current['SUBJECTS'] = true;
+    isRemoteUpdateRef.current['SUBJECTS'] = false;
+    markOfficialSubjectDeleted(id, currentSchoolId);
+    setSubjects(prev => prev.filter(s => s.id !== id));
   };
 
   // Grade actions
@@ -3133,6 +3206,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addGrade = (grd: Omit<Grade, 'id'>) => {
+    lastLocalMutationAtRef.current['GRADES'] = Date.now();
+    hasLoadedCloudRef.current['GRADES'] = true;
+    isRemoteUpdateRef.current['GRADES'] = false;
     const nowIso = new Date().toISOString();
     setGrades(prev => {
       const existingIdx = prev.findIndex(ex => matchesGradeSlot(ex, grd));
@@ -3152,15 +3228,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
         updated = [...prev, newGrade];
       }
-      syncToCloud(currentSchoolId, 'GRADES', updated);
       return updated;
     });
   };
 
   const addBulkGrades = (grds: Omit<Grade, 'id'>[]) => {
+    lastLocalMutationAtRef.current['GRADES'] = Date.now();
+    hasLoadedCloudRef.current['GRADES'] = true;
+    isRemoteUpdateRef.current['GRADES'] = false;
     const nowIso = new Date().toISOString();
     setGrades(prev => {
-      let updated = [...prev];
+      const updated = [...prev];
       grds.forEach((g, idx) => {
         const existingIdx = updated.findIndex(ex => matchesGradeSlot(ex, g));
         if (existingIdx !== -1) {
@@ -3177,25 +3255,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
       });
-      syncToCloud(currentSchoolId, 'GRADES', updated);
       return updated;
     });
   };
 
   const updateGrade = (id: string, grd: Partial<Grade>) => {
-    setGrades(prev => {
-      const updated = prev.map(g => g.id === id ? { ...g, ...grd, updatedAt: new Date().toISOString() } : g);
-      syncToCloud(currentSchoolId, 'GRADES', updated);
-      return updated;
-    });
+    lastLocalMutationAtRef.current['GRADES'] = Date.now();
+    hasLoadedCloudRef.current['GRADES'] = true;
+    isRemoteUpdateRef.current['GRADES'] = false;
+    setGrades(prev => prev.map(g => g.id === id ? { ...g, ...grd, updatedAt: new Date().toISOString() } : g));
   };
 
   const deleteGrade = (id: string) => {
-    setGrades(prev => {
-      const updated = prev.filter(g => g.id !== id);
-      syncToCloud(currentSchoolId, 'GRADES', updated);
-      return updated;
-    });
+    lastLocalMutationAtRef.current['GRADES'] = Date.now();
+    hasLoadedCloudRef.current['GRADES'] = true;
+    isRemoteUpdateRef.current['GRADES'] = false;
+    setGrades(prev => prev.filter(g => g.id !== id));
   };
 
   // Payment actions

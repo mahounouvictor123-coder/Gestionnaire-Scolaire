@@ -121,8 +121,19 @@ export function isSubjectForClass(
     // Si la matière a été explicitement créée pour le collège
     if (sbj.level === 'COLLEGE') return true;
 
+    const hasCollegeFrenchSplit = allSubjects.some(
+      s =>
+        s.level === 'COLLEGE' &&
+        (s.code === 'CE' ||
+          s.code === 'LECT' ||
+          s.name.toLowerCase().includes('communication') ||
+          s.name.toLowerCase().includes('lecture'))
+    );
+
     // Matières de base du secondaire partagées entre Collège et Lycée (initialData hérité)
-    const sharedSecondaryCodes = ['MATH', 'FRAN', 'SVT', 'INFO', 'EPS'];
+    const sharedSecondaryCodes = hasCollegeFrenchSplit
+      ? ['MATH', 'SVT', 'INFO', 'EPS']
+      : ['MATH', 'FRAN', 'SVT', 'INFO', 'EPS'];
     if (sbj.level === 'LYCEE' && sharedSecondaryCodes.includes((sbj.code || '').toUpperCase())) {
       return true;
     }

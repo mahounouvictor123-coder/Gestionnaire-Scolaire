@@ -1,5 +1,5 @@
 import { Student, Grade, Subject, BulletinTemplate, SchoolClass, CouncilDecisionData } from '../types';
-import { isPrimaryClass, isSubjectForClass } from './schoolUtils';
+import { getClassSection, isPrimaryClass, isSubjectForClass } from './schoolUtils';
 
 export interface SubjectResult {
   subject: Subject;
@@ -273,7 +273,11 @@ export function calculateClassRanks(
       .map(g => g.subjectId)
   );
   const extraGradedSubjects = subjects.filter(s => gradedSubjectIds.has(s.id) && !relevantSubjects.some(rs => rs.id === s.id));
-  const activeSubjects = (relevantSubjects.length > 0 ? relevantSubjects : subjects).concat(extraGradedSubjects);
+  const activeSubjectsRaw = (relevantSubjects.length > 0 ? relevantSubjects : subjects).concat(extraGradedSubjects);
+  const isCollegeClass = getClassSection(classRef) === 'COLLEGE';
+  const activeSubjects = isCollegeClass
+    ? sortSubjectsForCollege(activeSubjectsRaw)
+    : activeSubjectsRaw;
 
   // 1. Calculate for each student
   const rawResults = students.map(student => {
@@ -404,18 +408,87 @@ export function calculateClassRanks(
   };
 }
 
+function normalizeSubjectLabel(str: string = ''): string {
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Ordre officiel demandé sur les bulletins de la 6ème à la 3ème :
+ * 1. Communication écrite
+ * 2. Lecture
+ * 3. Anglais
+ * 4. Espagnol
+ * 5. Histoire-Géographie
+ * 6. SVT
+ * 7. Mathématiques
+ * 8. PCT
+ * 9. Informatique
+ * 10. EPS
+ * 11. Conduite
+ */
+export function getCollegeSubjectSortOrder(s: Subject): number {
+  const n = normalizeSubjectLabel(s.name);
+  const c = normalizeSubjectLabel(s.code);
+
+  if (c === 'ce' || n.includes('communication') || n.includes('expression ecrite')) return 1;
+  if (c === 'lect' || n.includes('lecture')) return 2;
+  if (c === 'ang' || n.includes('anglais') || n.includes('english')) return 3;
+  if (c === 'esp' || n.includes('espagnol') || n.includes('spanish')) return 4;
+  if (c === 'hist' || c === 'hg' || n.includes('histoire') || n.includes('geograph') || n === 'hist-geo') return 5;
+  if (c === 'svt' || n.includes('svt') || n.includes('vie et de la terre') || n.includes('biologie')) return 6;
+  if (c === 'math' || n.includes('math')) return 7;
+  if (c === 'info' || n.includes('informatique') || n.includes('algo')) return 9;
+  if (c === 'eps' || n.includes('eps') || n.includes('education physique') || n.includes('sport')) return 10;
+  if (c === 'cond' || n.includes('conduite')) return 11;
+  if (c === 'pct' || c === 'pc' || c === 'spct' || n.includes('pct') || n.includes('spct') || n.includes('physique') || n.includes('chimie')) return 8;
+
+  return 99;
+}
+
+export function sortSubjectsForCollege(list: Subject[]): Subject[] {
+  return list
+    .map((subj, idx) => ({ subj, idx, rank: getCollegeSubjectSortOrder(subj) }))
+    .sort((a, b) => (a.rank !== b.rank ? a.rank - b.rank : a.idx - b.idx))
+    .map(entry => entry.subj);
+}
+
 /**
  * Group subjects into official Beninese secondary education clusters:
- * 1. Matières Scientifiques (SVT, SPCT/PCT, Mathématiques)
- * 2. Matières Littéraires (Lecture/Français, Hist-Géo, Communication Écrite, Anglais, Philosophie)
- * 3. Autres Matières (Informatique, EPS, Conduite, Arts, Musique, etc.)
+ * - Collège (6ème à 3ème) :
+ *   1. Matières Littéraires (Communication écrite, Lecture, Anglais, Espagnol, Histoire-Géo)
+ *   2. Matières Scientifiques (SVT, Mathématiques, PCT)
+ *   3. Autres Matières (Informatique, EPS, Conduite, etc.)
+ * - Lycée (2nde à Terminale) :
+ *   1. Matières Scientifiques
+ *   2. Matières Littéraires
+ *   3. Autres Matières
  */
-export function groupSubjectResults(results: SubjectResult[]): SubjectGroup[] {
+export function groupSubjectResults(
+  results: SubjectResult[],
+  classOrStudent?: SchoolClass | Student | { level?: string; name?: string; stream?: string } | null
+): SubjectGroup[] {
   const isScientific = (s: Subject) => {
-    const cat = (s.category || '').toUpperCase();
-    if (cat === 'SCIENTIFIQUE') return true;
     const n = (s.name || '').toUpperCase();
     const c = (s.code || '').toUpperCase();
+    if (
+      n.includes('INFORMATIQUE') ||
+      c === 'INFO' ||
+      c === 'EPS' ||
+      n.includes('EPS') ||
+      n.includes('EDUCATION PHYSIQUE') ||
+      n.includes('ÉDUCATION PHYSIQUE') ||
+      n.includes('SPORT') ||
+      c === 'COND' ||
+      n.includes('CONDUITE')
+    ) {
+      return false;
+    }
+    const cat = (s.category || '').toUpperCase();
+    if (cat === 'SCIENTIFIQUE') return true;
     return (
       n.includes('PCT') ||
       c.includes('PCT') ||
@@ -461,11 +534,23 @@ export function groupSubjectResults(results: SubjectResult[]): SubjectGroup[] {
     );
   };
 
+  const isCollege = classOrStudent
+    ? getClassSection(classOrStudent) === 'COLLEGE'
+    : results.some(r => r.subject.level === 'COLLEGE') &&
+      !results.some(r => r.subject.level === 'LYCEE' && (r.subject.code === 'PHIL' || r.subject.code === 'CPT'));
+
+  const orderedResults = isCollege
+    ? results
+        .map((res, idx) => ({ res, idx, rank: getCollegeSubjectSortOrder(res.subject) }))
+        .sort((a, b) => (a.rank !== b.rank ? a.rank - b.rank : a.idx - b.idx))
+        .map(entry => entry.res)
+    : results;
+
   const scientific: SubjectResult[] = [];
   const literary: SubjectResult[] = [];
   const others: SubjectResult[] = [];
 
-  results.forEach(res => {
+  orderedResults.forEach(res => {
     if (isScientific(res.subject)) {
       scientific.push(res);
     } else if (isLiterary(res.subject)) {
@@ -494,19 +579,31 @@ export function groupSubjectResults(results: SubjectResult[]): SubjectGroup[] {
   };
 
   const groups: SubjectGroup[] = [];
-  if (scientific.length > 0) {
-    groups.push(computeGroup('Matières Scientifiques', 'SCIENTIFIQUE', scientific));
-  }
-  if (literary.length > 0) {
-    groups.push(computeGroup('Matières Littéraires', 'LITTERAIRE', literary));
-  }
-  if (others.length > 0) {
-    groups.push(computeGroup('Autres Matières...', 'AUTRES', others));
+  if (isCollege) {
+    if (literary.length > 0) {
+      groups.push(computeGroup('Matières Littéraires', 'LITTERAIRE', literary));
+    }
+    if (scientific.length > 0) {
+      groups.push(computeGroup('Matières Scientifiques', 'SCIENTIFIQUE', scientific));
+    }
+    if (others.length > 0) {
+      groups.push(computeGroup('Autres Matières...', 'AUTRES', others));
+    }
+  } else {
+    if (scientific.length > 0) {
+      groups.push(computeGroup('Matières Scientifiques', 'SCIENTIFIQUE', scientific));
+    }
+    if (literary.length > 0) {
+      groups.push(computeGroup('Matières Littéraires', 'LITTERAIRE', literary));
+    }
+    if (others.length > 0) {
+      groups.push(computeGroup('Autres Matières...', 'AUTRES', others));
+    }
   }
 
   // Fallback if no category matched
-  if (groups.length === 0 && results.length > 0) {
-    groups.push(computeGroup('Toutes Matières', 'AUTRES', results));
+  if (groups.length === 0 && orderedResults.length > 0) {
+    groups.push(computeGroup('Toutes Matières', 'AUTRES', orderedResults));
   }
 
   return groups;

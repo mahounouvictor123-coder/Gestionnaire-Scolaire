@@ -385,7 +385,7 @@ export function addBulletinPageToPdf(
     'APPRECIATIONS'
   ];
 
-  const subjectGroups = groupSubjectResults(studentRank.subjectResults);
+  const subjectGroups = groupSubjectResults(studentRank.subjectResults, schoolClass || student);
   const tableBody: any[] = [];
 
   subjectGroups.forEach(group => {

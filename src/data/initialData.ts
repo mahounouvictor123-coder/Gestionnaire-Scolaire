@@ -282,6 +282,16 @@ export const OFFICIAL_MATERNELLE_SUBJECTS: Subject[] = [
   { id: "sbj-mat-compt", code: "EA", name: "EA (conte, poésie et chant)", category: "DIVERS", coefficient: 1, level: "MATERNELLE" }
 ];
 
+export const OFFICIAL_COLLEGE_SUBJECTS: Subject[] = [
+  { id: "sbj-col-ce", code: "CE", name: "Communication Écrite", category: "LITTERAIRE", coefficient: 2, level: "COLLEGE" },
+  { id: "sbj-col-lect", code: "LECT", name: "Lecture", category: "LITTERAIRE", coefficient: 2, level: "COLLEGE" },
+  { id: "sbj-6", code: "ANG", name: "Anglais", category: "LANGUE", coefficient: 2, level: "COLLEGE" },
+  { id: "sbj-col-esp", code: "ESP", name: "Espagnol", category: "LANGUE", coefficient: 2, level: "COLLEGE" },
+  { id: "sbj-5", code: "HIST", name: "Histoire - Géographie", category: "LITTERAIRE", coefficient: 2, level: "COLLEGE" },
+  { id: "sbj-3", code: "PCT", name: "PCT (Physique - Chimie - Technologie)", category: "SCIENTIFIQUE", coefficient: 3, level: "COLLEGE" },
+  { id: "sbj-col-cond", code: "COND", name: "Conduite", category: "DIVERS", coefficient: 1, level: "COLLEGE" }
+];
+
 export const initialSubjects: Subject[] = [
   // 🎒 1. MATIÈRES OFFICIELLES DU PRIMAIRE
   ...OFFICIAL_PRIMARY_SUBJECTS,
@@ -289,13 +299,13 @@ export const initialSubjects: Subject[] = [
   // 🧸 2. MATIÈRES DE LA MATERNELLE
   ...OFFICIAL_MATERNELLE_SUBJECTS,
 
-  // 🏫 3. MATIÈRES DU SECONDAIRE (COLLÈGE & LYCÉE)
+  // 🏫 3. MATIÈRES OFFICIELLES DU COLLÈGE (6ème à 3ème)
+  ...OFFICIAL_COLLEGE_SUBJECTS,
+
+  // 🎓 4. MATIÈRES DU LYCÉE & TRONC COMMUN SECONDAIRE
   { id: "sbj-1", code: "MATH", name: "Mathématiques", category: "SCIENTIFIQUE", coefficient: 5, level: "LYCEE" },
   { id: "sbj-2", code: "FRAN", name: "Français & Littérature", category: "LITTERAIRE", coefficient: 4, level: "LYCEE" },
-  { id: "sbj-3", code: "PCT", name: "PCT (Physique - Chimie - Technologie)", category: "SCIENTIFIQUE", coefficient: 4, level: "COLLEGE" },
   { id: "sbj-4", code: "SVT", name: "Sciences de la Vie et de la Terre", category: "SCIENTIFIQUE", coefficient: 3, level: "LYCEE" },
-  { id: "sbj-5", code: "HIST", name: "Histoire - Géographie", category: "LITTERAIRE", coefficient: 3, level: "COLLEGE" },
-  { id: "sbj-6", code: "ANG", name: "Langue Anglaise", category: "LANGUE", coefficient: 3, level: "COLLEGE" },
   { id: "sbj-7", code: "PHIL", name: "Philosophie", category: "LITTERAIRE", coefficient: 3, level: "LYCEE" },
   { id: "sbj-8", code: "INFO", name: "Informatique & Algo", category: "TECHNIQUE", coefficient: 3, level: "LYCEE" },
   { id: "sbj-9", code: "EPS", name: "Éducation Physique & Sportive", category: "DIVERS", coefficient: 1, level: "LYCEE" },
@@ -622,10 +632,10 @@ export const initialGrades: Grade[] = [
   { id: "grd-1-int2", studentId: "std-1", subjectId: "sbj-1", classId: "cls-3", trimester: 1, examType: "INTERRO", evaluationNumber: 2, mark: 16.0, maxMark: 20, date: "2025-10-12", coefficient: 2, comment: "Interro 2" },
   { id: "grd-1", studentId: "std-1", subjectId: "sbj-1", classId: "cls-3", trimester: 1, examType: "DEVOIR", mark: 16.5, maxMark: 20, date: "2025-10-15", coefficient: 2 },
   { id: "grd-2", studentId: "std-1", subjectId: "sbj-1", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 17, maxMark: 20, date: "2025-11-20", coefficient: 3 },
-  { id: "grd-3-int1", studentId: "std-1", subjectId: "sbj-2", classId: "cls-3", trimester: 1, examType: "INTERRO", evaluationNumber: 1, mark: 13.5, maxMark: 20, date: "2025-10-08", coefficient: 2, comment: "Interro 1" },
-  { id: "grd-3-int2", studentId: "std-1", subjectId: "sbj-2", classId: "cls-3", trimester: 1, examType: "INTERRO", evaluationNumber: 2, mark: 14.5, maxMark: 20, date: "2025-10-16", coefficient: 2, comment: "Interro 2" },
-  { id: "grd-3", studentId: "std-1", subjectId: "sbj-2", classId: "cls-3", trimester: 1, examType: "DEVOIR", mark: 14, maxMark: 20, date: "2025-10-18", coefficient: 2 },
-  { id: "grd-4", studentId: "std-1", subjectId: "sbj-2", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 15, maxMark: 20, date: "2025-11-22", coefficient: 3 },
+  { id: "grd-3-int1", studentId: "std-1", subjectId: "sbj-col-ce", classId: "cls-3", trimester: 1, examType: "INTERRO", evaluationNumber: 1, mark: 13.5, maxMark: 20, date: "2025-10-08", coefficient: 2, comment: "Interro 1" },
+  { id: "grd-3-int2", studentId: "std-1", subjectId: "sbj-col-ce", classId: "cls-3", trimester: 1, examType: "INTERRO", evaluationNumber: 2, mark: 14.5, maxMark: 20, date: "2025-10-16", coefficient: 2, comment: "Interro 2" },
+  { id: "grd-3", studentId: "std-1", subjectId: "sbj-col-ce", classId: "cls-3", trimester: 1, examType: "DEVOIR", mark: 14, maxMark: 20, date: "2025-10-18", coefficient: 2 },
+  { id: "grd-4", studentId: "std-1", subjectId: "sbj-col-ce", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 15, maxMark: 20, date: "2025-11-22", coefficient: 2 },
   { id: "grd-5", studentId: "std-1", subjectId: "sbj-6", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 18, maxMark: 20, date: "2025-11-25", coefficient: 2 },
   
   // Student Yasmine KOUAME (std-2) - Terminale D
@@ -639,7 +649,7 @@ export const initialGrades: Grade[] = [
   // Student Franck KONAN (std-5) - 4ème
   { id: "grd-9", studentId: "std-5", subjectId: "sbj-1", classId: "cls-4", trimester: 1, examType: "DEVOIR", mark: 7.5, maxMark: 20, date: "2025-10-15", coefficient: 2 },
   { id: "grd-10", studentId: "std-5", subjectId: "sbj-1", classId: "cls-4", trimester: 1, examType: "COMPOSITION", mark: 8.0, maxMark: 20, date: "2025-11-20", coefficient: 3 },
-  { id: "grd-11", studentId: "std-5", subjectId: "sbj-2", classId: "cls-4", trimester: 1, examType: "COMPOSITION", mark: 9.5, maxMark: 20, date: "2025-11-22", coefficient: 3 },
+  { id: "grd-11", studentId: "std-5", subjectId: "sbj-col-ce", classId: "cls-4", trimester: 1, examType: "COMPOSITION", mark: 9.5, maxMark: 20, date: "2025-11-22", coefficient: 2 },
 
   // Student Boris TOSSOU (std-6) - Terminale A
   { id: "grd-12", studentId: "std-6", subjectId: "sbj-2", classId: "cls-tle-a", trimester: 1, examType: "COMPOSITION", mark: 17.0, maxMark: 20, date: "2025-11-20", coefficient: 5 },
@@ -663,8 +673,8 @@ export const initialGrades: Grade[] = [
   // Student Marc KPAKPO (std-10) - 3ème
   { id: "grd-23", studentId: "std-10", subjectId: "sbj-1", classId: "cls-3", trimester: 1, examType: "DEVOIR", mark: 15.5, maxMark: 20, date: "2025-10-15", coefficient: 2 },
   { id: "grd-24", studentId: "std-10", subjectId: "sbj-1", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 16.0, maxMark: 20, date: "2025-11-20", coefficient: 3 },
-  { id: "grd-25", studentId: "std-10", subjectId: "sbj-2", classId: "cls-3", trimester: 1, examType: "DEVOIR", mark: 14.0, maxMark: 20, date: "2025-10-18", coefficient: 2 },
-  { id: "grd-26", studentId: "std-10", subjectId: "sbj-2", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 14.5, maxMark: 20, date: "2025-11-22", coefficient: 3 },
+  { id: "grd-25", studentId: "std-10", subjectId: "sbj-col-ce", classId: "cls-3", trimester: 1, examType: "DEVOIR", mark: 14.0, maxMark: 20, date: "2025-10-18", coefficient: 2 },
+  { id: "grd-26", studentId: "std-10", subjectId: "sbj-col-ce", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 14.5, maxMark: 20, date: "2025-11-22", coefficient: 2 },
   { id: "grd-27", studentId: "std-10", subjectId: "sbj-3", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 15.0, maxMark: 20, date: "2025-11-23", coefficient: 3 },
   { id: "grd-28", studentId: "std-10", subjectId: "sbj-4", classId: "cls-3", trimester: 1, examType: "DEVOIR", mark: 16.0, maxMark: 20, date: "2025-10-22", coefficient: 2 },
   { id: "grd-29", studentId: "std-10", subjectId: "sbj-6", classId: "cls-3", trimester: 1, examType: "COMPOSITION", mark: 17.0, maxMark: 20, date: "2025-11-25", coefficient: 2 },

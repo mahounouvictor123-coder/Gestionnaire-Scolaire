@@ -19,6 +19,7 @@ export const InlineGradeInput: React.FC<InlineGradeInputProps> = ({
 
   const [draft, setDraft] = useState<string>(() => formatDisplay(value));
   const isFocusedRef = useRef(false);
+  const justFocusedRef = useRef(false);
 
   useEffect(() => {
     if (!isFocusedRef.current) {
@@ -56,22 +57,19 @@ export const InlineGradeInput: React.FC<InlineGradeInputProps> = ({
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
-    // Autoriser chiffres, point/virgule décimaux uniquement pendant la saisie
-    if (raw !== '' && !/^\d{0,2}(?:[.,]\d{0,2})?$/.test(raw)) {
+    // Autoriser chiffres et point/virgule décimaux pendant la saisie
+    if (raw !== '' && !/^\d*(?:[.,]\d{0,2})?$/.test(raw)) {
       return;
     }
     setDraft(raw);
 
-    // Si l'utilisateur ne termine pas par '.' ou ',', appliquer en direct pour recalcul immédiat
-    if (raw.trim() === '') {
+    if (raw.trim() === '' || raw.endsWith('.') || raw.endsWith(',')) {
       return;
     }
-    if (!raw.endsWith('.') && !raw.endsWith(',')) {
-      const parsed = parseNormalized(raw);
-      if (parsed !== null && !Number.isNaN(parsed)) {
-        if (value === undefined || Math.abs(parsed - value) > 0.001) {
-          onSave(parsed);
-        }
+    const parsed = parseNormalized(raw);
+    if (parsed !== null && !Number.isNaN(parsed)) {
+      if (value === undefined || Math.abs(parsed - value) > 0.001) {
+        onSave(parsed);
       }
     }
   };
@@ -80,7 +78,7 @@ export const InlineGradeInput: React.FC<InlineGradeInputProps> = ({
 
   if (disabled) {
     return (
-      <span className="text-slate-400 font-semibold" title={title}>
+      <span className="text-slate-400 font-semibold cursor-not-allowed" title={title}>
         {printableText}
       </span>
     );
@@ -94,16 +92,29 @@ export const InlineGradeInput: React.FC<InlineGradeInputProps> = ({
         value={draft}
         placeholder={placeholder}
         onFocus={(e) => {
+          const inputEl = e.currentTarget;
           isFocusedRef.current = true;
+          justFocusedRef.current = true;
           if (value !== undefined && !Number.isNaN(value)) {
-            // Afficher sans zéros inutiles pendant l'édition (ex: 14.50 -> 14.5, 14.00 -> 14)
             setDraft(String(Number(value.toFixed(2))));
           }
-          e.target.select();
+          inputEl.select();
+          requestAnimationFrame(() => {
+            if (document.activeElement === inputEl) {
+              inputEl.select();
+            }
+          });
+        }}
+        onMouseUp={(e) => {
+          if (justFocusedRef.current) {
+            e.preventDefault();
+            justFocusedRef.current = false;
+          }
         }}
         onChange={handleChange}
         onBlur={() => {
           isFocusedRef.current = false;
+          justFocusedRef.current = false;
           commit(draft);
         }}
         onClick={(e) => e.stopPropagation()}
@@ -111,18 +122,20 @@ export const InlineGradeInput: React.FC<InlineGradeInputProps> = ({
           if (e.key === 'Enter') {
             e.preventDefault();
             isFocusedRef.current = false;
+            justFocusedRef.current = false;
             commit(draft);
             (e.target as HTMLInputElement).blur();
           } else if (e.key === 'Escape') {
             e.preventDefault();
             isFocusedRef.current = false;
+            justFocusedRef.current = false;
             setDraft(formatDisplay(value));
             (e.target as HTMLInputElement).blur();
           }
         }}
         title={title}
         aria-label={title}
-        className="print:hidden w-11 px-0.5 py-0.5 text-center font-bold text-slate-900 bg-emerald-50/60 hover:bg-emerald-100/80 focus:bg-white border border-emerald-200 focus:border-emerald-600 rounded outline-none text-[10px] transition-colors placeholder:text-slate-400"
+        className="print:hidden w-12 min-w-[42px] px-0.5 py-0.5 text-center font-bold text-slate-900 bg-emerald-50/70 hover:bg-emerald-100 focus:bg-white border border-emerald-300 focus:border-emerald-600 rounded outline-none text-[10px] transition-colors placeholder:text-slate-400 cursor-text"
       />
       <span className="hidden print:inline font-semibold text-slate-800">{printableText}</span>
     </>

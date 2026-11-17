@@ -13,6 +13,7 @@ import {
   calculateClassRanks, 
   defaultBulletinTemplate,
   groupSubjectResults,
+  sortSubjectsForCollege,
   getCouncilDecisionMentions,
   mergeCouncilDecision,
   getNextClassName,
@@ -252,7 +253,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   // Règle d'or : Toute matière ajoutée dans une section s'ajoute directement sur le bulletin de la section
   const definedClassSubjects = useMemo(() => {
     const filtered = subjects.filter(s => isSubjectForClass(s, selectedClass, subjects));
-    return filtered.length > 0 ? filtered : subjects;
+    const list = filtered.length > 0 ? filtered : subjects;
+    return getClassSection(selectedClass) === 'COLLEGE' ? sortSubjectsForCollege(list) : list;
   }, [subjects, selectedClass]);
 
   const currentBulletinRankData = useMemo(() => {
@@ -281,10 +283,10 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     };
   }, [classRankSummary, activeStudentForBulletin, definedClassSubjects]);
 
-  // Grouped Subjects into Official Clusters (Scientifiques, Littéraires, Autres)
+  // Grouped Subjects into Official Clusters
   const previewSubjectGroups = useMemo(() => {
-    return groupSubjectResults(currentBulletinRankData.subjectResults);
-  }, [currentBulletinRankData.subjectResults]);
+    return groupSubjectResults(currentBulletinRankData.subjectResults, selectedClass || activeStudentForBulletin);
+  }, [currentBulletinRankData.subjectResults, selectedClass, activeStudentForBulletin]);
 
   // Council Decision Mentions (Bénin standard + cases cochées manuellement)
   const autoPreviewCouncilDecision = useMemo(() => {
@@ -1071,6 +1073,19 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                 </div>
               </div>
 
+              {/* Aide contextuelle saisie directe / mode spécimen */}
+              {activeStudentForBulletin.id === 'specimen-student' ? (
+                <div className="print:hidden mb-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[10.5px] font-bold flex items-center justify-between gap-2">
+                  <span>
+                    Mode Spécimen vierge : sélectionnez un élève réel dans la liste ci-dessus (ou inscrivez un élève dans cette classe) pour renseigner et modifier ses notes. Les coefficients restent directement modifiables.
+                  </span>
+                </div>
+              ) : (
+                <div className="print:hidden mb-2 px-3 py-1 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-900 text-[10px] font-bold">
+                  Saisie directe active : cliquez sur un coefficient (COEF) ou une note (Int 1, Int 2, DEVOIR, COMPO) directement dans le tableau pour la modifier instantanément.
+                </div>
+              )}
+
               {/* 4. TABLEAU DES NOTES PAR REGROUPEMENT DISCIPLINAIRE (Norme Bénin) */}
               <div className="overflow-x-auto mb-1">
                 <table className="w-full text-[10px] border-collapse border border-slate-800">
@@ -1099,7 +1114,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                             const disabledTip = 'Sélectionnez un élève réel dans la liste pour saisir ses notes';
 
                             return (
-                              <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                              <tr key={item.subject.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                                 <td className="p-1 border border-slate-700 font-bold text-slate-900">
                                   <div className="flex items-center justify-between group">
                                     <span>{item.subject.name}</span>
@@ -1124,7 +1139,6 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                                     value={item.coefficient}
                                     onChange={(newCoeff) => {
                                       updateSubject(item.subject.id, { coefficient: newCoeff });
-                                      setSubjectNotice(`Coefficient de "${item.subject.name}" mis à jour à ${newCoeff}.`);
                                     }}
                                     title={`Modifier le coefficient de ${item.subject.name}`}
                                   />

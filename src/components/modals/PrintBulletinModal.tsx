@@ -233,8 +233,8 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
     generalAppreciation: 'Aucune donnée enregistrée'
   };
 
-  // Grouped Subjects into Official Clusters (Scientifiques, Littéraires, Autres)
-  const subjectGroups = groupSubjectResults(studentRankData.subjectResults);
+  // Grouped Subjects into Official Clusters
+  const subjectGroups = groupSubjectResults(studentRankData.subjectResults, classObj || student);
 
   // Council Decision Mentions (Bénin standard + cases cochées manuellement)
   const autoCouncilDecision = getCouncilDecisionMentions(
@@ -504,8 +504,9 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
           </div>
         )}
 
-        {/* Printable Bulletin Document */}
-        <div className="p-4 sm:p-6 bg-white text-slate-900 font-sans print:p-0 print:m-0 relative overflow-hidden text-xs leading-normal" id="bulletin-document">
+        {/* Printable Bulletin Document (Scrollable inside modal) */}
+        <div className="flex-1 overflow-y-auto print:overflow-visible">
+          <div className="p-4 sm:p-6 bg-white text-slate-900 font-sans print:p-0 print:m-0 relative overflow-hidden text-xs leading-normal" id="bulletin-document">
           
           {/* Filigrane d'arrière-plan officiel type Wexomin */}
           <div className="absolute inset-0 pointer-events-none opacity-[0.035] overflow-hidden select-none z-0">
@@ -645,6 +646,17 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
               </div>
             </div>
 
+            {/* Aide contextuelle saisie directe / mode spécimen */}
+            {student.id === 'specimen-student' ? (
+              <div className="print:hidden mb-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[10.5px] font-bold">
+                Mode Spécimen vierge : sélectionnez un élève réel dans la classe pour renseigner et modifier ses notes. Les coefficients restent directement modifiables.
+              </div>
+            ) : (
+              <div className="print:hidden mb-2 px-3 py-1 rounded-xl bg-emerald-50/90 border border-emerald-200 text-emerald-900 text-[10px] font-bold">
+                Saisie directe active : cliquez sur un coefficient (COEF) ou une note (Int 1, Int 2, DEVOIR, COMPO) directement dans le tableau pour la modifier instantanément.
+              </div>
+            )}
+
             {/* 4. TABLEAU DES NOTES PAR REGROUPEMENT DISCIPLINAIRE (Norme Bénin) */}
             <div className="overflow-x-auto mb-1">
               <table className="w-full text-[10px] border-collapse border border-slate-800">
@@ -672,7 +684,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                           const isSpecimen = student.id === 'specimen-student';
 
                           return (
-                            <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                            <tr key={item.subject.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
                               <td className="p-1 border border-slate-700 font-bold text-slate-900">
                                 <div className="flex items-center justify-between group">
                                   <span>{item.subject.name}</span>
@@ -696,8 +708,6 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                                   value={item.coefficient}
                                   onChange={(newCoeff) => {
                                     updateSubject(item.subject.id, { coefficient: newCoeff });
-                                    setNoticeMsg(`✅ Coefficient de "${item.subject.name}" modifié à ${newCoeff}.`);
-                                    setTimeout(() => setNoticeMsg(null), 3000);
                                   }}
                                   title={`Modifier le coefficient de ${item.subject.name}`}
                                 />
@@ -984,6 +994,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
 
           </div> {/* Fin relative z-10 */}
 
+          </div>
         </div>
 
       </div>
