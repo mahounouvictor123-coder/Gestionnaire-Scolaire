@@ -4,7 +4,6 @@ import { Grade } from '../types';
 import { AddGradeModal } from '../components/modals/AddGradeModal';
 import { EditGradeModal } from '../components/modals/EditGradeModal';
 import { ScanGradesModal } from '../components/modals/ScanGradesModal';
-import { AIGradesBulletinWhatsAppModal } from '../components/modals/AIGradesBulletinWhatsAppModal';
 import { 
   ClipboardList, 
   Plus, 
@@ -12,7 +11,6 @@ import {
   Edit3,
   Filter, 
   ScanLine, 
-  Bot, 
   School, 
   Baby, 
   GraduationCap, 
@@ -27,7 +25,6 @@ export const GradesView: React.FC = () => {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [showScanModal, setShowScanModal] = useState(false);
-  const [showAiWhatsAppModal, setShowAiWhatsAppModal] = useState(false);
   const [selectedGradeForEdit, setSelectedGradeForEdit] = useState<Grade | null>(null);
   const [trimesterFilter, setTrimesterFilter] = useState<number>(settings.currentTrimester || 1);
   const [activeCycleTab, setActiveCycleTab] = useState<'PRIMAIRE' | 'MATERNELLE' | 'COLLEGE' | 'LYCEE' | 'ALL'>('PRIMAIRE');
@@ -106,14 +103,6 @@ export const GradesView: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-          <button
-            onClick={() => setShowAiWhatsAppModal(true)}
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 hover:from-emerald-500 hover:to-indigo-600 text-white font-black text-xs sm:text-sm flex items-center space-x-2 shadow-lg hover:scale-105 transition-all cursor-pointer"
-          >
-            <Bot className="h-4 w-4 text-amber-300 animate-pulse" />
-            <span>📲 WhatsApp Notes aux Parents</span>
-          </button>
-
           <button
             onClick={() => setShowScanModal(true)}
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs sm:text-sm flex items-center space-x-2 shadow-md transition-all cursor-pointer"
@@ -412,11 +401,6 @@ export const GradesView: React.FC = () => {
       <ScanGradesModal
         isOpen={showScanModal}
         onClose={() => setShowScanModal(false)}
-      />
-
-      <AIGradesBulletinWhatsAppModal
-        isOpen={showAiWhatsAppModal}
-        onClose={() => setShowAiWhatsAppModal(false)}
       />
 
     </div>

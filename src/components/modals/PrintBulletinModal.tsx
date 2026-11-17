@@ -1,17 +1,19 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { useApp } from '../../lib/store';
-import { Student, SchoolClass, Subject } from '../../types';
+import { Student, SchoolClass, Subject, CouncilDecisionData } from '../../types';
 import { 
   calculateClassRanks, 
   defaultBulletinTemplate,
   groupSubjectResults,
   getCouncilDecisionMentions,
+  mergeCouncilDecision,
   getNextClassName,
   SubjectGroup
 } from '../../lib/gradingUtils';
-import { SendBulletinParentModal } from './SendBulletinParentModal';
+import { getCleanStudentNames, getStudentRepeaterStatus } from '../../lib/schoolUtils';
 import { SchoolLogoImportModal } from './SchoolLogoImportModal';
 import { InsertBulletinGradesModal } from './InsertBulletinGradesModal';
+import { InlineCoeffInput } from '../InlineCoeffInput';
 import { downloadSingleBulletinPdf } from '../../lib/bulletinPdfExport';
 import { 
   X, 
@@ -26,8 +28,6 @@ import {
   Eye, 
   EyeOff, 
   Sparkles, 
-  MessageCircle, 
-  Smartphone, 
   Image as ImageIcon, 
   Camera,
   Pencil,
@@ -73,11 +73,11 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
     archiveReportCard,
     updateSubject,
     deleteSubject,
-    addSubject
+    addSubject,
+    updateStudent
   } = useApp();
   const [showSignatureControls, setShowSignatureControls] = useState(false);
   const [showSignatureOnDoc, setShowSignatureOnDoc] = useState(true);
-  const [isSendParentModalOpen, setIsSendParentModalOpen] = useState(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -208,12 +208,17 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
   // Grouped Subjects into Official Clusters (Scientifiques, Littéraires, Autres)
   const subjectGroups = groupSubjectResults(studentRankData.subjectResults);
 
-  // Council Decision Mentions (Bénin standard)
-  const councilDecision = getCouncilDecisionMentions(
+  // Council Decision Mentions (Bénin standard + cases cochées manuellement)
+  const autoCouncilDecision = getCouncilDecisionMentions(
     studentRankData.overallAverage,
     trimester,
     classObj?.name || '',
     student.status === 'EXCLU'
+  );
+  const councilDecision = mergeCouncilDecision(autoCouncilDecision, student, Number(trimester));
+  const hasManualCouncilOverride = Boolean(
+    student.bulletinCouncilDecisions?.[Number(trimester)] &&
+    Object.keys(student.bulletinCouncilDecisions[Number(trimester)] || {}).length > 0
   );
 
   // Previous trimesters calculations for student history bar
@@ -254,13 +259,42 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
   const className = classObj?.name || student.level || '6ème';
   const directorName = currentSchool?.directorName || settings.directorName || 'Adébayo I. BAKARY';
 
-  const isRedoublant = student.status === 'TRANSFERE' || (student.medicalNotes && student.medicalNotes.toLowerCase().includes('redoubl'));
+  const cleanStudentNames = getCleanStudentNames(student);
+  const isRedoublant = getStudentRepeaterStatus(student);
+
+  const handleSetRepeaterStatus = (isRepeater: boolean) => {
+    updateStudent(student.id, { isRepeater });
+  };
+
+  const handleUpdateCouncilDecision = (patch: Partial<CouncilDecisionData>) => {
+    const tKey = Number(trimester);
+    const existingAll = student.bulletinCouncilDecisions || {};
+    const existingTrimester = existingAll[tKey] || {};
+    updateStudent(student.id, {
+      bulletinCouncilDecisions: {
+        ...existingAll,
+        [tKey]: {
+          ...existingTrimester,
+          ...patch
+        }
+      }
+    });
+  };
+
+  const handleResetCouncilDecision = () => {
+    const tKey = Number(trimester);
+    const existingAll = { ...(student.bulletinCouncilDecisions || {}) };
+    delete existingAll[tKey];
+    updateStudent(student.id, {
+      bulletinCouncilDecisions: existingAll
+    });
+  };
 
   const handlePrint = () => {
     // Auto-archive this printed bulletin in permanent storage
     archiveReportCard({
       studentId: student.id,
-      studentName: `${student.lastName} ${student.firstName}`,
+      studentName: `${cleanStudentNames.lastName || student.lastName} ${cleanStudentNames.firstName || student.firstName}`,
       registrationNumber: student.registrationNumber || 'MAT-N/A',
       photoUrl: student.photoUrl,
       classId: classObj?.id || student.classId,
@@ -345,7 +379,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
               title="Modifier les coefficients ou supprimer des matières du bulletin"
             >
               <Pencil className="h-3.5 w-3.5 text-amber-300" />
-              <span>⚙️ Gérer les Matières</span>
+              <span>⚙️ Coefficients & Matières</span>
             </button>
             <button
               onClick={() => setShowSignatureControls(!showSignatureControls)}
@@ -356,14 +390,6 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
             </button>
           </div>
           <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setIsSendParentModalOpen(true)}
-              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 shadow cursor-pointer"
-              title="Transmettre le bulletin officiel au parent sur WhatsApp ou SMS"
-            >
-              <MessageCircle className="h-4 w-4" />
-              <span>📲 WhatsApp / SMS Parent</span>
-            </button>
             <button
               onClick={handlePrint}
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 shadow"
@@ -542,11 +568,11 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                   <tbody>
                     <tr>
                       <td className="w-24 font-bold text-slate-700 py-0.5">Nom :</td>
-                      <td className="font-black uppercase text-slate-950 text-xs py-0.5">{student.lastName}</td>
+                      <td className="font-black uppercase text-slate-950 text-xs py-0.5">{cleanStudentNames.lastName || student.lastName}</td>
                     </tr>
                     <tr>
                       <td className="font-bold text-slate-700 py-0.5">Prénoms :</td>
-                      <td className="font-extrabold text-slate-900 py-0.5">{student.firstName}</td>
+                      <td className="font-extrabold text-slate-900 py-0.5">{cleanStudentNames.firstName || student.firstName}</td>
                     </tr>
                     <tr>
                       <td className="font-bold text-slate-700 py-0.5">N° Matricule :</td>
@@ -560,20 +586,30 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                 </table>
               </div>
 
-              {/* Colonne droite (Nouveau / Redoublant & Effectif) */}
+              {/* Colonne droite (Nouveau / Redoublant cliquables & Effectif) */}
               <div className="col-span-4 border-l border-slate-400 pl-3 flex flex-col justify-center space-y-1.5 text-[10.5px] font-extrabold text-slate-900">
-                <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => handleSetRepeaterStatus(false)}
+                  className="flex items-center space-x-2 text-left cursor-pointer group rounded px-1 -mx-1 py-0.5 hover:bg-purple-50 print:hover:bg-transparent transition-colors"
+                  title="Cliquer pour cocher NOUVEAU"
+                >
                   <span className="w-24">NOUVEAU</span>
-                  <span className="w-4 h-4 border border-slate-900 flex items-center justify-center font-black text-[11px] bg-white">
+                  <span className={`w-4 h-4 border border-slate-900 flex items-center justify-center font-black text-[11px] bg-white group-hover:border-purple-600 ${!isRedoublant ? 'text-slate-950' : 'text-transparent'}`}>
                     {!isRedoublant ? '✓' : ''}
                   </span>
-                </div>
-                <div className="flex items-center space-x-2">
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetRepeaterStatus(true)}
+                  className="flex items-center space-x-2 text-left cursor-pointer group rounded px-1 -mx-1 py-0.5 hover:bg-purple-50 print:hover:bg-transparent transition-colors"
+                  title="Cliquer pour cocher REDOUBLANT"
+                >
                   <span className="w-24">REDOUBLANT</span>
-                  <span className="w-4 h-4 border border-slate-900 flex items-center justify-center font-black text-[11px] bg-white">
+                  <span className={`w-4 h-4 border border-slate-900 flex items-center justify-center font-black text-[11px] bg-white group-hover:border-purple-600 ${isRedoublant ? 'text-slate-950' : 'text-transparent'}`}>
                     {isRedoublant ? '✓' : ''}
                   </span>
-                </div>
+                </button>
                 <div className="pt-0.5 text-slate-950 text-[11px]">
                   <span>EFFECTIF : </span>
                   <strong className="font-black text-xs ml-1">{classRankSummary.totalStudents || 14}</strong>
@@ -629,7 +665,15 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                                 </div>
                               </td>
                               <td className="p-1 border border-slate-700 text-center font-bold text-slate-800">
-                                {item.coefficient}
+                                <InlineCoeffInput
+                                  value={item.coefficient}
+                                  onChange={(newCoeff) => {
+                                    updateSubject(item.subject.id, { coefficient: newCoeff });
+                                    setNoticeMsg(`✅ Coefficient de "${item.subject.name}" modifié à ${newCoeff}.`);
+                                    setTimeout(() => setNoticeMsg(null), 3000);
+                                  }}
+                                  title={`Modifier le coefficient de ${item.subject.name}`}
+                                />
                               </td>
                               <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
                                 {item.interro1 !== undefined ? item.interro1.toFixed(2) : '-'}
@@ -739,37 +783,53 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
               
               {/* Cadre Gauche : Décision du Conseil des Professeurs & Appréciation */}
               <div className="col-span-6 border border-slate-800 p-2 space-y-1.5 text-xs bg-white">
-                <div className="text-center font-black uppercase text-[10.5px] tracking-wide border-b border-slate-700 pb-1 text-slate-950">
-                  DÉCISION DU CONSEIL DES PROFESSEURS
+                <div className="flex items-center justify-between border-b border-slate-700 pb-1">
+                  <span className="font-black uppercase text-[10.5px] tracking-wide text-slate-950">
+                    DÉCISION DU CONSEIL DES PROFESSEURS
+                  </span>
+                  <div className="flex items-center space-x-1.5 print:hidden">
+                    <span className="text-[9px] text-purple-700 font-bold">(Cliquer pour cocher)</span>
+                    {hasManualCouncilOverride && (
+                      <button
+                        type="button"
+                        onClick={handleResetCouncilDecision}
+                        className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[9px] font-bold cursor-pointer"
+                        title="Rétablir la décision calculée automatiquement selon la moyenne"
+                      >
+                        ↺ Auto
+                      </button>
+                    )}
+                  </div>
                 </div>
                 
-                {/* Table des Mentions */}
+                {/* Table des Mentions cliquables */}
                 <table className="w-full text-[10px] border-collapse border border-slate-700">
                   <tbody>
-                    <tr>
-                      <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">FÉLICITATIONS</td>
-                      <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{councilDecision.felicitations ? 'X' : ''}</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">ENCOURAGEMENTS</td>
-                      <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{councilDecision.encouragements ? 'X' : ''}</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">TABLEAU D'HONNEUR</td>
-                      <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{councilDecision.tableauHonneur ? 'X' : ''}</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">AVERTISSEMENT</td>
-                      <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{councilDecision.avertissement ? 'X' : ''}</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">BLÂME</td>
-                      <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{councilDecision.blame ? 'X' : ''}</td>
-                    </tr>
-                    <tr>
-                      <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">RENVOI</td>
-                      <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{councilDecision.renvoi ? 'X' : ''}</td>
-                    </tr>
+                    {([
+                      { key: 'felicitations', label: 'FÉLICITATIONS' },
+                      { key: 'encouragements', label: 'ENCOURAGEMENTS' },
+                      { key: 'tableauHonneur', label: "TABLEAU D'HONNEUR" },
+                      { key: 'avertissement', label: 'AVERTISSEMENT' },
+                      { key: 'blame', label: 'BLÂME' },
+                      { key: 'renvoi', label: 'RENVOI' },
+                    ] as const).map((mention) => {
+                      const checked = Boolean(councilDecision[mention.key]);
+                      return (
+                        <tr
+                          key={mention.key}
+                          onClick={() => handleUpdateCouncilDecision({ [mention.key]: !checked })}
+                          className="cursor-pointer hover:bg-purple-50 print:hover:bg-transparent transition-colors select-none"
+                          title={`Cliquer pour ${checked ? 'décocher' : 'cocher'} ${mention.label}`}
+                        >
+                          <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">
+                            {mention.label}
+                          </td>
+                          <td className={`border border-slate-700 text-center font-black w-8 ${checked ? 'bg-purple-100/70 print:bg-slate-50 text-slate-950' : 'bg-slate-50'}`}>
+                            {checked ? 'X' : ''}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
 
@@ -778,13 +838,37 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                   <div className="font-black text-slate-900 underline text-[10px] uppercase">
                     Appréciation du Directeur
                   </div>
-                  <div className="flex items-center">
-                    <span className="text-slate-700 font-semibold w-20">Travail....</span>
-                    <strong className="font-black text-slate-950">{councilDecision.appreciationDirecteur}</strong>
+                  <div className="flex items-center space-x-1">
+                    <span className="text-slate-700 font-semibold w-20 shrink-0">Travail....</span>
+                    <input
+                      type="text"
+                      value={councilDecision.appreciationDirecteur}
+                      onChange={(e) => handleUpdateCouncilDecision({ appreciationDirecteur: e.target.value })}
+                      className="print:hidden flex-1 px-1.5 py-0.5 rounded border border-purple-200 focus:border-purple-600 bg-purple-50/50 focus:bg-white font-black text-slate-950 text-[10.5px] outline-none"
+                      title="Modifier l'appréciation du travail"
+                    />
+                    <strong className="hidden print:inline font-black text-slate-950">{councilDecision.appreciationDirecteur}</strong>
                   </div>
-                  <div className="flex items-center">
-                    <span className="text-slate-900 font-black w-20 uppercase">DÉCISION :</span>
-                    <strong className="font-black uppercase text-blue-950 text-xs">{councilDecision.decision}</strong>
+                  <div className="flex items-center space-x-1">
+                    <span className="text-slate-900 font-black w-20 uppercase shrink-0">DÉCISION :</span>
+                    <input
+                      type="text"
+                      list="print-bulletin-decision-presets"
+                      value={councilDecision.decision}
+                      onChange={(e) => handleUpdateCouncilDecision({ decision: e.target.value })}
+                      className="print:hidden flex-1 px-1.5 py-0.5 rounded border border-purple-200 focus:border-purple-600 bg-purple-50/50 focus:bg-white font-black uppercase text-blue-950 text-[11px] outline-none"
+                      title="Choisir ou saisir la décision du conseil"
+                    />
+                    <datalist id="print-bulletin-decision-presets">
+                      <option value={`Passe en ${getNextClassName(classObj?.name || '')}`} />
+                      <option value="Admis(e) en classe supérieure" />
+                      <option value="Redouble" />
+                      <option value="Exclu(e)" />
+                      <option value="Bon travail, continuer ainsi" />
+                      <option value="Poursuivre les efforts" />
+                      <option value="Efforts soutenus requis" />
+                    </datalist>
+                    <strong className="hidden print:inline font-black uppercase text-blue-950 text-xs">{councilDecision.decision}</strong>
                   </div>
                 </div>
               </div>
@@ -856,21 +940,6 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
         </div>
 
       </div>
-
-      {isSendParentModalOpen && (
-        <SendBulletinParentModal
-          isOpen={isSendParentModalOpen}
-          onClose={() => setIsSendParentModalOpen(false)}
-          student={student}
-          classObj={classObj}
-          trimester={trimester}
-          studentAverage={studentRankData.overallAverage}
-          studentRank={studentRankData.rank}
-          totalStudentsInClass={classRankSummary.totalStudents}
-          studentMention={studentRankData.mention}
-          studentAppreciation={studentRankData.generalAppreciation}
-        />
-      )}
 
       {/* School Logo Import Modal */}
       <SchoolLogoImportModal
@@ -1051,9 +1120,16 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                         </div>
 
                         <div className="flex items-center space-x-2">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold text-xs">
-                            Coeff. {sbj.coefficient}
-                          </span>
+                          <InlineCoeffInput
+                            variant="badge"
+                            value={sbj.coefficient}
+                            onChange={(newCoeff) => {
+                              updateSubject(sbj.id, { coefficient: newCoeff });
+                              setNoticeMsg(`✅ Coefficient de "${sbj.name}" modifié à ${newCoeff}.`);
+                              setTimeout(() => setNoticeMsg(null), 3000);
+                            }}
+                            title={`Modifier directement le coefficient de ${sbj.name}`}
+                          />
 
                           <button
                             type="button"

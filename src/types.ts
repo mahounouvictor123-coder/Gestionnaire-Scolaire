@@ -62,6 +62,17 @@ export interface SchoolClass {
   tranches?: TuitionTranche[];
 }
 
+export interface CouncilDecisionData {
+  felicitations: boolean;
+  encouragements: boolean;
+  tableauHonneur: boolean;
+  avertissement: boolean;
+  blame: boolean;
+  renvoi: boolean;
+  appreciationDirecteur: string;
+  decision: string;
+}
+
 export interface Student {
   id: string;
   registrationNumber: string; // Matricule ex: "2025-MAT-042"
@@ -81,6 +92,8 @@ export interface Student {
   enrollmentDate: string;
   medicalNotes?: string;
   bloodGroup?: string;
+  isRepeater?: boolean;
+  bulletinCouncilDecisions?: Record<number, Partial<CouncilDecisionData>>;
   parentSubscriptionStatus?: 'actif' | 'expire' | 'inactif';
   parentSubscriptionExpiresAt?: string;
   parentLastReceiptCode?: string;

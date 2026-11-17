@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../lib/store';
 import { Student, SchoolClass, Subject, Grade } from '../../types';
+import { getCleanStudentNames } from '../../lib/schoolUtils';
+import { InlineCoeffInput } from '../InlineCoeffInput';
 import {
   X,
   Save,
@@ -57,7 +59,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
   availableSubjects,
   onSaved
 }) => {
-  const { grades, addBulkGrades, currentSchool, settings } = useApp();
+  const { grades, addBulkGrades, currentSchool, settings, subjects, updateSubject } = useApp();
 
   // Mode: 'STUDENT' (toutes les matières pour 1 élève) ou 'CLASS' (tous les élèves pour 1 matière)
   const [entryMode, setEntryMode] = useState<'STUDENT' | 'CLASS'>('STUDENT');
@@ -512,11 +514,14 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                   onChange={e => setActiveStudentId(e.target.value)}
                   className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 cursor-pointer min-w-[240px] max-w-xs truncate"
                 >
-                  {classStudents.map((st, idx) => (
-                    <option key={st.id} value={st.id}>
-                      {idx + 1}. {st.lastName.toUpperCase()} {st.firstName} ({st.registrationNumber})
-                    </option>
-                  ))}
+                  {classStudents.map(st => {
+                    const cleanNames = getCleanStudentNames(st);
+                    return (
+                      <option key={st.id} value={st.id}>
+                        {`${cleanNames.lastName.toUpperCase()} ${cleanNames.firstName}`.trim()}
+                      </option>
+                    );
+                  })}
                 </select>
 
                 <button
@@ -538,7 +543,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                     className="w-7 h-7 rounded-lg object-cover ring-1 ring-purple-500/30"
                   />
                   <span className="font-black text-purple-700 dark:text-purple-300">
-                    {activeStudent.lastName.toUpperCase()} {activeStudent.firstName}
+                    {getCleanStudentNames(activeStudent).lastName.toUpperCase()} {getCleanStudentNames(activeStudent).firstName}
                   </span>
                 </div>
               )}
@@ -552,12 +557,23 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                 onChange={e => setActiveSubjectId(e.target.value)}
                 className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 cursor-pointer min-w-[220px]"
               >
-                {availableSubjects.map(sbj => (
-                  <option key={sbj.id} value={sbj.id}>
-                    {sbj.name} (Coeff {sbj.coefficient || 1})
-                  </option>
-                ))}
+                {availableSubjects.map(sbj => {
+                  const liveSbjCoeff = subjects.find(s => s.id === sbj.id)?.coefficient ?? sbj.coefficient ?? 1;
+                  return (
+                    <option key={sbj.id} value={sbj.id}>
+                      {sbj.name} (Coeff {liveSbjCoeff})
+                    </option>
+                  );
+                })}
               </select>
+              {activeSubjectId && (
+                <InlineCoeffInput
+                  variant="badge"
+                  value={subjects.find(s => s.id === activeSubjectId)?.coefficient ?? availableSubjects.find(s => s.id === activeSubjectId)?.coefficient ?? 1}
+                  onChange={(newCoeff) => updateSubject(activeSubjectId, { coefficient: newCoeff })}
+                  title="Modifier directement le coefficient de la matière sélectionnée"
+                />
+              )}
               <span className="text-slate-500 dark:text-slate-400 font-semibold">
                 — {classStudents.length} élève(s) dans cette classe
               </span>
@@ -635,7 +651,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                       }
 
                       const projectedAvg = totalDiv > 0 ? (totalPts / totalDiv) : null;
-                      const coeff = sbj.coefficient || 1;
+                      const coeff = subjects.find(s => s.id === sbj.id)?.coefficient ?? sbj.coefficient ?? 1;
                       const projectedCoeff = projectedAvg !== null ? (projectedAvg * coeff) : null;
 
                       return (
@@ -644,12 +660,15 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                           className={idx % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/70 dark:bg-slate-900/40'}
                         >
                           <td className="p-3">
-                            <div className="font-black text-sm text-slate-900 dark:text-white">
+                            <div className="font-black text-sm text-slate-900 dark:text-white mb-1">
                               {sbj.name}
                             </div>
-                            <div className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">
-                              Coefficient : {coeff}
-                            </div>
+                            <InlineCoeffInput
+                              variant="badge"
+                              value={coeff}
+                              onChange={(newCoeff) => updateSubject(sbj.id, { coefficient: newCoeff })}
+                              title={`Modifier le coefficient de ${sbj.name}`}
+                            />
                           </td>
 
                           {/* Interro 1 Input */}
@@ -839,7 +858,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                       }
 
                       const projectedAvg = totalDiv > 0 ? (totalPts / totalDiv) : null;
-                      const curSbjCoeff = availableSubjects.find(s => s.id === activeSubjectId)?.coefficient || 1;
+                      const curSbjCoeff = subjects.find(s => s.id === activeSubjectId)?.coefficient ?? availableSubjects.find(s => s.id === activeSubjectId)?.coefficient ?? 1;
                       const projectedCoeff = projectedAvg !== null ? (projectedAvg * curSbjCoeff) : null;
 
                       return (
@@ -860,7 +879,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                               />
                               <div>
                                 <div className="font-black text-sm text-slate-900 dark:text-white">
-                                  {st.lastName.toUpperCase()} {st.firstName}
+                                  {getCleanStudentNames(st).lastName.toUpperCase()} {getCleanStudentNames(st).firstName}
                                 </div>
                                 <div className="text-[10px] text-purple-600 dark:text-purple-400 font-bold">
                                   {st.registrationNumber}

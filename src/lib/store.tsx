@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { getCleanStudentNames } from './schoolUtils';
 import {
   User,
   School,
@@ -2791,8 +2792,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const regNum = (stdData as any).registrationNumber && (stdData as any).registrationNumber.trim().length > 0
       ? (stdData as any).registrationNumber.trim()
       : defaultRegNum;
+    const cleanNames = getCleanStudentNames(stdData);
     const newStudent: Student = {
       ...stdData,
+      lastName: (cleanNames.lastName || stdData.lastName || '').trim().toUpperCase(),
+      firstName: (cleanNames.firstName || stdData.firstName || '').trim(),
       id: `std-${Date.now()}`,
       registrationNumber: regNum
     };
@@ -2837,8 +2841,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ? stdData.registrationNumber.trim().toUpperCase()
         : autoRegNum;
 
+      const cleanNames = getCleanStudentNames(stdData);
       const newStudent: Student = {
         ...stdData,
+        lastName: (cleanNames.lastName || stdData.lastName || '').trim().toUpperCase(),
+        firstName: (cleanNames.firstName || stdData.firstName || '').trim(),
         id: `std-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
         registrationNumber: providedRegNum
       };

@@ -1,4 +1,5 @@
 import { extractHtmlFromDocx, extractTextFromDocx } from './docxExtractor';
+import { cleanPersonName } from './schoolUtils';
 
 export interface ParsedRosterStudent {
   registrationNumber: string;
@@ -382,7 +383,7 @@ function cleanMatricule(raw: string): string {
  * Sépare intelligemment un nom complet ("ADANLETE Jean-Baptiste" ou "Jean-Baptiste ADANLETE") en { lastName, firstName }.
  */
 export function splitFullName(fullNameRaw: string): { lastName: string; firstName: string } {
-  const cleaned = fullNameRaw.replace(/\s+/g, ' ').trim();
+  const cleaned = cleanPersonName(fullNameRaw);
   if (!cleaned) return { lastName: '', firstName: '' };
 
   const words = cleaned.split(' ').filter(Boolean);
@@ -573,14 +574,14 @@ export function parseStudentRosterText(rawText: string): ParsedRosterStudent[] {
               const tokens = rawVal.split(/\s+/);
               if (!registrationNumber && tokens.length >= 2 && isMatriculeValue(tokens[0])) {
                 registrationNumber = cleanMatricule(tokens[0]);
-                lastName = tokens.slice(1).join(' ').toUpperCase();
+                lastName = cleanPersonName(tokens.slice(1).join(' ')).toUpperCase();
               } else {
-                lastName = rawVal.toUpperCase();
+                lastName = cleanPersonName(rawVal).toUpperCase();
               }
               break;
             }
             case 'firstName':
-              firstName = cleanTitleCase(rawVal);
+              firstName = cleanTitleCase(cleanPersonName(rawVal));
               break;
             case 'fullName':
               fullNameBuffer = rawVal;
@@ -819,10 +820,13 @@ export function parseStudentRosterText(rawText: string): ParsedRosterStudent[] {
       }
 
       // Ne pas créer d'élève si ni nom ni prénom n'est valide
+      lastName = cleanPersonName(lastName);
+      firstName = cleanPersonName(firstName);
       if (!lastName && !firstName) continue;
       if (!lastName && firstName) {
-        lastName = firstName.toUpperCase();
-        firstName = '';
+        const sp = splitFullName(firstName);
+        lastName = sp.lastName;
+        firstName = sp.firstName;
       }
 
       results.push({

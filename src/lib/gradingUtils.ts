@@ -1,4 +1,4 @@
-import { Student, Grade, Subject, BulletinTemplate, SchoolClass } from '../types';
+import { Student, Grade, Subject, BulletinTemplate, SchoolClass, CouncilDecisionData } from '../types';
 import { isPrimaryClass, isSubjectForClass } from './schoolUtils';
 
 export interface SubjectResult {
@@ -603,4 +603,22 @@ export function getCouncilDecisionMentions(
     decision
   };
 }
+
+/**
+ * Fusionne la décision automatique du conseil des professeurs avec les cases
+ * cochées ou modifiées manuellement sur le bulletin pour ce trimestre.
+ */
+export function mergeCouncilDecision(
+  autoDecision: CouncilDecisionData,
+  student?: Student | null,
+  trimester: number = 1
+): CouncilDecisionData {
+  const override = student?.bulletinCouncilDecisions?.[trimester];
+  if (!override) return autoDecision;
+  return {
+    ...autoDecision,
+    ...override
+  };
+}
+
 

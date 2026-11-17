@@ -147,3 +147,64 @@ export function isSubjectForClass(
 
   return sbj.level === targetSection;
 }
+
+/**
+ * Supprime tout numéro d'ordre, indice ou préfixe matricule pouvant apparaître
+ * devant un nom ou prénom d'élève (ex: "1. KOFFI", "01 - KOFFI", "2361077 KOFFI").
+ */
+export function cleanPersonName(raw?: string | null): string {
+  if (!raw) return '';
+  let cleaned = String(raw).replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+
+  for (let i = 0; i < 3; i++) {
+    const prev = cleaned;
+    // Préfixes explicites N°, #, Mat:, Matricule:
+    cleaned = cleaned.replace(/^(?:(?:n°|no|#)\s*\d+[a-z0-9\-\/]*[\.\)\-:\s]*|(?:matricule|mat\.?)\s*[:=\-]?\s*[a-z0-9\-\/_]+[\.\)\-:\s]+)/i, '').trim();
+    // Préfixes codes alphanumériques type MAT-042, 2025-COL-001
+    cleaned = cleaned.replace(/^(?:[A-Z]{2,5}-\d{2,}[A-Z0-9\-]*|\d{4}-[A-Z0-9\-]{2,})[\.\)\-:\s]+/i, '').trim();
+    // Nombres seuls ou suivis de ., ), -, : devant le nom (ex: "1. ADANLETE", "02 ADANLETE", "2361077 ADANLETE")
+    cleaned = cleaned.replace(/^\d+[\.\)\-:\s]+/, '').trim();
+    if (cleaned === prev) break;
+  }
+
+  // Si la valeur restante n'est composée que de chiffres/ponctuation (aucune lettre), l'ignorer
+  if (/^[\d\s\.\-\/_,;:]+$/.test(cleaned)) {
+    return '';
+  }
+
+  return cleaned.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Retourne exclusivement le nom et les prénoms propres d'un élève,
+ * sans aucun numéro ou matricule devant le nom.
+ */
+export function getCleanStudentNames(
+  student?: { lastName?: string | null; firstName?: string | null } | null
+): { lastName: string; firstName: string; fullName: string } {
+  if (!student) return { lastName: '', firstName: '', fullName: '' };
+  let last = cleanPersonName(student.lastName);
+  let first = cleanPersonName(student.firstName);
+
+  if (!last && first) {
+    const parts = first.split(/\s+/).filter(Boolean);
+    last = parts[0] || '';
+    first = parts.slice(1).join(' ');
+  }
+
+  const fullName = [last ? last.toUpperCase() : '', first].filter(Boolean).join(' ').trim();
+  return { lastName: last, firstName: first, fullName };
+}
+
+/**
+ * Détermine si l'élève est redoublant (priorité au choix explicite coché sur le bulletin).
+ */
+export function getStudentRepeaterStatus(student?: Student | null): boolean {
+  if (!student) return false;
+  if (typeof student.isRepeater === 'boolean') {
+    return student.isRepeater;
+  }
+  return student.status === 'TRANSFERE' || Boolean(student.medicalNotes && student.medicalNotes.toLowerCase().includes('redoubl'));
+}
+

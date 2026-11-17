@@ -5,8 +5,10 @@ import {
   StudentRankResult, 
   ClassRankSummary,
   groupSubjectResults,
-  getCouncilDecisionMentions
+  getCouncilDecisionMentions,
+  mergeCouncilDecision
 } from './gradingUtils';
+import { getCleanStudentNames, getStudentRepeaterStatus } from './schoolUtils';
 
 export interface BulletinPdfOptions {
   studentRank: StudentRankResult;
@@ -313,6 +315,8 @@ export function addBulletinPageToPdf(
   const idRightWidth = contentWidth * 0.35;
   doc.line(margin + idLeftWidth, idBoxY, margin + idLeftWidth, idBoxY + idBoxHeight);
 
+  const cleanNames = getCleanStudentNames(student);
+
   // Left Details: Nom, Prénoms, Matricule, Sexe
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7);
@@ -320,14 +324,14 @@ export function addBulletinPageToPdf(
   doc.text('Nom :', margin + 3, idBoxY + 3.8);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(student.lastName.toUpperCase(), margin + 24, idBoxY + 3.8);
+  doc.text((cleanNames.lastName || student.lastName).toUpperCase(), margin + 24, idBoxY + 3.8);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
   doc.text('Prénoms :', margin + 3, idBoxY + 7.6);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(student.firstName, margin + 24, idBoxY + 7.6);
+  doc.text(cleanNames.firstName || student.firstName, margin + 24, idBoxY + 7.6);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
@@ -344,7 +348,7 @@ export function addBulletinPageToPdf(
   doc.text(student.gender || 'M', margin + 24, idBoxY + 14.8);
 
   // Right Details: Nouveau / Redoublant & Effectif
-  const isRedoublant = student.status === 'TRANSFERE' || (student.medicalNotes && student.medicalNotes.toLowerCase().includes('redoubl'));
+  const isRedoublant = getStudentRepeaterStatus(student);
   const rightX = margin + idLeftWidth + 4;
 
   doc.setFont('helvetica', 'bold');
@@ -522,12 +526,13 @@ export function addBulletinPageToPdf(
   const bottomBoxWidth = (contentWidth - 3) / 2;
   const bottomBoxHeight = 35;
 
-  const council = getCouncilDecisionMentions(
+  const autoCouncil = getCouncilDecisionMentions(
     studentRank.overallAverage,
     trimester,
     className,
     student.status === 'EXCLU'
   );
+  const council = mergeCouncilDecision(autoCouncil, student, Number(trimester));
 
   // Left Box: Conseil
   doc.setFillColor(255, 255, 255);

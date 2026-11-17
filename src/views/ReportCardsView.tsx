@@ -1,19 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../lib/store';
-import { Student, Subject } from '../types';
-import { isPrimaryClass, isSubjectForClass, getClassSection } from '../lib/schoolUtils';
+import { Student, Subject, CouncilDecisionData } from '../types';
+import { isPrimaryClass, isSubjectForClass, getClassSection, getCleanStudentNames, getStudentRepeaterStatus } from '../lib/schoolUtils';
 import { PrintBulletinModal } from '../components/modals/PrintBulletinModal';
 import { ScanBulletinTemplateModal } from '../components/modals/ScanBulletinTemplateModal';
-import { SendBulletinParentModal } from '../components/modals/SendBulletinParentModal';
-import { AIGradesBulletinWhatsAppModal } from '../components/modals/AIGradesBulletinWhatsAppModal';
 import { SchoolLogoImportModal } from '../components/modals/SchoolLogoImportModal';
 import { InsertBulletinGradesModal } from '../components/modals/InsertBulletinGradesModal';
+import { InlineCoeffInput } from '../components/InlineCoeffInput';
 import { downloadSingleBulletinPdf, downloadClassBulletinsPdf } from '../lib/bulletinPdfExport';
 import { 
   calculateClassRanks, 
   defaultBulletinTemplate,
   groupSubjectResults,
-  getCouncilDecisionMentions
+  getCouncilDecisionMentions,
+  mergeCouncilDecision,
+  getNextClassName
 } from '../lib/gradingUtils';
 import {
   FileCheck,
@@ -38,10 +39,6 @@ import {
   History,
   ShieldCheck,
   FolderArchive,
-  MessageCircle,
-  Smartphone,
-  Send,
-  Bot,
   ArrowLeft,
   ArrowRight,
   Image as ImageIcon,
@@ -68,6 +65,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     addSubject,
     updateSubject,
     deleteSubject,
+    updateStudent,
     currentSchool,
     attendance,
     archivedReportCards,
@@ -90,7 +88,6 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   const [selectedTrimester, setSelectedTrimester] = useState<1 | 2 | 3>(settings.currentTrimester);
   const [selectedStudentForBulletin, setSelectedStudentForBulletin] = useState<Student | null>(null);
   const [isScanTemplateModalOpen, setIsScanTemplateModalOpen] = useState(false);
-  const [showAiWhatsAppModal, setShowAiWhatsAppModal] = useState(false);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   
   // Format d'affichage par défaut : RANKING_TABLE (La liste de la classe s'affiche d'abord, cliquer sur un élève affiche son bulletin)
@@ -104,6 +101,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   const [showSignatureOnDoc, setShowSignatureOnDoc] = useState(true);
   const [bulkArchiveMessage, setBulkArchiveMessage] = useState<string>('');
   const [downloadNotice, setDownloadNotice] = useState<string | null>(null);
+  const [specimenIsRepeater, setSpecimenIsRepeater] = useState(false);
+  const [specimenCouncilOverride, setSpecimenCouncilOverride] = useState<Partial<CouncilDecisionData>>({});
 
   // Saisie et insertion directe des notes du bulletin
   const [isInsertGradesModalOpen, setIsInsertGradesModalOpen] = useState(false);
@@ -161,15 +160,6 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     setNewSubjectName('');
     setTimeout(() => setSubjectNotice(null), 3000);
   };
-
-  // Send to Parent WhatsApp/SMS Modal state
-  const [sendParentModalData, setSendParentModalData] = useState<{
-    isOpen: boolean;
-    student?: Student;
-    studentAverage?: number;
-    studentRank?: string | number;
-    studentMention?: string;
-  }>({ isOpen: false });
 
   // Archives Tab Filter State
   const [archiveSearch, setArchiveSearch] = useState<string>('');
@@ -268,8 +258,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     return groupSubjectResults(currentBulletinRankData.subjectResults);
   }, [currentBulletinRankData.subjectResults]);
 
-  // Council Decision Mentions (Bénin standard)
-  const previewCouncilDecision = useMemo(() => {
+  // Council Decision Mentions (Bénin standard + cases cochées manuellement)
+  const autoPreviewCouncilDecision = useMemo(() => {
     return getCouncilDecisionMentions(
       currentBulletinRankData.overallAverage,
       selectedTrimester,
@@ -277,6 +267,20 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
       activeStudentForBulletin.status === 'EXCLU'
     );
   }, [currentBulletinRankData.overallAverage, selectedTrimester, selectedClass, activeStudentForBulletin]);
+
+  const previewCouncilDecision = useMemo(() => {
+    if (activeStudentForBulletin.id === 'specimen-student') {
+      return { ...autoPreviewCouncilDecision, ...specimenCouncilOverride };
+    }
+    return mergeCouncilDecision(autoPreviewCouncilDecision, activeStudentForBulletin, selectedTrimester);
+  }, [autoPreviewCouncilDecision, activeStudentForBulletin, selectedTrimester, specimenCouncilOverride]);
+
+  const hasManualCouncilOverride = activeStudentForBulletin.id === 'specimen-student'
+    ? Object.keys(specimenCouncilOverride).length > 0
+    : Boolean(
+        activeStudentForBulletin.bulletinCouncilDecisions?.[selectedTrimester] &&
+        Object.keys(activeStudentForBulletin.bulletinCouncilDecisions[selectedTrimester] || {}).length > 0
+      );
 
   // Previous trimesters calculations for student history bar
   const previewTri1Summary = useMemo(() => calculateClassRanks(classStudents, grades, subjects, 1, activeTemplate, selectedClass), [classStudents, grades, subjects, activeTemplate, selectedClass]);
@@ -303,7 +307,58 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
 
   const previewAbsences = (attendance || []).filter(a => a.entityId === activeStudentForBulletin.id && a.status === 'ABSENT').length;
   const previewDelays = (attendance || []).filter(a => a.entityId === activeStudentForBulletin.id && a.status === 'RETARD').length;
-  const isPreviewRedoublant = activeStudentForBulletin.status === 'TRANSFERE' || (activeStudentForBulletin.medicalNotes && activeStudentForBulletin.medicalNotes.toLowerCase().includes('redoubl'));
+  const isPreviewRedoublant = activeStudentForBulletin.id === 'specimen-student'
+    ? specimenIsRepeater
+    : getStudentRepeaterStatus(activeStudentForBulletin);
+
+  const activeStudentCleanNames = useMemo(() => {
+    if (activeStudentForBulletin.id === 'specimen-student') {
+      return {
+        lastName: activeStudentForBulletin.lastName,
+        firstName: activeStudentForBulletin.firstName,
+        fullName: `${activeStudentForBulletin.lastName} ${activeStudentForBulletin.firstName}`
+      };
+    }
+    return getCleanStudentNames(activeStudentForBulletin);
+  }, [activeStudentForBulletin]);
+
+  const handleSetRepeaterStatus = (isRepeater: boolean) => {
+    if (activeStudentForBulletin.id === 'specimen-student') {
+      setSpecimenIsRepeater(isRepeater);
+      return;
+    }
+    updateStudent(activeStudentForBulletin.id, { isRepeater });
+  };
+
+  const handleUpdateCouncilDecision = (patch: Partial<CouncilDecisionData>) => {
+    if (activeStudentForBulletin.id === 'specimen-student') {
+      setSpecimenCouncilOverride(prev => ({ ...prev, ...patch }));
+      return;
+    }
+    const existingAll = activeStudentForBulletin.bulletinCouncilDecisions || {};
+    const existingTrimester = existingAll[selectedTrimester] || {};
+    updateStudent(activeStudentForBulletin.id, {
+      bulletinCouncilDecisions: {
+        ...existingAll,
+        [selectedTrimester]: {
+          ...existingTrimester,
+          ...patch
+        }
+      }
+    });
+  };
+
+  const handleResetCouncilDecision = () => {
+    if (activeStudentForBulletin.id === 'specimen-student') {
+      setSpecimenCouncilOverride({});
+      return;
+    }
+    const existingAll = { ...(activeStudentForBulletin.bulletinCouncilDecisions || {}) };
+    delete existingAll[selectedTrimester];
+    updateStudent(activeStudentForBulletin.id, {
+      bulletinCouncilDecisions: existingAll
+    });
+  };
 
   const previewSchoolNameDisplay = (settings.schoolName && settings.schoolName !== 'GESTIONNAIRE SCOLAIRE') 
     ? settings.schoolName 
@@ -438,7 +493,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
           </p>
         </div>
 
-        {/* Action Buttons: Saisie des Notes, Télécharger Bulletins, Logo, IA WhatsApp, Scanner */}
+        {/* Action Buttons: Saisie des Notes, Coefficients, Télécharger Bulletins, Logo, Scanner */}
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
           <button
             onClick={() => {
@@ -451,6 +506,15 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
           >
             <Edit3 className="h-4 w-4 text-emerald-200" />
             <span>📝 Saisir / Insérer les Notes</span>
+          </button>
+
+          <button
+            onClick={() => setShowSubjectManagerModal(true)}
+            className="w-full md:w-auto px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-lg shadow-indigo-600/20 flex items-center justify-center space-x-2 transition-all shrink-0 cursor-pointer hover:scale-105 active:scale-95"
+            title="Modifier les coefficients et gérer les matières des bulletins de la classe"
+          >
+            <Pencil className="h-4 w-4 text-amber-300" />
+            <span>⚙️ Coefficients & Matières</span>
           </button>
 
           <button
@@ -476,14 +540,6 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                 className="w-4 h-4 object-contain rounded-md bg-white p-0.5 ml-0.5"
               />
             )}
-          </button>
-
-          <button
-            onClick={() => setShowAiWhatsAppModal(true)}
-            className="w-full md:w-auto px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 hover:from-emerald-500 hover:to-indigo-600 text-white font-black text-xs shadow-lg shadow-emerald-600/20 flex items-center justify-center space-x-2 transition-all shrink-0 cursor-pointer hover:scale-105"
-          >
-            <Bot className="h-4 w-4 text-amber-300 animate-pulse" />
-            <span>📲 IA WhatsApp Notes aux Parents</span>
           </button>
 
           <button
@@ -743,11 +799,14 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                   onChange={e => setPreviewStudentId(e.target.value)}
                   className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-white font-extrabold text-xs focus:ring-2 focus:ring-purple-500 cursor-pointer max-w-[260px] sm:max-w-xs truncate"
                 >
-                  {classRankSummary.rankings.map(r => (
-                    <option key={r.student.id} value={r.student.id}>
-                      {r.numericRank === 1 ? '🥇' : r.numericRank === 2 ? '🥈' : r.numericRank === 3 ? '🥉' : '👤'} {r.student.lastName.toUpperCase()} {r.student.firstName} (Mat: {r.student.registrationNumber}) — Rang {r.rank}
-                    </option>
-                  ))}
+                  {classRankSummary.rankings.map(r => {
+                    const cleanNames = getCleanStudentNames(r.student);
+                    return (
+                      <option key={r.student.id} value={r.student.id}>
+                        {`${cleanNames.lastName.toUpperCase()} ${cleanNames.firstName}`.trim()}
+                      </option>
+                    );
+                  })}
                   <option value="SPECIMEN">
                     📄 Spécimen Vierge (Modèle officiel sans nom)
                   </option>
@@ -817,23 +876,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                 title="Modifier les coefficients, intitulés ou supprimer des matières du bulletin"
               >
                 <Pencil className="h-3.5 w-3.5 text-amber-300" />
-                <span>⚙️ Gérer les Matières</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSendParentModalData({
-                  isOpen: true,
-                  student: activeStudentForBulletin.id === 'specimen-student' ? undefined : activeStudentForBulletin,
-                  studentAverage: currentBulletinRankData.overallAverage,
-                  studentRank: currentBulletinRankData.rank,
-                  studentMention: currentBulletinRankData.mention
-                })}
-                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center space-x-1.5 shadow transition-all cursor-pointer"
-                title="Envoyer le lien du bulletin au parent par WhatsApp ou SMS"
-              >
-                <MessageCircle className="h-3.5 w-3.5" />
-                <span>📲 WhatsApp Parent</span>
+                <span>⚙️ Coefficients & Matières</span>
               </button>
 
               <button
@@ -951,11 +994,11 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                     <tbody>
                       <tr>
                         <td className="w-24 font-bold text-slate-700 py-0.5">Nom :</td>
-                        <td className="font-black uppercase text-slate-950 text-xs py-0.5">{activeStudentForBulletin.lastName}</td>
+                        <td className="font-black uppercase text-slate-950 text-xs py-0.5">{activeStudentCleanNames.lastName || activeStudentForBulletin.lastName}</td>
                       </tr>
                       <tr>
                         <td className="w-24 font-bold text-slate-700 py-0.5">Prénoms :</td>
-                        <td className="font-extrabold text-slate-900 py-0.5">{activeStudentForBulletin.firstName}</td>
+                        <td className="font-extrabold text-slate-900 py-0.5">{activeStudentCleanNames.firstName || activeStudentForBulletin.firstName}</td>
                       </tr>
                       <tr>
                         <td className="w-24 font-bold text-slate-700 py-0.5">N° Matricule :</td>
@@ -969,20 +1012,30 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                   </table>
                 </div>
 
-                {/* Colonne droite (Nouveau / Redoublant & Effectif) */}
+                {/* Colonne droite (Nouveau / Redoublant cliquables & Effectif) */}
                 <div className="col-span-4 border-l border-slate-400 pl-3 flex flex-col justify-center space-y-1.5 text-[10.5px] font-extrabold text-slate-900">
-                  <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSetRepeaterStatus(false)}
+                    className="flex items-center space-x-2 text-left cursor-pointer group rounded px-1 -mx-1 py-0.5 hover:bg-purple-50 print:hover:bg-transparent transition-colors"
+                    title="Cliquer pour cocher NOUVEAU"
+                  >
                     <span className="w-24">NOUVEAU</span>
-                    <span className="w-4 h-4 border border-slate-900 flex items-center justify-center font-black text-[11px] bg-white">
+                    <span className={`w-4 h-4 border border-slate-900 flex items-center justify-center font-black text-[11px] bg-white group-hover:border-purple-600 ${!isPreviewRedoublant ? 'text-slate-950' : 'text-transparent'}`}>
                       {!isPreviewRedoublant ? '✓' : ''}
                     </span>
-                  </div>
-                  <div className="flex items-center space-x-2">
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetRepeaterStatus(true)}
+                    className="flex items-center space-x-2 text-left cursor-pointer group rounded px-1 -mx-1 py-0.5 hover:bg-purple-50 print:hover:bg-transparent transition-colors"
+                    title="Cliquer pour cocher REDOUBLANT"
+                  >
                     <span className="w-24">REDOUBLANT</span>
-                    <span className="w-4 h-4 border border-slate-900 flex items-center justify-center font-black text-[11px] bg-white">
+                    <span className={`w-4 h-4 border border-slate-900 flex items-center justify-center font-black text-[11px] bg-white group-hover:border-purple-600 ${isPreviewRedoublant ? 'text-slate-950' : 'text-transparent'}`}>
                       {isPreviewRedoublant ? '✓' : ''}
                     </span>
-                  </div>
+                  </button>
                   <div className="pt-0.5 text-slate-950 text-[11px]">
                     <span>EFFECTIF : </span>
                     <strong className="font-black text-xs ml-1">{classRankSummary.totalStudents || 14}</strong>
@@ -1039,7 +1092,14 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                                   </div>
                                 </td>
                                 <td className="p-1 border border-slate-700 text-center font-bold text-slate-800">
-                                  {item.coefficient}
+                                  <InlineCoeffInput
+                                    value={item.coefficient}
+                                    onChange={(newCoeff) => {
+                                      updateSubject(item.subject.id, { coefficient: newCoeff });
+                                      setSubjectNotice(`Coefficient de "${item.subject.name}" mis à jour à ${newCoeff}.`);
+                                    }}
+                                    title={`Modifier le coefficient de ${item.subject.name}`}
+                                  />
                                 </td>
                                 <td className="p-1 border border-slate-700 text-center font-semibold text-slate-800">
                                   {item.interro1 !== undefined ? item.interro1.toFixed(2) : '-'}
@@ -1149,37 +1209,53 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                 
                 {/* Cadre Gauche : Décision du Conseil des Professeurs & Appréciation */}
                 <div className="col-span-6 border border-slate-800 p-2 space-y-1.5 text-xs bg-white">
-                  <div className="text-center font-black uppercase text-[10.5px] tracking-wide border-b border-slate-700 pb-1 text-slate-950">
-                    DÉCISION DU CONSEIL DES PROFESSEURS
+                  <div className="flex items-center justify-between border-b border-slate-700 pb-1">
+                    <span className="font-black uppercase text-[10.5px] tracking-wide text-slate-950">
+                      DÉCISION DU CONSEIL DES PROFESSEURS
+                    </span>
+                    <div className="flex items-center space-x-1.5 print:hidden">
+                      <span className="text-[9px] text-purple-700 font-bold">(Cliquer pour cocher)</span>
+                      {hasManualCouncilOverride && (
+                        <button
+                          type="button"
+                          onClick={handleResetCouncilDecision}
+                          className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[9px] font-bold cursor-pointer"
+                          title="Rétablir la décision calculée automatiquement selon la moyenne"
+                        >
+                          ↺ Auto
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
-                  {/* Table des Mentions */}
+                  {/* Table des Mentions cliquables */}
                   <table className="w-full text-[10px] border-collapse border border-slate-700">
                     <tbody>
-                      <tr>
-                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">FÉLICITATIONS</td>
-                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.felicitations ? 'X' : ''}</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">ENCOURAGEMENTS</td>
-                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.encouragements ? 'X' : ''}</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">TABLEAU D'HONNEUR</td>
-                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.tableauHonneur ? 'X' : ''}</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">AVERTISSEMENT</td>
-                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.avertissement ? 'X' : ''}</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">BLÂME</td>
-                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.blame ? 'X' : ''}</td>
-                      </tr>
-                      <tr>
-                        <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">RENVOI</td>
-                        <td className="border border-slate-700 text-center font-black w-8 bg-slate-50">{previewCouncilDecision.renvoi ? 'X' : ''}</td>
-                      </tr>
+                      {([
+                        { key: 'felicitations', label: 'FÉLICITATIONS' },
+                        { key: 'encouragements', label: 'ENCOURAGEMENTS' },
+                        { key: 'tableauHonneur', label: "TABLEAU D'HONNEUR" },
+                        { key: 'avertissement', label: 'AVERTISSEMENT' },
+                        { key: 'blame', label: 'BLÂME' },
+                        { key: 'renvoi', label: 'RENVOI' },
+                      ] as const).map((mention) => {
+                        const checked = Boolean(previewCouncilDecision[mention.key]);
+                        return (
+                          <tr
+                            key={mention.key}
+                            onClick={() => handleUpdateCouncilDecision({ [mention.key]: !checked })}
+                            className="cursor-pointer hover:bg-purple-50 print:hover:bg-transparent transition-colors select-none"
+                            title={`Cliquer pour ${checked ? 'décocher' : 'cocher'} ${mention.label}`}
+                          >
+                            <td className="border border-slate-700 px-2 py-0.5 font-bold text-slate-900">
+                              {mention.label}
+                            </td>
+                            <td className={`border border-slate-700 text-center font-black w-8 ${checked ? 'bg-purple-100/70 print:bg-slate-50 text-slate-950' : 'bg-slate-50'}`}>
+                              {checked ? 'X' : ''}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
 
@@ -1188,13 +1264,37 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                     <div className="font-black text-slate-900 underline text-[10px] uppercase">
                       Appréciation du Directeur
                     </div>
-                    <div className="flex items-center">
-                      <span className="text-slate-700 font-semibold w-20">Travail....</span>
-                      <strong className="font-black text-slate-950">{previewCouncilDecision.appreciationDirecteur}</strong>
+                    <div className="flex items-center space-x-1">
+                      <span className="text-slate-700 font-semibold w-20 shrink-0">Travail....</span>
+                      <input
+                        type="text"
+                        value={previewCouncilDecision.appreciationDirecteur}
+                        onChange={(e) => handleUpdateCouncilDecision({ appreciationDirecteur: e.target.value })}
+                        className="print:hidden flex-1 px-1.5 py-0.5 rounded border border-purple-200 focus:border-purple-600 bg-purple-50/50 focus:bg-white font-black text-slate-950 text-[10.5px] outline-none"
+                        title="Modifier l'appréciation du travail"
+                      />
+                      <strong className="hidden print:inline font-black text-slate-950">{previewCouncilDecision.appreciationDirecteur}</strong>
                     </div>
-                    <div className="flex items-center">
-                      <span className="text-slate-900 font-black w-20 uppercase">DÉCISION :</span>
-                      <strong className="font-black uppercase text-blue-950 text-xs">{previewCouncilDecision.decision}</strong>
+                    <div className="flex items-center space-x-1">
+                      <span className="text-slate-900 font-black w-20 uppercase shrink-0">DÉCISION :</span>
+                      <input
+                        type="text"
+                        list="bulletin-decision-presets"
+                        value={previewCouncilDecision.decision}
+                        onChange={(e) => handleUpdateCouncilDecision({ decision: e.target.value })}
+                        className="print:hidden flex-1 px-1.5 py-0.5 rounded border border-purple-200 focus:border-purple-600 bg-purple-50/50 focus:bg-white font-black uppercase text-blue-950 text-[11px] outline-none"
+                        title="Choisir ou saisir la décision du conseil"
+                      />
+                      <datalist id="bulletin-decision-presets">
+                        <option value={`Passe en ${getNextClassName(selectedClass?.name || '')}`} />
+                        <option value="Admis(e) en classe supérieure" />
+                        <option value="Redouble" />
+                        <option value="Exclu(e)" />
+                        <option value="Bon travail, continuer ainsi" />
+                        <option value="Poursuivre les efforts" />
+                        <option value="Efforts soutenus requis" />
+                      </datalist>
+                      <strong className="hidden print:inline font-black uppercase text-blue-950 text-xs">{previewCouncilDecision.decision}</strong>
                     </div>
                   </div>
                 </div>
@@ -1308,18 +1408,6 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
               </button>
 
               <button
-                onClick={() => setSendParentModalData({
-                  isOpen: true,
-                  student: undefined // triggers class bulk mode
-                })}
-                className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
-                title="Envoyer les liens des bulletins par WhatsApp ou SMS à tous les parents"
-              >
-                <MessageCircle className="h-4 w-4" />
-                <span>📲 Envoi Groupé Bulletins (WhatsApp / SMS)</span>
-              </button>
-
-              <button
                 onClick={handleBulkArchiveClass}
                 className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs flex items-center space-x-1.5 shadow transition-all cursor-pointer"
               >
@@ -1394,7 +1482,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                             />
                             <div>
                               <p className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center space-x-1.5">
-                                <span>{rankItem.student.lastName} {rankItem.student.firstName}</span>
+                                <span>{getCleanStudentNames(rankItem.student).lastName.toUpperCase()} {getCleanStudentNames(rankItem.student).firstName}</span>
                               </p>
                               <p className="text-[10px] font-bold text-purple-600 dark:text-purple-400">
                                 {rankItem.student.registrationNumber}
@@ -1479,21 +1567,6 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                             <Printer className="h-3.5 w-3.5 text-purple-600" />
                             <span>Imprimer</span>
                           </button>
-
-                          <button
-                            onClick={() => setSendParentModalData({
-                              isOpen: true,
-                              student: rankItem.student,
-                              studentAverage: rankItem.overallAverage,
-                              studentRank: rankItem.rank,
-                              studentMention: rankItem.mention
-                            })}
-                            className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs inline-flex items-center space-x-1 shadow transition-all cursor-pointer"
-                            title="Envoyer le lien du bulletin au parent par WhatsApp ou SMS"
-                          >
-                            <MessageCircle className="h-3.5 w-3.5" />
-                            <span>📲 WhatsApp</span>
-                          </button>
                         </td>
                       </tr>
                     );
@@ -1533,7 +1606,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                   />
                   <div>
                     <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">
-                      {rankItem.student.lastName} {rankItem.student.firstName}
+                      {getCleanStudentNames(rankItem.student).lastName.toUpperCase()} {getCleanStudentNames(rankItem.student).firstName}
                     </h4>
                     <p className="text-[10px] font-bold text-purple-600">{rankItem.student.registrationNumber}</p>
                   </div>
@@ -1564,17 +1637,11 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
 
               <div className="grid grid-cols-2 gap-2 pt-1" onClick={e => e.stopPropagation()}>
                 <button
-                  onClick={() => setSendParentModalData({
-                    isOpen: true,
-                    student: rankItem.student,
-                    studentAverage: rankItem.overallAverage,
-                    studentRank: rankItem.rank,
-                    studentMention: rankItem.mention
-                  })}
-                  className="py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center space-x-1.5 shadow transition-all cursor-pointer"
+                  onClick={() => handleDownloadSinglePdf(rankItem)}
+                  className="py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center space-x-1.5 shadow transition-all cursor-pointer"
                 >
-                  <MessageCircle className="h-3.5 w-3.5" />
-                  <span>📲 WhatsApp</span>
+                  <Download className="h-3.5 w-3.5" />
+                  <span>📥 PDF</span>
                 </button>
 
                 <button
@@ -1833,29 +1900,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
         />
       )}
 
-      {/* MODAL 3: Send Bulletin Link to Parent (WhatsApp / SMS) */}
-      {sendParentModalData.isOpen && (
-        <SendBulletinParentModal
-          isOpen={sendParentModalData.isOpen}
-          onClose={() => setSendParentModalData({ isOpen: false })}
-          student={sendParentModalData.student}
-          classObj={selectedClass}
-          trimester={selectedTrimester}
-          studentAverage={sendParentModalData.studentAverage}
-          studentRank={sendParentModalData.studentRank}
-          totalStudentsInClass={classRankSummary.totalStudents}
-          studentMention={sendParentModalData.studentMention}
-        />
-      )}
-
-      {/* MODAL 4: AI Grades & Bulletin WhatsApp Dispatcher */}
-      <AIGradesBulletinWhatsAppModal
-        isOpen={showAiWhatsAppModal}
-        onClose={() => setShowAiWhatsAppModal(false)}
-        defaultClassId={selectedClassId}
-      />
-
-      {/* MODAL 5: School Logo Import Modal */}
+      {/* MODAL 3: School Logo Import Modal */}
       <SchoolLogoImportModal
         isOpen={isLogoModalOpen}
         onClose={() => setIsLogoModalOpen(false)}
@@ -1958,9 +2003,15 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                       </div>
 
                       <div className="flex items-center space-x-2 shrink-0">
-                        <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 font-black text-xs text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
-                          Coeff. {sbj.coefficient}
-                        </span>
+                        <InlineCoeffInput
+                          variant="badge"
+                          value={sbj.coefficient}
+                          onChange={(newCoeff) => {
+                            updateSubject(sbj.id, { coefficient: newCoeff });
+                            setSubjectNotice(`Coefficient de "${sbj.name}" modifié à ${newCoeff} !`);
+                          }}
+                          title={`Modifier directement le coefficient de ${sbj.name}`}
+                        />
 
                         <button
                           type="button"

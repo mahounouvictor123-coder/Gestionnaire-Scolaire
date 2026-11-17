@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../lib/store';
 import { PrintBulletinModal } from '../components/modals/PrintBulletinModal';
-import { SendBulletinParentModal } from '../components/modals/SendBulletinParentModal';
 import { ParentExamPapersTab } from '../components/ParentExamPapersTab';
 import {
   GraduationCap,
@@ -22,7 +21,6 @@ import {
   ThumbsUp,
   Flame,
   ChevronRight,
-  MessageCircle,
   School as SchoolIcon
 } from 'lucide-react';
 
@@ -44,7 +42,6 @@ export const StudentPortalView: React.FC = () => {
   // Selected Trimester state (default to settings currentTrimester or 1)
   const [selectedTrimester, setSelectedTrimester] = useState<1 | 2 | 3>(settings.currentTrimester || 1);
   const [showPrintModal, setShowPrintModal] = useState(false);
-  const [showSendModal, setShowSendModal] = useState(false);
 
   // Determine current student (link from currentUser or first student)
   const [selectedStudentId, setSelectedStudentId] = useState<string>(
@@ -285,15 +282,6 @@ export const StudentPortalView: React.FC = () => {
                 ))}
               </select>
             )}
-
-            <button
-              onClick={() => setShowSendModal(true)}
-              className="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center space-x-2 border border-white/20 shadow-lg transition-all cursor-pointer"
-              title="Envoyer ou partager le lien du bulletin par WhatsApp ou SMS"
-            >
-              <MessageCircle className="h-4 w-4 text-emerald-400" />
-              <span>📲 Envoyer WhatsApp / SMS</span>
-            </button>
 
             <button
               onClick={() => setShowPrintModal(true)}
@@ -790,22 +778,6 @@ export const StudentPortalView: React.FC = () => {
           student={student}
           classObj={classObj}
           trimester={selectedTrimester}
-        />
-      )}
-
-      {/* Send Bulletin to Parents via WhatsApp / SMS Modal */}
-      {showSendModal && student && (
-        <SendBulletinParentModal
-          isOpen={showSendModal}
-          onClose={() => setShowSendModal(false)}
-          student={student}
-          classObj={classObj}
-          trimester={selectedTrimester}
-          studentAverage={overallAverage}
-          studentRank={rank}
-          totalStudentsInClass={classStudents.length}
-          studentMention={academicInfo.mention}
-          studentAppreciation={academicInfo.appreciation}
         />
       )}
 
