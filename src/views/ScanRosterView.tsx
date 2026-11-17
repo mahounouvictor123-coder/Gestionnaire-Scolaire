@@ -3,6 +3,11 @@ import { useApp } from '../lib/store';
 import { Student } from '../types';
 import { clientFetch } from '../services/clientFetch.ts';
 import {
+  parseStudentRosterText,
+  cleanTitleCase,
+  extractRosterTextFromFile
+} from '../lib/rosterParser';
+import {
   ScanLine,
   Upload,
   Camera,
@@ -31,6 +36,7 @@ import {
 
 interface ExtractedStudent {
   id: string;
+  registrationNumber: string;
   firstName: string;
   lastName: string;
   gender: 'M' | 'F';
@@ -69,6 +75,7 @@ export const ScanRosterView: React.FC<ScanRosterViewProps> = ({
   } | null>(null);
 
   const [extractedStudents, setExtractedStudents] = useState<ExtractedStudent[]>([]);
+  const [scanErrorMessage, setScanErrorMessage] = useState<string | null>(null);
   const [isRegisteredSuccess, setIsRegisteredSuccess] = useState(false);
   const [registeredCount, setRegisteredCount] = useState(0);
 
@@ -77,42 +84,80 @@ export const ScanRosterView: React.FC<ScanRosterViewProps> = ({
   const currentClass = classes.find(c => c.id === selectedClassId) || classes[0];
 
   // Helper sample roster image data URL (SVG simulation of official school roster)
-  const sampleRosterSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400" fill="none"><rect width="600" height="400" fill="%23FFFFFF"/><rect x="20" y="20" width="560" height="360" rx="8" stroke="%23334155" stroke-width="2"/><text x="40" y="55" font-family="sans-serif" font-size="18" font-weight="bold" fill="%230F172A">REPUBLIQUE DU BENIN - MINISTERE DE L'ENSEIGNEMENT SECOND</text><text x="40" y="80" font-family="sans-serif" font-size="16" font-weight="bold" fill="%232563EB">REGISTRE MATRICULE OFFICIEL - CLASSE DE 3EME A</text><line x1="40" y1="95" x2="560" y2="95" stroke="%23E2E8F0" stroke-width="2"/><text x="40" y="120" font-family="sans-serif" font-size="13" font-weight="bold" fill="%23475569">N° | NOM ET PRENOMS | SEXE | DATE NAISS. | LIEU | PARENT / CONTACT</text><line x1="40" y1="130" x2="560" y2="130" stroke="%23CBD5E1" stroke-width="1"/><text x="40" y="155" font-family="sans-serif" font-size="12" fill="%231E293B">01 | ADANLETE Jean-Baptiste | M | 14/05/2010 | Cotonou | M. Adanlete (+229 97 45 12 00)</text><text x="40" y="180" font-family="sans-serif" font-size="12" fill="%231E293B">02 | BOHOUN Chimène Aïcha | F | 22/11/2009 | Porto-Novo | Mme Bohoun (+229 95 11 22 33)</text><text x="40" y="205" font-family="sans-serif" font-size="12" fill="%231E293B">03 | DOSSOU Landry Emmanuel | M | 03/02/2010 | Abomey | Dr Dossou (+229 66 88 99 00)</text><text x="40" y="230" font-family="sans-serif" font-size="12" fill="%231E293B">04 | HOUESSOU Bérénice | F | 18/08/2010 | Ouidah | Mme Houessou (+229 97 10 20 30)</text><text x="40" y="255" font-family="sans-serif" font-size="12" fill="%231E293B">05 | KOUASSI Charles Edouard | M | 11/01/2009 | Parakou | M. Kouassi (+229 96 44 55 66)</text><text x="40" y="280" font-family="sans-serif" font-size="12" fill="%231E293B">06 | SOGLO Marie-Claire | F | 05/09/2010 | Cotonou | Mme Soglo (+229 97 99 88 77)</text><text x="40" y="305" font-family="sans-serif" font-size="12" fill="%231E293B">07 | TCHIBOZO Marc Aurèle | M | 30/06/2010 | Lokossa | M. Tchibozo (+229 61 22 33 44)</text><text x="40" y="330" font-family="sans-serif" font-size="12" fill="%231E293B">08 | ZINSOU Victoria Grace | F | 19/12/2009 | Cotonou | Mme Zinsou (+229 95 66 77 88)</text><text x="40" y="360" font-family="sans-serif" font-size="10" font-style="italic" fill="%2364748B">Cachet et Signature de la Direction Générale de l'Établissement - Certifié conforme</text></svg>`;
+  const sampleRosterSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" fill="none"><rect width="640" height="400" fill="%23FFFFFF"/><rect x="20" y="20" width="600" height="360" rx="8" stroke="%23334155" stroke-width="2"/><text x="40" y="55" font-family="sans-serif" font-size="16" font-weight="bold" fill="%230F172A">REPUBLIQUE DU BENIN - MINISTERE DE L'ENSEIGNEMENT SECOND</text><text x="40" y="80" font-family="sans-serif" font-size="15" font-weight="bold" fill="%232563EB">REGISTRE MATRICULE OFFICIEL - CLASSE DE 3EME A</text><line x1="40" y1="95" x2="600" y2="95" stroke="%23E2E8F0" stroke-width="2"/><text x="40" y="120" font-family="sans-serif" font-size="12" font-weight="bold" fill="%23475569">MATRICULE | NOM ET PRENOMS | SEXE | DATE NAISS. | LIEU | PARENT / CONTACT</text><line x1="40" y1="130" x2="600" y2="130" stroke="%23CBD5E1" stroke-width="1"/><text x="40" y="155" font-family="sans-serif" font-size="11" fill="%231E293B">2025-3A-001 | ADANLETE Jean-Baptiste | M | 14/05/2010 | Cotonou | M. Adanlete (+229 97 45 12 00)</text><text x="40" y="180" font-family="sans-serif" font-size="11" fill="%231E293B">2025-3A-002 | BOHOUN Chimène Aïcha | F | 22/11/2009 | Porto-Novo | Mme Bohoun (+229 95 11 22 33)</text><text x="40" y="205" font-family="sans-serif" font-size="11" fill="%231E293B">2025-3A-003 | DOSSOU Landry Emmanuel | M | 03/02/2010 | Abomey | Dr Dossou (+229 66 88 99 00)</text><text x="40" y="230" font-family="sans-serif" font-size="11" fill="%231E293B">2025-3A-004 | HOUESSOU Bérénice | F | 18/08/2010 | Ouidah | Mme Houessou (+229 97 10 20 30)</text><text x="40" y="255" font-family="sans-serif" font-size="11" fill="%231E293B">2025-3A-005 | KOUASSI Charles Edouard | M | 11/01/2009 | Parakou | M. Kouassi (+229 96 44 55 66)</text><text x="40" y="280" font-family="sans-serif" font-size="11" fill="%231E293B">2025-3A-006 | SOGLO Marie-Claire | F | 05/09/2010 | Cotonou | Mme Soglo (+229 97 99 88 77)</text><text x="40" y="305" font-family="sans-serif" font-size="11" fill="%231E293B">2025-3A-007 | TCHIBOZO Marc Aurèle | M | 30/06/2010 | Lokossa | M. Tchibozo (+229 61 22 33 44)</text><text x="40" y="330" font-family="sans-serif" font-size="11" fill="%231E293B">2025-3A-008 | ZINSOU Victoria Grace | F | 19/12/2009 | Cotonou | Mme Zinsou (+229 95 66 77 88)</text><text x="40" y="360" font-family="sans-serif" font-size="10" font-style="italic" fill="%2364748B">Cachet et Signature de la Direction Générale de l'Établissement - Certifié conforme</text></svg>`;
 
-  const sampleRosterText = `COMPLEXE SCOLAIRE EXCELLENCE - LISTE OFFICIELLE
-CLASSE : 3ème A (Année Scolaire 2025-2026)
+  const sampleRosterText = `MATRICULE ; NOM ; PRENOMS ; SEXE ; DATE NAISS. ; LIEU ; PARENT / CONTACT
+2025-3A-001 ; ADANLETE ; Jean-Baptiste ; M ; 14/05/2010 ; Cotonou ; M. Adanlete (+229 97 45 12 00)
+2025-3A-002 ; BOHOUN ; Chimène Aïcha ; F ; 22/11/2009 ; Porto-Novo ; Mme Bohoun (+229 95 11 22 33)
+2025-3A-003 ; DOSSOU ; Landry Emmanuel ; M ; 03/02/2010 ; Abomey ; Dr Dossou (+229 66 88 99 00)
+2025-3A-004 ; HOUESSOU ; Bérénice ; F ; 18/08/2010 ; Ouidah ; Mme Houessou (+229 97 10 20 30)
+2025-3A-005 ; KOUASSI ; Charles Edouard ; M ; 11/01/2009 ; Parakou ; M. Kouassi (+229 96 44 55 66)
+2025-3A-006 ; SOGLO ; Marie-Claire ; F ; 05/09/2010 ; Cotonou ; Mme Soglo (+229 97 99 88 77)
+2025-3A-007 ; TCHIBOZO ; Marc Aurèle ; M ; 30/06/2010 ; Lokossa ; M. Tchibozo (+229 61 22 33 44)
+2025-3A-008 ; ZINSOU ; Victoria Grace ; F ; 19/12/2009 ; Cotonou ; Mme Zinsou (+229 95 66 77 88)`;
 
-1. ADANLETE Jean-Baptiste - M - 14/05/2010 - Cotonou - Parent: M. Adanlete (+229 97 45 12 00)
-2. BOHOUN Chimène Aïcha - F - 22/11/2009 - Porto-Novo - Parent: Mme Bohoun (+229 95 11 22 33)
-3. DOSSOU Landry Emmanuel - M - 03/02/2010 - Abomey - Parent: Dr Dossou (+229 66 88 99 00)
-4. HOUESSOU Bérénice - F - 18/08/2010 - Ouidah - Parent: Mme Houessou (+229 97 10 20 30)
-5. KOUASSI Charles Edouard - M - 11/01/2009 - Parakou - Parent: M. Kouassi (+229 96 44 55 66)
-6. SOGLO Marie-Claire - F - 05/09/2010 - Cotonou - Parent: Mme Soglo (+229 97 99 88 77)
-7. TCHIBOZO Marc Aurèle - M - 30/06/2010 - Lokossa - Parent: M. Tchibozo (+229 61 22 33 44)
-8. ZINSOU Victoria Grace - F - 19/12/2009 - Cotonou - Parent: Mme Zinsou (+229 95 66 77 88)
-9. MENSAH Sylvain Kevin - M - 08/04/2010 - Cotonou - Parent: M. Mensah (+229 97 33 22 11)
-10. GBEGNON Syntyche - F - 27/07/2010 - Bohicon - Parent: Mme Gbegnon (+229 96 12 34 56)`;
-
-  // Handle file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle file selection (Images, PDF, or CSV/TSV/TXT/DOCX)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    setScanErrorMessage(null);
+
+    const lowerName = file.name.toLowerCase();
+    if (
+      lowerName.endsWith('.csv') ||
+      lowerName.endsWith('.tsv') ||
+      lowerName.endsWith('.txt') ||
+      lowerName.endsWith('.docx')
+    ) {
+      try {
+        const text = await extractRosterTextFromFile(file);
+        setPastedText(text);
+        setActiveTab('TEXT');
+        const parsed = parseStudentRosterText(text);
+        const mapped: ExtractedStudent[] = parsed.map((s, idx) => ({
+          id: `file-${Date.now()}-${idx}`,
+          registrationNumber: s.registrationNumber || '',
+          firstName: s.firstName,
+          lastName: s.lastName,
+          gender: s.gender,
+          dateOfBirth: s.dateOfBirth,
+          placeOfBirth: s.placeOfBirth,
+          parentName: s.parentName,
+          parentPhone: s.parentPhone,
+          bloodGroup: s.bloodGroup,
+          selected: true
+        }));
+        setExtractedStudents(mapped);
+        setExtractionResult({
+          detectedClassName: currentClass?.name || 'Classe Sélectionnée',
+          confidenceScore: 99,
+          summary: `${mapped.length} élève(s) extraits depuis "${file.name}" chaque champ à sa place.`
+        });
+      } catch (err) {
+        console.error('Erreur lecture fichier:', err);
+        setScanErrorMessage(`Impossible de lire "${file.name}". Essayez un export .CSV, .TXT ou .DOCX.`);
+      } finally {
+        e.target.value = '';
+      }
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
-  // Perform Gemini OCR scan
+  // Perform OCR / Structured Roster Extraction
   const handleScanRoster = async () => {
+    setScanErrorMessage(null);
     if (activeTab === 'IMAGE' && !imagePreview) {
-      alert("Veuillez charger une photo ou une image de la liste de classe d'abord.");
+      setScanErrorMessage("Veuillez charger une photo, une image ou un fichier (.csv, .txt, .docx) de la liste d'élèves.");
       return;
     }
     if (activeTab === 'TEXT' && !pastedText.trim()) {
-      alert("Veuillez coller le texte de la liste de classe.");
+      setScanErrorMessage("Veuillez coller le texte de la liste ou importer un fichier (.csv, .txt, .docx).");
       return;
     }
 
@@ -133,131 +178,92 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
       });
 
       if (!res.ok) {
-        throw new Error("Erreur de communication avec le serveur d'IA");
+        throw new Error("Erreur de communication avec le moteur d'extraction");
       }
 
       const data = await res.json();
 
-      setExtractionResult({
-        detectedClassName: data.detectedClassName || currentClass?.name || '3ème A',
-        confidenceScore: data.confidenceScore || 95,
-        summary: data.summary || `${data.students?.length || 0} élèves identifiés avec succès.`
+      let parsedList: ExtractedStudent[] = (data.students || []).map((s: any, idx: number) => {
+        const cleanLast = (s.lastName || '').toString().trim().toUpperCase();
+        return {
+          id: `extracted-${Date.now()}-${idx}`,
+          registrationNumber: (s.registrationNumber || s.matricule || '').toString().trim().toUpperCase(),
+          firstName: s.firstName ? cleanTitleCase(s.firstName) : '',
+          lastName: cleanLast || 'SANS_NOM',
+          gender: (s.gender === 'F' || s.gender === 'f') ? 'F' : 'M',
+          dateOfBirth: s.dateOfBirth || '2012-05-15',
+          placeOfBirth: s.placeOfBirth || 'Cotonou',
+          parentName: s.parentName || (cleanLast ? `M./Mme ${cleanLast}` : 'Parent / Tuteur'),
+          parentPhone: s.parentPhone || '+229 97 00 00 00',
+          bloodGroup: s.bloodGroup || 'O+',
+          selected: true
+        };
       });
 
-      const parsedList: ExtractedStudent[] = (data.students || []).map((s: any, idx: number) => ({
-        id: `extracted-${Date.now()}-${idx}`,
-        firstName: s.firstName || 'Élève',
-        lastName: s.lastName || 'SANS_NOM',
-        gender: (s.gender === 'F' || s.gender === 'f') ? 'F' : 'M',
-        dateOfBirth: s.dateOfBirth || '2010-01-01',
-        placeOfBirth: s.placeOfBirth || 'Cotonou',
-        parentName: s.parentName || `Tuteur de ${s.firstName}`,
-        parentPhone: s.parentPhone || '+229 97 00 00 00',
-        bloodGroup: s.bloodGroup || 'O+',
-        selected: true
-      }));
+      // Fallback local parser if text was supplied and server returned nothing
+      if (parsedList.length === 0 && (activeTab === 'TEXT' || activeTab === 'DEMO')) {
+        const rawFallback = activeTab === 'TEXT' ? pastedText : sampleRosterText;
+        parsedList = parseStudentRosterText(rawFallback).map((s, idx) => ({
+          id: `local-${Date.now()}-${idx}`,
+          registrationNumber: s.registrationNumber || '',
+          firstName: s.firstName,
+          lastName: s.lastName,
+          gender: s.gender,
+          dateOfBirth: s.dateOfBirth,
+          placeOfBirth: s.placeOfBirth,
+          parentName: s.parentName,
+          parentPhone: s.parentPhone,
+          bloodGroup: s.bloodGroup,
+          selected: true
+        }));
+      }
 
-      // Fallback fallback if empty
       if (parsedList.length === 0) {
-        setExtractedStudents([
-          {
-            id: `extracted-1`,
-            firstName: 'Jean-Baptiste',
-            lastName: 'ADANLETE',
-            gender: 'M',
-            dateOfBirth: '2010-05-14',
-            placeOfBirth: 'Cotonou',
-            parentName: 'M. Adanlete',
-            parentPhone: '+229 97 45 12 00',
-            bloodGroup: 'O+',
-            selected: true
-          },
-          {
-            id: `extracted-2`,
-            firstName: 'Chimène Aïcha',
-            lastName: 'BOHOUN',
-            gender: 'F',
-            dateOfBirth: '2009-11-22',
-            placeOfBirth: 'Porto-Novo',
-            parentName: 'Mme Bohoun',
-            parentPhone: '+229 95 11 22 33',
-            bloodGroup: 'A+',
-            selected: true
-          },
-          {
-            id: `extracted-3`,
-            firstName: 'Landry Emmanuel',
-            lastName: 'DOSSOU',
-            gender: 'M',
-            dateOfBirth: '2010-02-03',
-            placeOfBirth: 'Abomey',
-            parentName: 'Dr Dossou',
-            parentPhone: '+229 66 88 99 00',
-            bloodGroup: 'B+',
-            selected: true
-          }
-        ]);
+        setExtractedStudents([]);
+        setExtractionResult(null);
+        setScanErrorMessage(
+          activeTab === 'IMAGE'
+            ? "Le scan image directe ne peut pas lire les pixels binaires hors-ligne : importez un fichier .CSV / .DOCX / .TXT ou collez le texte dans l'onglet « Texte / Copier-Coller »."
+            : "Aucun élève valide n'a été détecté. Vérifiez que chaque ligne contient au moins un nom ou une colonne identifiée."
+        );
       } else {
+        setExtractionResult({
+          detectedClassName: data.detectedClassName || currentClass?.name || 'Classe',
+          confidenceScore: data.confidenceScore || 98,
+          summary: data.summary || `${parsedList.length} élève(s) extrait(s) et classé(s) champ par champ.`
+        });
         setExtractedStudents(parsedList);
       }
     } catch (err: any) {
       console.error("Erreur Scan:", err);
-      // Client-side fallback simulation on connection error
-      setExtractionResult({
-        detectedClassName: currentClass?.name || '3ème A',
-        confidenceScore: 92,
-        summary: "Extraction autonome effectuée par le moteur OCR local."
-      });
-      setExtractedStudents([
-        {
-          id: `extracted-1`,
-          firstName: 'Jean-Baptiste',
-          lastName: 'ADANLETE',
-          gender: 'M',
-          dateOfBirth: '2010-05-14',
-          placeOfBirth: 'Cotonou',
-          parentName: 'M. Adanlete',
-          parentPhone: '+229 97 45 12 00',
-          bloodGroup: 'O+',
+      if (activeTab === 'TEXT' || activeTab === 'DEMO') {
+        const rawFallback = activeTab === 'TEXT' ? pastedText : sampleRosterText;
+        const localParsed = parseStudentRosterText(rawFallback).map((s, idx) => ({
+          id: `local-${Date.now()}-${idx}`,
+          registrationNumber: s.registrationNumber || '',
+          firstName: s.firstName,
+          lastName: s.lastName,
+          gender: s.gender,
+          dateOfBirth: s.dateOfBirth,
+          placeOfBirth: s.placeOfBirth,
+          parentName: s.parentName,
+          parentPhone: s.parentPhone,
+          bloodGroup: s.bloodGroup,
           selected: true
-        },
-        {
-          id: `extracted-2`,
-          firstName: 'Chimène Aïcha',
-          lastName: 'BOHOUN',
-          gender: 'F',
-          dateOfBirth: '2009-11-22',
-          placeOfBirth: 'Porto-Novo',
-          parentName: 'Mme Bohoun',
-          parentPhone: '+229 95 11 22 33',
-          bloodGroup: 'A+',
-          selected: true
-        },
-        {
-          id: `extracted-3`,
-          firstName: 'Landry Emmanuel',
-          lastName: 'DOSSOU',
-          gender: 'M',
-          dateOfBirth: '2010-02-03',
-          placeOfBirth: 'Abomey',
-          parentName: 'Dr Dossou',
-          parentPhone: '+229 66 88 99 00',
-          bloodGroup: 'B+',
-          selected: true
-        },
-        {
-          id: `extracted-4`,
-          firstName: 'Bérénice',
-          lastName: 'HOUESSOU',
-          gender: 'F',
-          dateOfBirth: '2010-08-18',
-          placeOfBirth: 'Ouidah',
-          parentName: 'Mme Houessou',
-          parentPhone: '+229 97 10 20 30',
-          bloodGroup: 'O+',
-          selected: true
+        }));
+        setExtractedStudents(localParsed);
+        if (localParsed.length > 0) {
+          setExtractionResult({
+            detectedClassName: currentClass?.name || 'Classe',
+            confidenceScore: 97,
+            summary: `${localParsed.length} élève(s) extraits par le parseur structuré local.`
+          });
+        } else {
+          setScanErrorMessage("Aucune donnée élève valide trouvée.");
         }
-      ]);
+      } else {
+        setScanErrorMessage("Erreur lors de l'analyse du document. Essayez d'importer un fichier .CSV, .TXT ou .DOCX.");
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -296,6 +302,7 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
   const handleAddNewRow = () => {
     const newRow: ExtractedStudent = {
       id: `manual-new-${Date.now()}`,
+      registrationNumber: '',
       firstName: 'Prénom',
       lastName: 'NOM',
       gender: 'M',
@@ -311,24 +318,27 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
 
   // Confirm Registration in Store
   const handleConfirmBulkRegistration = () => {
+    setScanErrorMessage(null);
     const selectedToRegister = extractedStudents.filter(s => s.selected);
     if (selectedToRegister.length === 0) {
-      alert("Aucun élève n'est sélectionné pour l'enregistrement.");
+      setScanErrorMessage("Aucun élève n'est sélectionné pour l'enregistrement.");
       return;
     }
 
     const level = currentClass?.level || 'COLLEGE';
 
-    const formattedForStore: Omit<Student, 'id' | 'registrationNumber'>[] = selectedToRegister.map((s, idx) => ({
-      firstName: s.firstName,
-      lastName: s.lastName,
+    const formattedForStore: (Omit<Student, 'id' | 'registrationNumber'> & { registrationNumber?: string })[] = selectedToRegister.map((s, idx) => ({
+      ...(s.registrationNumber.trim() ? { registrationNumber: s.registrationNumber.trim().toUpperCase() } : {}),
+      firstName: s.firstName.trim(),
+      lastName: s.lastName.trim().toUpperCase(),
       dateOfBirth: s.dateOfBirth,
+      placeOfBirth: s.placeOfBirth || 'Cotonou',
       gender: s.gender,
       classId: currentClass.id,
       level: level,
       parentName: s.parentName,
       parentPhone: s.parentPhone,
-      address: `${s.placeOfBirth}, Bénin`,
+      address: `${s.placeOfBirth || 'Cotonou'}, Bénin`,
       status: 'ACTIF',
       photoUrl: s.gender === 'F'
         ? `https://images.unsplash.com/photo-${1534528741775 + (idx % 10)}?auto=format&fit=crop&q=80&w=150`
@@ -499,14 +509,14 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
               </button>
             </div>
 
-            {/* TAB CONTENT 1: IMAGE UPLOAD / CAMERA */}
+            {/* TAB CONTENT 1: IMAGE UPLOAD / FILE / CAMERA */}
             {activeTab === 'IMAGE' && (
               <div className="space-y-4">
                 <input
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
-                  accept="image/*,.pdf"
+                  accept="image/*,.pdf,.csv,.tsv,.txt,.docx"
                   className="hidden"
                 />
 
@@ -523,7 +533,7 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
                         className="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold flex items-center space-x-1"
                       >
                         <RefreshCw className="h-3.5 w-3.5" />
-                        <span>Changer la photo</span>
+                        <span>Changer le fichier</span>
                       </button>
                       <button
                         onClick={() => setImagePreview(null)}
@@ -544,17 +554,17 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
                     </div>
                     <div>
                       <p className="text-xs font-black text-slate-900 dark:text-white">
-                        Prendre une photo ou importer le fichier de la liste
+                        Importer un fichier (CSV, Word, TXT) ou une photo de liste
                       </p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                        Formats supportés : JPG, PNG, WEBP, PDF (Photo du registre manuscrit ou liste imprimée)
+                        Formats supportés : CSV, TSV, TXT, DOCX (Word), JPG, PNG, SVG, PDF
                       </p>
                     </div>
                   </div>
                 )}
 
                 <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                  <span>💡 Astuce : Veillez à ce que les noms soient bien éclairés et lisibles.</span>
+                  <span>💡 Astuce : Un export CSV/Excel ou Word (.docx) extrait chaque colonne automatiquement sans erreur.</span>
                   <button
                     onClick={() => {
                       setImagePreview(sampleRosterSvg);
@@ -571,21 +581,39 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
             {/* TAB CONTENT 2: TEXT COPY-PASTE */}
             {activeTab === 'TEXT' && (
               <div className="space-y-3">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept=".csv,.tsv,.txt,.docx"
+                  className="hidden"
+                />
                 <textarea
                   rows={9}
                   value={pastedText}
                   onChange={(e) => setPastedText(e.target.value)}
-                  placeholder={`Collez ici le texte brut de la classe (extrait d'un fichier Excel, Word ou message WhatsApp)...\n\nExemple :\n1. KOFFI Koffi Emmanuel - M - 12/04/2010 - Cotonou\n2. DOSSA Akouvi Ségolène - F - 05/09/2009 - Porto-Novo`}
+                  placeholder={`Collez ici votre liste (avec ou sans en-tête, Excel, Word, CSV, WhatsApp)...\n\nExemple avec Matricule :\nMatricule ; Nom ; Prénoms ; Sexe ; Date ; Tél\n2025-3A-001 ; KOFFI ; Emmanuel ; M ; 12/04/2010 ; +229 97 00 11 22\n2025-3A-002 ; DOSSA ; Akouvi Ségolène ; F ; 05/09/2009 ; +229 95 22 33 44`}
                   className="w-full p-3.5 text-xs font-mono rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:border-blue-500 focus:outline-none"
                 />
-                <div className="flex justify-between items-center text-[11px]">
+                <div className="flex flex-wrap justify-between items-center gap-2 text-[11px]">
                   <span className="text-slate-500">{pastedText.length} caractères collés</span>
-                  <button
-                    onClick={() => setPastedText(sampleRosterText)}
-                    className="text-blue-600 dark:text-blue-400 font-bold hover:underline"
-                  >
-                    Charger texte d'exemple
-                  </button>
+                  <div className="flex items-center space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline flex items-center space-x-1 cursor-pointer"
+                    >
+                      <Upload className="h-3 w-3" />
+                      <span>Importer .CSV / .DOCX / .TXT</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPastedText(sampleRosterText)}
+                      className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                    >
+                      Charger exemple avec matricules
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -598,8 +626,15 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
                   <span>Mode Démonstration Immédiate</span>
                 </div>
                 <p className="text-[11px] leading-relaxed">
-                  Un document officiel de registre matricule de la classe <strong>3ème A (8 élèves)</strong> est pré-chargé avec photo et texte pour tester la reconnaissance instantanée.
+                  Un document officiel de registre matricule de la classe <strong>3ème A (8 élèves avec numéros matricules)</strong> est pré-chargé pour tester l'extraction colonne par colonne.
                 </p>
+              </div>
+            )}
+
+            {scanErrorMessage && (
+              <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-start space-x-2">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{scanErrorMessage}</span>
               </div>
             )}
 
@@ -616,12 +651,12 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
               {isProcessing ? (
                 <>
                   <RefreshCw className="h-5 w-5 animate-spin" />
-                  <span>Analyse OCR en cours pour la classe {currentClass?.name}...</span>
+                  <span>Extraction en cours pour la classe {currentClass?.name}...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="h-5 w-5 text-amber-300" />
-                  <span>3. Lancer l'Extraction IA pour la classe : {currentClass?.name || 'Sélectionnée'}</span>
+                  <span>3. Extraire & Classer les Élèves : {currentClass?.name || 'Sélectionnée'}</span>
                 </>
               )}
             </button>
@@ -731,6 +766,7 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
                             className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
                           />
                         </th>
+                        <th className="p-3">N° Matricule</th>
                         <th className="p-3">Nom & Prénoms</th>
                         <th className="p-3">Sexe</th>
                         <th className="p-3">Date Naiss.</th>
@@ -757,6 +793,17 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
                             />
                           </td>
 
+                          {/* Matricule */}
+                          <td className="p-3">
+                            <input
+                              type="text"
+                              value={std.registrationNumber}
+                              placeholder="Auto"
+                              onChange={(e) => updateExtractedField(std.id, 'registrationNumber', e.target.value.toUpperCase())}
+                              className="w-24 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 font-mono text-[11px] font-bold text-indigo-700 dark:text-indigo-300 uppercase placeholder:text-slate-400"
+                            />
+                          </td>
+
                           {/* Editable Name */}
                           <td className="p-3 font-bold text-slate-900 dark:text-white">
                             <div className="flex items-center space-x-1.5">
@@ -769,6 +816,7 @@ CLASSE : 3ème A (Année Scolaire 2025-2026)
                               <input
                                 type="text"
                                 value={std.firstName}
+                                placeholder="Prénom(s)"
                                 onChange={(e) => updateExtractedField(std.id, 'firstName', e.target.value)}
                                 className="w-32 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold"
                               />

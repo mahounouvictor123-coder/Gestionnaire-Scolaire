@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../lib/store';
 import { SchoolLevel, Student } from '../../types';
 import { StudentPhotoPicker, getDefaultAvatar } from '../StudentPhotoPicker';
 import { clientFetch } from '../../services/clientFetch.ts';
+import {
+  parseStudentRosterText,
+  cleanTitleCase,
+  extractRosterTextFromFile
+} from '../../lib/rosterParser';
 import { 
   X, 
   UserPlus, 
@@ -22,7 +27,9 @@ import {
   HelpCircle,
   Users,
   Camera,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Upload,
+  AlertCircle
 } from 'lucide-react';
 
 interface AddStudentModalProps {
@@ -34,6 +41,7 @@ interface AddStudentModalProps {
 
 interface ParsedRow {
   id: string;
+  registrationNumber: string;
   lastName: string;
   firstName: string;
   gender: 'M' | 'F';
@@ -46,147 +54,25 @@ interface ParsedRow {
   selected: boolean;
 }
 
-// Local helper to clean and extract French formatted names
-function cleanTitleCase(str: string): string {
-  return str
-    .toLowerCase()
-    .split(/[\s-]+/)
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}
-
-// Intelligent local regex & NLP tokenizer for pasted student lists
 function parsePastedTextLocally(rawText: string): ParsedRow[] {
-  if (!rawText.trim()) return [];
+  const parsed = parseStudentRosterText(rawText);
+  const rows: ParsedRow[] = parsed.map((s, i) => ({
+    id: `parsed-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+    registrationNumber: s.registrationNumber || '',
+    lastName: s.lastName,
+    firstName: s.firstName,
+    gender: s.gender,
+    dateOfBirth: s.dateOfBirth,
+    placeOfBirth: s.placeOfBirth || 'Cotonou',
+    parentName: s.parentName || (s.lastName ? `M./Mme ${s.lastName}` : 'Parent / Tuteur'),
+    parentPhone: s.parentPhone || '+229 97 00 00 00',
+    bloodGroup: s.bloodGroup || 'O+',
+    photoUrl: getDefaultAvatar(s.gender),
+    selected: true
+  }));
 
-  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-  const results: ParsedRow[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-
-    // Strip leading numbering: "1.", "01 -", "1)", "#1", "•", "-"
-    line = line.replace(/^(\d+[\.\)\-:]|\#\d+|[\•\-\*])\s*/, '').trim();
-    if (!line) continue;
-
-    // Check for delimiter formats: Tab, Semicolon, Pipe, Comma
-    let delimiter: string | null = null;
-    if (line.includes('\t')) delimiter = '\t';
-    else if (line.includes('|')) delimiter = '|';
-    else if (line.includes(';')) delimiter = ';';
-    else if (line.includes(',')) delimiter = ',';
-
-    let lastName = '';
-    let firstName = '';
-    let gender: 'M' | 'F' = 'M';
-    let parentPhone = '+229 97 00 00 00';
-    let dateOfBirth = '2012-05-15';
-    let placeOfBirth = 'Cotonou';
-    let parentName = '';
-    let bloodGroup = 'O+';
-
-    // Check for Phone number in the string
-    const phoneMatch = line.match(/(?:\+?\d{1,3}[\s-]?)?\(?\d{2,3}\)?[\s.-]?\d{2,3}[\s.-]?\d{2,4}[\s.-]?\d{2,4}/);
-    if (phoneMatch && phoneMatch[0].length >= 8) {
-      parentPhone = phoneMatch[0].trim();
-      line = line.replace(phoneMatch[0], ' ').trim();
-    }
-
-    // Check for Date in format DD/MM/YYYY or YYYY-MM-DD
-    const dateMatch = line.match(/\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})\b/);
-    if (dateMatch) {
-      const rawDate = dateMatch[0];
-      if (rawDate.includes('/')) {
-        const parts = rawDate.split('/');
-        if (parts.length === 3) {
-          const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-          const month = parts[1].padStart(2, '0');
-          const day = parts[0].padStart(2, '0');
-          dateOfBirth = `${year}-${month}-${day}`;
-        }
-      } else if (rawDate.includes('-') && rawDate.length === 10) {
-        dateOfBirth = rawDate;
-      }
-      line = line.replace(rawDate, ' ').trim();
-    }
-
-    // Check for Gender indicators
-    if (/\b(féminin|fille|femme|\(f\)|[\s,\-|]F[\s,\-|]|^F$)\b/i.test(line)) {
-      gender = 'F';
-      line = line.replace(/\b(féminin|fille|femme|\(f\)|[\s,\-|]F[\s,\-|])\b/gi, ' ').trim();
-    } else if (/\b(masculin|garçon|homme|\(m\)|[\s,\-|]M[\s,\-|]|^M$)\b/i.test(line)) {
-      gender = 'M';
-      line = line.replace(/\b(masculin|garçon|homme|\(m\)|[\s,\-|]M[\s,\-|])\b/gi, ' ').trim();
-    }
-
-    // Parse Name & Firstname
-    if (delimiter) {
-      const parts = line.split(delimiter).map(p => p.trim()).filter(p => p.length > 0);
-      if (parts.length >= 2) {
-        lastName = parts[0].toUpperCase();
-        firstName = cleanTitleCase(parts[1]);
-        if (parts[2] && !parentName) parentName = `M./Mme ${lastName}`;
-      } else if (parts.length === 1) {
-        const words = parts[0].split(/\s+/);
-        if (words.length > 1) {
-          lastName = words[0].toUpperCase();
-          firstName = cleanTitleCase(words.slice(1).join(' '));
-        } else {
-          lastName = words[0].toUpperCase();
-          firstName = 'Élève';
-        }
-      }
-    } else {
-      // Space separated words: analyze uppercase patterns
-      const words = line.split(/\s+/).filter(w => w.length > 0);
-      if (words.length === 1) {
-        lastName = words[0].toUpperCase();
-        firstName = 'Élève';
-      } else {
-        // Collect consecutive uppercase words as lastName
-        const uppercaseWords: string[] = [];
-        const otherWords: string[] = [];
-        let inLastName = true;
-
-        for (const w of words) {
-          if (inLastName && w === w.toUpperCase() && w.length > 1 && !/\d/.test(w)) {
-            uppercaseWords.push(w);
-          } else {
-            inLastName = false;
-            otherWords.push(w);
-          }
-        }
-
-        if (uppercaseWords.length > 0 && otherWords.length > 0) {
-          lastName = uppercaseWords.join(' ');
-          firstName = cleanTitleCase(otherWords.join(' '));
-        } else {
-          // Default: 1st word is lastName, rest is firstName
-          lastName = words[0].toUpperCase();
-          firstName = cleanTitleCase(words.slice(1).join(' '));
-        }
-      }
-    }
-
-    if (lastName && firstName) {
-      results.push({
-        id: `parsed-${Date.now()}-${i}-${Math.random()}`,
-        lastName: lastName.toUpperCase(),
-        firstName: firstName,
-        gender,
-        dateOfBirth,
-        placeOfBirth: placeOfBirth || 'Cotonou',
-        parentName: parentName || `M./Mme ${lastName}`,
-        parentPhone,
-        bloodGroup,
-        photoUrl: getDefaultAvatar(gender),
-        selected: true
-      });
-    }
-  }
-
-  // Mandatory Strict Alphabetical Sort (A-Z by LastName, then FirstName)
-  return results.sort((a, b) => 
+  // Tri alphabétique strict (A-Z par Nom puis Prénom)
+  return rows.sort((a, b) =>
     a.lastName.localeCompare(b.lastName, 'fr', { sensitivity: 'base' }) ||
     a.firstName.localeCompare(b.firstName, 'fr', { sensitivity: 'base' })
   );
@@ -201,6 +87,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
   const { classes, addStudent, addBulkStudents } = useApp();
 
   const [mode, setMode] = useState<'SINGLE' | 'BULK_PASTE'>(initialMode);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   // Escape key handler
   React.useEffect(() => {
@@ -214,6 +101,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
   }, [isOpen, onClose]);
 
   // Single Student State
+  const [registrationNumber, setRegistrationNumber] = useState('');
   const [lastName, setLastName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [selectedLevel, setSelectedLevel] = useState<string>('ALL');
@@ -235,10 +123,26 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
   const [parsedStudents, setParsedStudents] = useState<ParsedRow[]>([]);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiSuccessMessage, setAiSuccessMessage] = useState<string | null>(null);
+  const [bulkErrorMessage, setBulkErrorMessage] = useState<string | null>(null);
+  const [singleErrorMessage, setSingleErrorMessage] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('ASC');
 
   // Quick edit photo for a single parsed row in bulk mode
   const [rowEditingPhotoId, setRowEditingPhotoId] = useState<string | null>(null);
+
+  // Sync mode & initialClassId when opening modal
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+      if (initialClassId) {
+        setClassId(initialClassId);
+      } else if (!classId && classes[0]?.id) {
+        setClassId(classes[0].id);
+      }
+      setBulkErrorMessage(null);
+      setSingleErrorMessage(null);
+    }
+  }, [isOpen, initialMode, initialClassId, classes]);
 
   if (!isOpen) return null;
 
@@ -274,13 +178,15 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
   const handleSingleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!lastName.trim() || !firstName.trim() || !parentPhone.trim()) {
-      alert("Veuillez remplir le Nom, Prénom et Numéro du parent.");
+      setSingleErrorMessage("Veuillez remplir le Nom, Prénom et Numéro du parent.");
       return;
     }
+    setSingleErrorMessage(null);
 
     const autoParentName = parentName.trim() || `M./Mme ${lastName.toUpperCase()}`;
 
     addStudent({
+      ...(registrationNumber.trim() ? { registrationNumber: registrationNumber.trim().toUpperCase() } : {}),
       firstName: firstName.trim(),
       lastName: lastName.trim().toUpperCase(),
       gender,
@@ -296,8 +202,9 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
       status: 'ACTIF',
       enrollmentDate: new Date().toISOString().split('T')[0],
       bloodGroup
-    });
+    } as any);
 
+    setRegistrationNumber('');
     setLastName('');
     setFirstName('');
     setParentPhone('');
@@ -306,22 +213,65 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
     onClose();
   };
 
+  // Import file (.csv, .tsv, .txt, .docx) directly into Bulk Paste
+  const handleBulkFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkErrorMessage(null);
+    setAiSuccessMessage(null);
+
+    try {
+      const extractedText = await extractRosterTextFromFile(file);
+      if (!extractedText.trim()) {
+        setBulkErrorMessage(`Le fichier "${file.name}" semble vide ou illisible.`);
+        return;
+      }
+      setPastedText(extractedText);
+      const parsed = parsePastedTextLocally(extractedText);
+      setParsedStudents(parsed);
+      setSortOrder('ASC');
+      if (parsed.length > 0) {
+        const withMat = parsed.filter(p => p.registrationNumber).length;
+        setAiSuccessMessage(
+          `✅ Fichier "${file.name}" importé : ${parsed.length} élève(s) extrait(s) (${withMat} avec matricule) et classé(s) champ par champ (A ➔ Z).`
+        );
+      } else {
+        setBulkErrorMessage("Aucune ligne élève valide n'a pu être extraite de ce fichier.");
+      }
+    } catch (err) {
+      console.error('Erreur import fichier liste:', err);
+      setBulkErrorMessage(`Impossible de lire le fichier "${file.name}". Utilisez un fichier .CSV, .TXT ou .DOCX.`);
+    } finally {
+      e.target.value = '';
+    }
+  };
+
   // 2. Local Instant Parse & Sort
   const handleLocalParse = () => {
+    setBulkErrorMessage(null);
     if (!pastedText.trim()) {
-      alert("Veuillez d'abord coller votre liste d'élèves dans le champ de texte.");
+      setBulkErrorMessage("Veuillez d'abord coller votre liste d'élèves ou importer un fichier.");
       return;
     }
     const parsed = parsePastedTextLocally(pastedText);
     setParsedStudents(parsed);
     setSortOrder('ASC');
-    setAiSuccessMessage(`✅ ${parsed.length} élève(s) détecté(s) avec photos adaptées et classé(s) par ordre alphabétique (A ➔ Z)`);
+    if (parsed.length === 0) {
+      setBulkErrorMessage("Aucun élève valide détecté. Vérifiez le format de votre liste.");
+      setAiSuccessMessage(null);
+    } else {
+      const withMat = parsed.filter(p => p.registrationNumber).length;
+      setAiSuccessMessage(
+        `✅ ${parsed.length} élève(s) extrait(s) (${withMat} matricule(s) détecté(s)) et trié(s) de A ➔ Z`
+      );
+    }
   };
 
   // 3. AI Powered Parse & Sort
   const handleAiParse = async () => {
+    setBulkErrorMessage(null);
     if (!pastedText.trim()) {
-      alert("Veuillez coller le texte ou la liste d'élèves (Excel, Word, WhatsApp).");
+      setBulkErrorMessage("Veuillez coller le texte ou importer un fichier (Excel, CSV, Word, WhatsApp).");
       return;
     }
 
@@ -343,14 +293,16 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
         if (data.students && Array.isArray(data.students) && data.students.length > 0) {
           const list: ParsedRow[] = data.students.map((s: any, idx: number) => {
             const detectedGender: 'M' | 'F' = (s.gender === 'F' || s.gender === 'f') ? 'F' : 'M';
+            const cleanLast = (s.lastName || '').toUpperCase().trim();
             return {
               id: `ai-${Date.now()}-${idx}`,
-              lastName: (s.lastName || 'NOM').toUpperCase(),
-              firstName: cleanTitleCase(s.firstName || 'Prénom'),
+              registrationNumber: (s.registrationNumber || s.matricule || '').toString().trim().toUpperCase(),
+              lastName: cleanLast || 'SANS_NOM',
+              firstName: s.firstName ? cleanTitleCase(s.firstName) : '',
               gender: detectedGender,
               dateOfBirth: s.dateOfBirth || '2012-05-15',
               placeOfBirth: s.placeOfBirth || 'Cotonou',
-              parentName: s.parentName || `M./Mme ${(s.lastName || '').toUpperCase()}`,
+              parentName: s.parentName || (cleanLast ? `M./Mme ${cleanLast}` : 'Parent / Tuteur'),
               parentPhone: s.parentPhone || '+229 97 00 00 00',
               bloodGroup: s.bloodGroup || 'O+',
               photoUrl: getDefaultAvatar(detectedGender),
@@ -364,9 +316,12 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
             a.firstName.localeCompare(b.firstName, 'fr', { sensitivity: 'base' })
           );
 
+          const withMat = sorted.filter(p => p.registrationNumber).length;
           setParsedStudents(sorted);
           setSortOrder('ASC');
-          setAiSuccessMessage(`✨ IA : ${sorted.length} élève(s) extraits, nettoyés, photos associées et ordonnés de A à Z`);
+          setAiSuccessMessage(
+            `✨ Extraction réussie : ${sorted.length} élève(s) classé(s) champ par champ (${withMat} matricule(s) identifié(s)) et trié(s) de A à Z`
+          );
           setIsAiProcessing(false);
           return;
         }
@@ -374,12 +329,21 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
       // Fallback local if API doesn't return list
       const localParsed = parsePastedTextLocally(pastedText);
       setParsedStudents(localParsed);
-      setAiSuccessMessage(`✨ ${localParsed.length} élève(s) analysés et triés alphabétiquement (A ➔ Z)`);
+      if (localParsed.length > 0) {
+        const withMat = localParsed.filter(p => p.registrationNumber).length;
+        setAiSuccessMessage(`✨ ${localParsed.length} élève(s) analysé(s) (${withMat} matricule(s)) et trié(s) de A ➔ Z`);
+      } else {
+        setBulkErrorMessage("Aucun élève valide n'a été détecté dans ce texte.");
+      }
     } catch (err) {
       console.warn("Erreur AI, bascule sur parseur local:", err);
       const localParsed = parsePastedTextLocally(pastedText);
       setParsedStudents(localParsed);
-      setAiSuccessMessage(`✨ ${localParsed.length} élève(s) analysés et triés alphabétiquement (A ➔ Z)`);
+      if (localParsed.length > 0) {
+        setAiSuccessMessage(`✨ ${localParsed.length} élève(s) analysé(s) et trié(s) alphabétiquement (A ➔ Z)`);
+      } else {
+        setBulkErrorMessage("Impossible d'extraire des élèves depuis ce texte.");
+      }
     } finally {
       setIsAiProcessing(false);
     }
@@ -416,9 +380,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
   const handleDeleteSelectedRows = () => {
     const count = parsedStudents.filter(p => p.selected).length;
     if (count === 0) return;
-    if (confirm(`Supprimer les ${count} élève(s) coché(s) de la liste ?`)) {
-      setParsedStudents(prev => prev.filter(p => !p.selected));
-    }
+    setParsedStudents(prev => prev.filter(p => !p.selected));
   };
 
   // Update row field
@@ -440,6 +402,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
   const handleAddEmptyRow = () => {
     const newRow: ParsedRow = {
       id: `manual-${Date.now()}`,
+      registrationNumber: '',
       lastName: 'NOUVEAU NOM',
       firstName: 'Prénom',
       gender: 'M',
@@ -456,29 +419,31 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
 
   // Load sample data
   const handleLoadSample = () => {
-    const sample = `1. KOUASSI Jean-Marc - M - 14/05/2011 - 97 00 11 22
-2. ADANLETE Bérénice - F - 22/11/2010 - 95 33 44 55
-3. DOSSOU Landry Emmanuel - M - 03/02/2011 - 66 77 88 99
-4. BOHOUN Chimène Aïcha - F - 18/08/2011 - 97 10 20 30
-5. ZINSOU Victoria Grace - F - 19/12/2010 - 95 66 77 88
-6. TCHIBOZO Marc Aurèle - M - 30/06/2011 - 61 22 33 44
-7. MENSAH Sylvain Kevin - M - 08/04/2011 - 97 33 22 11
-8. GBEGNON Syntyche - F - 27/07/2011 - 96 12 34 56
-9. HOUESSOU Charles Edouard - M - 11/01/2010 - 96 44 55 66
-10. SOGLO Marie-Claire - F - 05/09/2011 - 97 99 88 77`;
+    const sample = `Matricule ; Nom ; Prénoms ; Sexe ; Date de naissance ; Téléphone Parent
+2025-COL-001 ; KOUASSI ; Jean-Marc ; M ; 14/05/2011 ; +229 97 00 11 22
+2025-COL-002 ; ADANLETE ; Bérénice ; F ; 22/11/2010 ; +229 95 33 44 55
+2025-COL-003 ; DOSSOU ; Landry Emmanuel ; M ; 03/02/2011 ; +229 66 77 88 99
+2025-COL-004 ; BOHOUN ; Chimène Aïcha ; F ; 18/08/2011 ; +229 97 10 20 30
+2025-COL-005 ; ZINSOU ; Victoria Grace ; F ; 19/12/2010 ; +229 95 66 77 88`;
     setPastedText(sample);
+    const parsed = parsePastedTextLocally(sample);
+    setParsedStudents(parsed);
+    setSortOrder('ASC');
+    setBulkErrorMessage(null);
+    setAiSuccessMessage(`✅ Exemple chargé : ${parsed.length} élève(s) avec matricules classés chaque information à sa place.`);
   };
 
   // 4. Save Bulk Students
   const handleSaveBulk = () => {
+    setBulkErrorMessage(null);
     const selectedRows = parsedStudents.filter(p => p.selected);
     if (selectedRows.length === 0) {
-      alert("Veuillez sélectionner au moins un élève à inscrire.");
+      setBulkErrorMessage("Veuillez sélectionner au moins un élève à inscrire.");
       return;
     }
 
     if (!classId) {
-      alert("Veuillez choisir la classe d'affectation.");
+      setBulkErrorMessage("Veuillez choisir la classe d'affectation.");
       return;
     }
 
@@ -489,6 +454,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
     );
 
     const formattedList = sortedToInsert.map(s => ({
+      ...(s.registrationNumber.trim() ? { registrationNumber: s.registrationNumber.trim().toUpperCase() } : {}),
       firstName: s.firstName.trim(),
       lastName: s.lastName.trim().toUpperCase(),
       gender: s.gender,
@@ -507,10 +473,9 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
     }));
 
     addBulkStudents(formattedList);
-    alert(`🎉 Inscription réussie ! ${formattedList.length} élève(s) avec photos d'identité ont été inscrits dans la classe "${selectedClassObj?.name}" et ordonnés par ordre alphabétique.`);
-    
     setPastedText('');
     setParsedStudents([]);
+    setAiSuccessMessage(null);
     onClose();
   };
 
@@ -524,7 +489,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
       }}
     >
       <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full overflow-hidden my-auto flex flex-col transition-all max-h-[94vh] ${
-        mode === 'BULK_PASTE' ? 'max-w-4xl' : 'max-w-xl'
+        mode === 'BULK_PASTE' ? 'max-w-5xl' : 'max-w-xl'
       }`}>
         
         {/* Header */}
@@ -666,6 +631,26 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                 <label className="block text-xs font-black uppercase text-slate-700 dark:text-slate-300">
                   4. Identité et Coordonnées de l'Élève
                 </label>
+
+                {singleErrorMessage && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center space-x-2">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{singleErrorMessage}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-black uppercase text-slate-700 dark:text-slate-300 mb-1">
+                    Numéro Matricule (Optionnel — Auto-généré si vide)
+                  </label>
+                  <input
+                    type="text"
+                    value={registrationNumber}
+                    onChange={e => setRegistrationNumber(e.target.value.toUpperCase())}
+                    placeholder="ex: 2025-COL-001 ou 2361077"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-bold text-sm focus:ring-2 focus:ring-blue-500 uppercase"
+                  />
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {/* Nom */}
@@ -857,24 +842,40 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                 </div>
               </div>
 
-              {/* Paste Textarea */}
+              {/* Paste Textarea & File Import */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="block text-xs font-black uppercase text-slate-700 dark:text-slate-300">
-                    Zone de Copier-Coller de la liste d'élèves *
+                    Zone de Copier-Coller ou Import de Fichier (.CSV, .TXT, .DOCX) *
                   </label>
                   <div className="flex items-center space-x-2">
+                    <input
+                      ref={bulkFileInputRef}
+                      type="file"
+                      accept=".csv,.tsv,.txt,.docx"
+                      onChange={handleBulkFileImport}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => bulkFileInputRef.current?.click()}
+                      className="px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[11px] font-black flex items-center space-x-1 hover:bg-blue-100 cursor-pointer"
+                    >
+                      <Upload className="h-3 w-3" />
+                      <span>Importer Fichier (CSV/Word)</span>
+                    </button>
+                    <span className="text-slate-300">|</span>
                     <button
                       type="button"
                       onClick={handleLoadSample}
                       className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 cursor-pointer"
                     >
-                      Exemple de liste
+                      Exemple avec Matricules
                     </button>
                     <span className="text-slate-300">|</span>
                     <button
                       type="button"
-                      onClick={() => { setPastedText(''); setParsedStudents([]); setAiSuccessMessage(null); }}
+                      onClick={() => { setPastedText(''); setParsedStudents([]); setAiSuccessMessage(null); setBulkErrorMessage(null); }}
                       className="text-[11px] font-bold text-rose-500 hover:text-rose-700 cursor-pointer"
                     >
                       Effacer
@@ -886,7 +887,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                   rows={6}
                   value={pastedText}
                   onChange={e => setPastedText(e.target.value)}
-                  placeholder={`Exemples de formats acceptés :\n1. ADANLETE Jean-Baptiste - M - 14/05/2010 - +229 97 45 12 00\n2. BOHOUN Chimène Aïcha, F, 22/11/2009, +229 95 11 22 33\n3. DOSSOU Landry (Garçon) 03/02/2010\nOu tableau copié-collé directement depuis Excel...`}
+                  placeholder={`Collez votre tableau Excel/Word/CSV (avec ou sans ligne d'en-tête) :\nExemples :\nMatricule ; Nom ; Prénoms ; Sexe ; Date ; Tél\n2025-COL-001 ; ADANLETE ; Jean-Baptiste ; M ; 14/05/2010 ; +229 97 45 12 00\nOu sans en-tête :\n2361077 | KOUASSI | Jean-Marc\n2361078 ADANLETE Bérénice F 22/11/2010`}
                   className="w-full p-3.5 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-mono text-xs focus:ring-2 focus:ring-indigo-500 leading-relaxed shadow-inner"
                 />
               </div>
@@ -905,7 +906,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                     ) : (
                       <Sparkles className="h-4 w-4 text-amber-300" />
                     )}
-                    <span>{isAiProcessing ? 'Analyse & Tri IA en cours...' : '⚡ Analyser & Classer de A à Z (IA)'}</span>
+                    <span>{isAiProcessing ? 'Analyse & Classement en cours...' : '⚡ Extraire & Classer chaque champ (A ➔ Z)'}</span>
                   </button>
 
                   <button
@@ -915,7 +916,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                     className="px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                   >
                     <ArrowDownAZ className="h-4 w-4 text-blue-600" />
-                    <span>Tri Local Instantané (A-Z)</span>
+                    <span>Extraction Locale Instantanée</span>
                   </button>
                 </div>
 
@@ -930,6 +931,14 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                   </button>
                 )}
               </div>
+
+              {/* Error Message */}
+              {bulkErrorMessage && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center space-x-2 animate-in fade-in">
+                  <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+                  <span>{bulkErrorMessage}</span>
+                </div>
+              )}
 
               {/* Status Message */}
               {aiSuccessMessage && (
@@ -1000,6 +1009,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                           </th>
                           <th className="p-2 w-8 text-center">N°</th>
                           <th className="p-2 w-12 text-center">Photo</th>
+                          <th className="p-2 w-28">N° Matricule</th>
                           <th className="p-2">Nom de Famille (A-Z)</th>
                           <th className="p-2">Prénom(s)</th>
                           <th className="p-2 w-16">Genre</th>
@@ -1032,13 +1042,23 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                               >
                                 <img
                                   src={row.photoUrl}
-                                  alt={row.firstName}
+                                  alt={row.firstName || row.lastName}
                                   className="w-full h-full object-cover"
                                 />
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                                   <Camera className="h-3 w-3 text-white" />
                                 </div>
                               </button>
+                            </td>
+                            {/* Matricule Column */}
+                            <td className="p-2">
+                              <input
+                                type="text"
+                                value={row.registrationNumber}
+                                placeholder="Auto"
+                                onChange={e => handleUpdateRow(row.id, 'registrationNumber', e.target.value.toUpperCase())}
+                                className="w-full px-2 py-1 rounded bg-indigo-50/70 dark:bg-indigo-950/40 font-mono font-bold text-[10px] text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 uppercase placeholder:text-slate-400"
+                              />
                             </td>
                             <td className="p-2">
                               <input
@@ -1052,6 +1072,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                               <input
                                 type="text"
                                 value={row.firstName}
+                                placeholder="Prénom(s)"
                                 onChange={e => handleUpdateRow(row.id, 'firstName', e.target.value)}
                                 className="w-full px-2 py-1 rounded bg-slate-50 dark:bg-slate-800 font-bold text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700"
                               />

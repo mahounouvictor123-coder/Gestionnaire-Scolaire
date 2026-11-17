@@ -169,8 +169,8 @@ interface AppContextType {
   deleteClass: (id: string) => void;
 
   students: Student[];
-  addStudent: (std: Omit<Student, 'id' | 'registrationNumber'>) => Student;
-  addBulkStudents: (stds: Omit<Student, 'id' | 'registrationNumber'>[]) => Student[];
+  addStudent: (std: Omit<Student, 'id' | 'registrationNumber'> & { registrationNumber?: string }) => Student;
+  addBulkStudents: (stds: (Omit<Student, 'id' | 'registrationNumber'> & { registrationNumber?: string })[]) => Student[];
   updateStudent: (id: string, std: Partial<Student>) => void;
   deleteStudent: (id: string) => void;
   deleteMultipleStudents: (ids: string[]) => void;
@@ -2822,7 +2822,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newStudent;
   };
 
-  const addBulkStudents = (stdsData: Omit<Student, 'id' | 'registrationNumber'>[]): Student[] => {
+  const addBulkStudents = (stdsData: (Omit<Student, 'id' | 'registrationNumber'> & { registrationNumber?: string })[]): Student[] => {
     const year = settings.academicYear.split('-')[0];
     const created: Student[] = [];
     const classCountAdditions: Record<string, number> = {};
@@ -2832,11 +2832,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     stdsData.forEach((stdData, idx) => {
       currentTotal += 1;
       const prefix = (stdData.level || 'COLLEGE').substring(0, 3).toUpperCase();
-      const regNum = `${year}-${prefix}-${currentTotal.toString().padStart(3, '0')}`;
+      const autoRegNum = `${year}-${prefix}-${currentTotal.toString().padStart(3, '0')}`;
+      const providedRegNum = stdData.registrationNumber && stdData.registrationNumber.trim().length > 0
+        ? stdData.registrationNumber.trim().toUpperCase()
+        : autoRegNum;
+
       const newStudent: Student = {
         ...stdData,
         id: `std-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
-        registrationNumber: regNum
+        registrationNumber: providedRegNum
       };
       created.push(newStudent);
 
