@@ -124,6 +124,7 @@ export interface Subject {
   name: string;
   category: 'LITTERAIRE' | 'SCIENTIFIQUE' | 'TECHNIQUE' | 'LANGUE' | 'DIVERS';
   coefficient: number;
+  classCoefficients?: Record<string, number>;
   level: SchoolLevel;
   classIds?: string[]; // Classes ciblées spécifiques (si omis ou vide, s'applique à toute la section)
 }
@@ -150,6 +151,8 @@ export interface Grade {
   comment?: string;
   isLockedByDeadline?: boolean;
   evaluationNumber?: number; // 1 pour Interro 1, 2 pour Interro 2
+  isPermanentlySaved?: boolean;
+  permanentlySavedAt?: string;
 }
 
 export interface ReportCard {

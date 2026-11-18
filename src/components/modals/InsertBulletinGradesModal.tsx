@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../lib/store';
 import { Student, SchoolClass, Subject, Grade } from '../../types';
 import { getCleanStudentNames } from '../../lib/schoolUtils';
+import { getEffectiveSubjectCoefficient, buildClassCoefficientUpdate } from '../../lib/gradingUtils';
 import { InlineCoeffInput } from '../InlineCoeffInput';
 import {
   X,
@@ -59,7 +60,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
   availableSubjects,
   onSaved
 }) => {
-  const { grades, addBulkGrades, currentSchool, settings, subjects, updateSubject } = useApp();
+  const { grades, addBulkGrades, saveStudentGradesPermanently, currentSchool, settings, subjects, updateSubject } = useApp();
 
   // Mode: 'STUDENT' (toutes les matières pour 1 élève) ou 'CLASS' (tous les élèves pour 1 matière)
   const [entryMode, setEntryMode] = useState<'STUDENT' | 'CLASS'>('STUDENT');
@@ -261,7 +262,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
   };
 
   // Enregistrement Mode STUDENT
-  const handleSaveStudentGrades = (e: React.FormEvent) => {
+  const handleSaveStudentGrades = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeStudent) return;
 
@@ -281,7 +282,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
         trimester: trimester as 1 | 2 | 3,
         maxMark: 20,
         date: examDate,
-        coefficient: sbj.coefficient || 1,
+        coefficient: getEffectiveSubjectCoefficient(sbj, schoolClass || activeStudent),
         createdAt: nowIso,
         comment: entry.comment.trim(),
         teacherName: entry.teacherName.trim()
@@ -330,16 +331,18 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
     }
 
     addBulkGrades(gradesToSave);
-    setSuccessMsg(`✅ ${gradesToSave.length} note(s) enregistrée(s) avec succès pour ${activeStudent.lastName} ${activeStudent.firstName} !`);
+    await saveStudentGradesPermanently(activeStudent.id, trimester as 1 | 2 | 3);
+    const cleanNames = getCleanStudentNames(activeStudent);
+    setSuccessMsg(`🔒 ${gradesToSave.length} note(s) enregistrée(s) définitivement et protégée(s) contre toute mise à jour générale pour ${cleanNames.lastName} ${cleanNames.firstName} !`);
     if (onSaved) onSaved();
 
     setTimeout(() => {
       setSuccessMsg(null);
-    }, 2500);
+    }, 3500);
   };
 
   // Enregistrement Mode CLASS
-  const handleSaveClassGrades = (e: React.FormEvent) => {
+  const handleSaveClassGrades = async (e: React.FormEvent) => {
     e.preventDefault();
     const sbj = availableSubjects.find(s => s.id === activeSubjectId);
     if (!sbj) return;
@@ -360,7 +363,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
         trimester: trimester as 1 | 2 | 3,
         maxMark: 20,
         date: examDate,
-        coefficient: sbj.coefficient || 1,
+        coefficient: getEffectiveSubjectCoefficient(sbj, schoolClass || st),
         createdAt: nowIso,
         comment: entry.comment.trim(),
         teacherName: ''
@@ -409,12 +412,16 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
     }
 
     addBulkGrades(gradesToSave);
-    setSuccessMsg(`✅ ${gradesToSave.length} note(s) enregistrée(s) pour la matière "${sbj.name}" sur la classe !`);
+    const affectedStudentIds = Array.from(new Set(gradesToSave.map(g => g.studentId)));
+    await Promise.all(
+      affectedStudentIds.map(sid => saveStudentGradesPermanently(sid, trimester as 1 | 2 | 3))
+    );
+    setSuccessMsg(`🔒 ${gradesToSave.length} note(s) enregistrée(s) définitivement pour la matière "${sbj.name}" sur la classe !`);
     if (onSaved) onSaved();
 
     setTimeout(() => {
       setSuccessMsg(null);
-    }, 2500);
+    }, 3500);
   };
 
   return (
@@ -558,7 +565,8 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                 className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-extrabold text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 cursor-pointer min-w-[220px]"
               >
                 {availableSubjects.map(sbj => {
-                  const liveSbjCoeff = subjects.find(s => s.id === sbj.id)?.coefficient ?? sbj.coefficient ?? 1;
+                  const liveSbj = subjects.find(s => s.id === sbj.id) || sbj;
+                  const liveSbjCoeff = getEffectiveSubjectCoefficient(liveSbj, schoolClass);
                   return (
                     <option key={sbj.id} value={sbj.id}>
                       {sbj.name} (Coeff {liveSbjCoeff})
@@ -566,14 +574,18 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                   );
                 })}
               </select>
-              {activeSubjectId && (
-                <InlineCoeffInput
-                  variant="badge"
-                  value={subjects.find(s => s.id === activeSubjectId)?.coefficient ?? availableSubjects.find(s => s.id === activeSubjectId)?.coefficient ?? 1}
-                  onChange={(newCoeff) => updateSubject(activeSubjectId, { coefficient: newCoeff })}
-                  title="Modifier directement le coefficient de la matière sélectionnée"
-                />
-              )}
+              {activeSubjectId && (() => {
+                const targetSbj = subjects.find(s => s.id === activeSubjectId) || availableSubjects.find(s => s.id === activeSubjectId);
+                if (!targetSbj) return null;
+                return (
+                  <InlineCoeffInput
+                    variant="badge"
+                    value={getEffectiveSubjectCoefficient(targetSbj, schoolClass)}
+                    onChange={(newCoeff) => updateSubject(activeSubjectId, buildClassCoefficientUpdate(targetSbj, newCoeff, schoolClass))}
+                    title="Modifier directement le coefficient de la matière sélectionnée"
+                  />
+                );
+              })()}
               <span className="text-slate-500 dark:text-slate-400 font-semibold">
                 — {classStudents.length} élève(s) dans cette classe
               </span>
@@ -651,7 +663,8 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                       }
 
                       const projectedAvg = totalDiv > 0 ? (totalPts / totalDiv) : null;
-                      const coeff = subjects.find(s => s.id === sbj.id)?.coefficient ?? sbj.coefficient ?? 1;
+                      const liveSbj = subjects.find(s => s.id === sbj.id) || sbj;
+                      const coeff = getEffectiveSubjectCoefficient(liveSbj, schoolClass || activeStudent);
                       const projectedCoeff = projectedAvg !== null ? (projectedAvg * coeff) : null;
 
                       return (
@@ -666,7 +679,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                             <InlineCoeffInput
                               variant="badge"
                               value={coeff}
-                              onChange={(newCoeff) => updateSubject(sbj.id, { coefficient: newCoeff })}
+                              onChange={(newCoeff) => updateSubject(sbj.id, buildClassCoefficientUpdate(liveSbj, newCoeff, schoolClass || activeStudent))}
                               title={`Modifier le coefficient de ${sbj.name}`}
                             />
                           </td>
@@ -792,10 +805,10 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
 
                 <button
                   type="submit"
-                  className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs flex items-center justify-center space-x-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                  className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center justify-center space-x-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
                 >
                   <Save className="w-4 h-4" />
-                  <span>Enregistrer sur le Bulletin de l'Élève</span>
+                  <span>Enregistrer définitivement les notes de l'élève</span>
                 </button>
               </div>
             </div>
@@ -858,7 +871,8 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                       }
 
                       const projectedAvg = totalDiv > 0 ? (totalPts / totalDiv) : null;
-                      const curSbjCoeff = subjects.find(s => s.id === activeSubjectId)?.coefficient ?? availableSubjects.find(s => s.id === activeSubjectId)?.coefficient ?? 1;
+                      const activeSbjObj = subjects.find(s => s.id === activeSubjectId) || availableSubjects.find(s => s.id === activeSubjectId);
+                      const curSbjCoeff = activeSbjObj ? getEffectiveSubjectCoefficient(activeSbjObj, schoolClass || st) : 1;
                       const projectedCoeff = projectedAvg !== null ? (projectedAvg * curSbjCoeff) : null;
 
                       return (
@@ -1009,10 +1023,10 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
 
                 <button
                   type="submit"
-                  className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs flex items-center justify-center space-x-2 shadow-lg shadow-purple-600/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                  className="flex-1 sm:flex-none px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs flex items-center justify-center space-x-2 shadow-lg shadow-emerald-600/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
                 >
                   <Save className="w-4 h-4" />
-                  <span>Enregistrer les Notes de la Classe</span>
+                  <span>Enregistrer définitivement les Notes de la Classe</span>
                 </button>
               </div>
             </div>

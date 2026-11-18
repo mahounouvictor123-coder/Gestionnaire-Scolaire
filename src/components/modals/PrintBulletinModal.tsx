@@ -9,6 +9,8 @@ import {
   mergeCouncilDecision,
   getNextClassName,
   applyInlineBulletinGrade,
+  getEffectiveSubjectCoefficient,
+  buildClassCoefficientUpdate,
   BulletinGradeSlot,
   SubjectGroup
 } from '../../lib/gradingUtils';
@@ -37,7 +39,10 @@ import {
   Trash2,
   Plus,
   BookOpen,
-  Edit3
+  Edit3,
+  Save,
+  Lock,
+  ShieldCheck
 } from 'lucide-react';
 
 const PRESET_SIGNATURES = [
@@ -80,12 +85,14 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
     updateSubject,
     deleteSubject,
     addSubject,
-    updateStudent
+    updateStudent,
+    saveStudentGradesPermanently
   } = useApp();
   const [showSignatureControls, setShowSignatureControls] = useState(false);
   const [showSignatureOnDoc, setShowSignatureOnDoc] = useState(true);
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
+  const [isSavingPermanentGrades, setIsSavingPermanentGrades] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Saisie et modification des notes directement depuis ce bulletin
@@ -125,16 +132,17 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
   const handleOpenEditSubject = (sbj: Subject) => {
     setEditingSubject(sbj);
     setEditSubjectName(sbj.name);
-    setEditSubjectCoeff(sbj.coefficient.toString());
+    setEditSubjectCoeff(getEffectiveSubjectCoefficient(sbj, classObj || student).toString());
   };
 
   const handleSaveEditSubject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSubject || !editSubjectName.trim()) return;
 
+    const targetCoeff = Math.max(1, parseInt(editSubjectCoeff) || 1);
     updateSubject(editingSubject.id, {
       name: editSubjectName.trim(),
-      coefficient: Math.max(1, parseInt(editSubjectCoeff) || 1)
+      ...buildClassCoefficientUpdate(editingSubject, targetCoeff, classObj || student)
     });
 
     setNoticeMsg(`Matière "${editSubjectName.trim()}" modifiée avec succès !`);
@@ -294,6 +302,40 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
     updateStudent(student.id, { isRepeater });
   };
 
+  const normalizedTrimester = (Number(trimester) === 2 ? 2 : Number(trimester) === 3 ? 3 : 1) as 1 | 2 | 3;
+  const studentTrimesterGrades = student.id === 'specimen-student'
+    ? []
+    : grades.filter(g => g.studentId === student.id && Number(g.trimester) === Number(normalizedTrimester));
+  const hasAnyGradesForStudent = studentTrimesterGrades.length > 0;
+  const areStudentGradesPermanentlySaved =
+    hasAnyGradesForStudent && studentTrimesterGrades.every(g => g.isPermanentlySaved === true);
+  const hasPendingUnsavedGrades =
+    hasAnyGradesForStudent && studentTrimesterGrades.some(g => g.isPermanentlySaved !== true);
+  const latestPermanentSavedAt = studentTrimesterGrades
+    .map(g => g.permanentlySavedAt)
+    .filter((v): v is string => Boolean(v))
+    .sort()
+    .slice(-1)[0] || null;
+
+  const handleSaveGradesPermanently = async () => {
+    if (student.id === 'specimen-student' || isSavingPermanentGrades) return;
+    setIsSavingPermanentGrades(true);
+    try {
+      const result = await saveStudentGradesPermanently(student.id, normalizedTrimester);
+      const studentDisplay = `${cleanStudentNames.lastName || student.lastName} ${cleanStudentNames.firstName || student.firstName}`.trim();
+      if (result.savedCount > 0) {
+        setNoticeMsg(
+          `🔒 ${result.savedCount} note(s) de ${studentDisplay} (Trimestre ${normalizedTrimester}) enregistrée(s) définitivement et protégée(s) contre toute modification ou mise à jour générale !`
+        );
+      } else {
+        setNoticeMsg(`Aucune note à sauvegarder pour ${studentDisplay} sur le Trimestre ${normalizedTrimester}.`);
+      }
+      setTimeout(() => setNoticeMsg(null), 6000);
+    } finally {
+      setIsSavingPermanentGrades(false);
+    }
+  };
+
   const handleUpdateCouncilDecision = (patch: Partial<CouncilDecisionData>) => {
     const tKey = Number(trimester);
     const existingAll = student.bulletinCouncilDecisions || {};
@@ -381,6 +423,29 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
             >
               <Download className="h-3.5 w-3.5" />
               <span>📥 Télécharger PDF</span>
+            </button>
+            <button
+              onClick={handleSaveGradesPermanently}
+              disabled={student.id === 'specimen-student' || !hasAnyGradesForStudent || isSavingPermanentGrades}
+              className={`ml-1 px-3 py-1 font-black text-[11px] rounded-lg flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
+                areStudentGradesPermanentlySaved
+                  ? 'bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-400/40'
+                  : 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-slate-950 hover:scale-105 active:scale-95'
+              }`}
+              title="Sauvegarder définitivement les notes de cet élève contre toute mise à jour générale"
+            >
+              {areStudentGradesPermanentlySaved ? (
+                <Lock className="h-3.5 w-3.5 text-emerald-200" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
+              <span>
+                {isSavingPermanentGrades
+                  ? 'Enregistrement...'
+                  : areStudentGradesPermanentlySaved
+                  ? 'Notes Enregistrées ✓'
+                  : 'Enregistrer définitivement'}
+              </span>
             </button>
             <button
               onClick={() => {
@@ -707,7 +772,7 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                                 <InlineCoeffInput
                                   value={item.coefficient}
                                   onChange={(newCoeff) => {
-                                    updateSubject(item.subject.id, { coefficient: newCoeff });
+                                    updateSubject(item.subject.id, buildClassCoefficientUpdate(item.subject, newCoeff, classObj || student));
                                   }}
                                   title={`Modifier le coefficient de ${item.subject.name}`}
                                 />
@@ -810,6 +875,60 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                 </tfoot>
               </table>
             </div>
+
+            {/* Barre d'enregistrement définitif des notes de l'élève */}
+            {student.id !== 'specimen-student' && (
+              <div className={`print:hidden my-2 px-3 py-2 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-[11px] ${
+                areStudentGradesPermanentlySaved
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                  : hasPendingUnsavedGrades
+                  ? 'bg-amber-50 border-amber-300 text-amber-950'
+                  : 'bg-slate-50 border-slate-300 text-slate-700'
+              }`}>
+                <div className="flex items-center space-x-2 font-bold">
+                  {areStudentGradesPermanentlySaved ? (
+                    <>
+                      <Lock className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>
+                        Sauvegarde définitive active ({studentTrimesterGrades.length} note{studentTrimesterGrades.length > 1 ? 's' : ''} protégée{studentTrimesterGrades.length > 1 ? 's' : ''} contre toute mise à jour générale
+                        {latestPermanentSavedAt ? ` — ${new Date(latestPermanentSavedAt).toLocaleString('fr-FR')}` : ''}).
+                      </span>
+                    </>
+                  ) : hasPendingUnsavedGrades ? (
+                    <>
+                      <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
+                      <span>
+                        Notes modifiées ou en attente : cliquez sur « Enregistrer définitivement les notes » pour verrouiller définitivement ces notes.
+                      </span>
+                    </>
+                  ) : (
+                    <span>
+                      Saisissez les notes ci-dessus puis cliquez sur « Enregistrer définitivement les notes » pour les verrouiller.
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveGradesPermanently}
+                  disabled={!hasAnyGradesForStudent || isSavingPermanentGrades}
+                  className={`px-3.5 py-1.5 rounded-xl font-black text-xs flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
+                    areStudentGradesPermanentlySaved
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white hover:scale-[1.02] active:scale-95'
+                  }`}
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  <span>
+                    {isSavingPermanentGrades
+                      ? 'Enregistrement...'
+                      : areStudentGradesPermanentlySaved
+                      ? 'Re-valider la Sauvegarde Définitive'
+                      : 'Enregistrer définitivement les notes'}
+                  </span>
+                </button>
+              </div>
+            )}
 
             {/* 5. BANDEAU DES STATISTIQUES OFFICIELLES (5 cases horizontales quadrillées) */}
             <div className="grid grid-cols-5 border border-slate-800 text-[10px] sm:text-[10.5px] font-bold text-center divide-x divide-slate-800 bg-slate-100 my-1.5">
@@ -1180,10 +1299,10 @@ export const PrintBulletinModal: React.FC<PrintBulletinModalProps> = ({
                         <div className="flex items-center space-x-2">
                           <InlineCoeffInput
                             variant="badge"
-                            value={sbj.coefficient}
+                            value={sr.coefficient || getEffectiveSubjectCoefficient(sbj, classObj || student)}
                             onChange={(newCoeff) => {
-                              updateSubject(sbj.id, { coefficient: newCoeff });
-                              setNoticeMsg(`✅ Coefficient de "${sbj.name}" modifié à ${newCoeff}.`);
+                              updateSubject(sbj.id, buildClassCoefficientUpdate(sbj, newCoeff, classObj || student));
+                              setNoticeMsg(`✅ Coefficient de "${sbj.name}" modifié à ${newCoeff} pour ${classObj?.name || 'cette classe'}.`);
                               setTimeout(() => setNoticeMsg(null), 3000);
                             }}
                             title={`Modifier directement le coefficient de ${sbj.name}`}

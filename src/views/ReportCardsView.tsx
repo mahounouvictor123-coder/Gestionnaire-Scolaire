@@ -19,6 +19,8 @@ import {
   mergeCouncilDecision,
   getNextClassName,
   applyInlineBulletinGrade,
+  getEffectiveSubjectCoefficient,
+  buildClassCoefficientUpdate,
   BulletinGradeSlot
 } from '../lib/gradingUtils';
 import {
@@ -53,7 +55,9 @@ import {
   Pencil,
   Edit3,
   X,
-  Plus
+  Plus,
+  Save,
+  Lock
 } from 'lucide-react';
 
 interface ReportCardsViewProps {
@@ -78,7 +82,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     attendance,
     archivedReportCards,
     archiveReportCard,
-    deleteArchivedReportCard
+    deleteArchivedReportCard,
+    saveStudentGradesPermanently
   } = useApp();
 
   const [mainTab, setMainTab] = useState<'GENERATOR' | 'ARCHIVES'>('GENERATOR');
@@ -116,6 +121,8 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   const [isInsertGradesModalOpen, setIsInsertGradesModalOpen] = useState(false);
   const [insertGradesStudent, setInsertGradesStudent] = useState<Student | null>(null);
   const [insertGradesTargetSubject, setInsertGradesTargetSubject] = useState<Subject | null>(null);
+  const [isSavingPermanentGrades, setIsSavingPermanentGrades] = useState(false);
+  const [permanentSaveMessage, setPermanentSaveMessage] = useState<string | null>(null);
 
   // Gestion des matières (Modification et Suppression directe depuis le bulletin)
   const [showSubjectManagerModal, setShowSubjectManagerModal] = useState(false);
@@ -129,16 +136,17 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   const handleOpenEditSubject = (sbj: Subject) => {
     setEditingSubject(sbj);
     setEditSubjectName(sbj.name);
-    setEditSubjectCoeff(sbj.coefficient.toString());
+    setEditSubjectCoeff(getEffectiveSubjectCoefficient(sbj, selectedClass).toString());
   };
 
   const handleSaveEditSubject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSubject || !editSubjectName.trim()) return;
 
+    const targetCoeff = Math.max(1, parseInt(editSubjectCoeff) || 1);
     updateSubject(editingSubject.id, {
       name: editSubjectName.trim(),
-      coefficient: Math.max(1, parseInt(editSubjectCoeff) || 1)
+      ...buildClassCoefficientUpdate(editingSubject, targetCoeff, selectedClass)
     });
 
     setSubjectNotice(`Matière "${editSubjectName.trim()}" mise à jour avec succès !`);
@@ -264,6 +272,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     const found = classRankSummary.rankings.find(r => r.student.id === activeStudentForBulletin.id);
     if (found) return found;
 
+    const classTarget = selectedClass || activeStudentForBulletin;
     return {
       student: activeStudentForBulletin,
       subjectResults: definedClassSubjects.map(s => ({
@@ -271,10 +280,10 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
         grades: [],
         average: 0,
         weightedAverage: 0,
-        coefficient: s.coefficient || 1,
+        coefficient: getEffectiveSubjectCoefficient(s, classTarget),
         appreciation: 'Non évalué'
       })),
-      totalCoefficients: definedClassSubjects.reduce((sum, s) => sum + (s.coefficient || 1), 0) || 1,
+      totalCoefficients: definedClassSubjects.reduce((sum, s) => sum + getEffectiveSubjectCoefficient(s, classTarget), 0) || 1,
       totalWeightedPoints: 0,
       overallAverage: 0,
       rank: activeStudentForBulletin.id === 'specimen-student' ? 'Modèle Vierge' : 'N/A',
@@ -284,7 +293,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
         ? "Format officiel du bulletin dressé pour la classe, portant l'ensemble des matières arrêtées par l'école."
         : "Aucune note enregistrée pour cet élève ce trimestre."
     };
-  }, [classRankSummary, activeStudentForBulletin, definedClassSubjects]);
+  }, [classRankSummary, activeStudentForBulletin, definedClassSubjects, selectedClass]);
 
   // Grouped Subjects into Official Clusters
   const previewSubjectGroups = useMemo(() => {
@@ -354,6 +363,47 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     }
     return getCleanStudentNames(activeStudentForBulletin);
   }, [activeStudentForBulletin]);
+
+  const activeStudentTrimesterGrades = useMemo(() => {
+    if (activeStudentForBulletin.id === 'specimen-student') return [];
+    return grades.filter(
+      g => g.studentId === activeStudentForBulletin.id && Number(g.trimester) === Number(selectedTrimester)
+    );
+  }, [grades, activeStudentForBulletin.id, selectedTrimester]);
+
+  const hasAnyGradesForStudent = activeStudentTrimesterGrades.length > 0;
+  const areStudentGradesPermanentlySaved =
+    hasAnyGradesForStudent && activeStudentTrimesterGrades.every(g => g.isPermanentlySaved === true);
+  const hasPendingUnsavedGrades =
+    hasAnyGradesForStudent && activeStudentTrimesterGrades.some(g => g.isPermanentlySaved !== true);
+  const latestPermanentSavedAt = useMemo(() => {
+    const timestamps = activeStudentTrimesterGrades
+      .map(g => g.permanentlySavedAt)
+      .filter((v): v is string => Boolean(v))
+      .sort();
+    return timestamps.length > 0 ? timestamps[timestamps.length - 1] : null;
+  }, [activeStudentTrimesterGrades]);
+
+  const handleSaveStudentGradesPermanently = async () => {
+    if (activeStudentForBulletin.id === 'specimen-student' || isSavingPermanentGrades) return;
+    setIsSavingPermanentGrades(true);
+    try {
+      const result = await saveStudentGradesPermanently(activeStudentForBulletin.id, selectedTrimester);
+      const studentDisplay = `${activeStudentCleanNames.lastName || activeStudentForBulletin.lastName} ${activeStudentCleanNames.firstName || activeStudentForBulletin.firstName}`.trim();
+      if (result.savedCount > 0) {
+        setPermanentSaveMessage(
+          `🔒 ${result.savedCount} note(s) de ${studentDisplay} (Trimestre ${selectedTrimester}) enregistrée(s) définitivement et protégée(s) contre toute modification ou mise à jour générale !`
+        );
+      } else {
+        setPermanentSaveMessage(
+          `Aucune note à sauvegarder pour ${studentDisplay} sur le Trimestre ${selectedTrimester}. Renseignez au moins une note dans le tableau avant d'enregistrer.`
+        );
+      }
+      setTimeout(() => setPermanentSaveMessage(null), 6000);
+    } finally {
+      setIsSavingPermanentGrades(false);
+    }
+  };
 
   const handleSetRepeaterStatus = (isRepeater: boolean) => {
     if (activeStudentForBulletin.id === 'specimen-student') {
@@ -880,6 +930,31 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
+                onClick={handleSaveStudentGradesPermanently}
+                disabled={activeStudentForBulletin.id === 'specimen-student' || !hasAnyGradesForStudent || isSavingPermanentGrades}
+                className={`px-3.5 py-1.5 rounded-xl font-black text-xs flex items-center space-x-1.5 shadow-md transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
+                  areStudentGradesPermanentlySaved
+                    ? 'bg-emerald-700 hover:bg-emerald-600 text-white shadow-emerald-700/30 border border-emerald-400/40'
+                    : 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-slate-950 shadow-amber-500/30 hover:scale-105 active:scale-95'
+                }`}
+                title="Enregistrer définitivement les notes de cet élève pour les protéger contre toute modification ou mise à jour générale"
+              >
+                {areStudentGradesPermanentlySaved ? (
+                  <Lock className="h-3.5 w-3.5 text-emerald-200" />
+                ) : (
+                  <Save className="h-3.5 w-3.5" />
+                )}
+                <span>
+                  {isSavingPermanentGrades
+                    ? 'Enregistrement...'
+                    : areStudentGradesPermanentlySaved
+                    ? 'Notes Enregistrées Définitivement ✓'
+                    : 'Enregistrer définitivement les notes'}
+                </span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => {
                   setInsertGradesStudent(activeStudentForBulletin.id === 'specimen-student' ? (classStudents[0] || null) : activeStudentForBulletin);
                   setInsertGradesTargetSubject(null);
@@ -923,6 +998,23 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
               </button>
             </div>
           </div>
+
+          {/* Feedback message for permanent grade save */}
+          {permanentSaveMessage && (
+            <div className="p-3.5 bg-emerald-100 dark:bg-emerald-950/70 border border-emerald-400 dark:border-emerald-700 text-emerald-950 dark:text-emerald-200 rounded-2xl text-xs font-extrabold flex items-center justify-between gap-2 shadow-sm print:hidden">
+              <div className="flex items-center space-x-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>{permanentSaveMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPermanentSaveMessage(null)}
+                className="p-1 rounded-lg text-emerald-700 hover:bg-emerald-200/60 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Feedback message for subject actions */}
           {subjectNotice && (
@@ -1141,7 +1233,7 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                                   <InlineCoeffInput
                                     value={item.coefficient}
                                     onChange={(newCoeff) => {
-                                      updateSubject(item.subject.id, { coefficient: newCoeff });
+                                      updateSubject(item.subject.id, buildClassCoefficientUpdate(item.subject, newCoeff, selectedClass));
                                     }}
                                     title={`Modifier le coefficient de ${item.subject.name}`}
                                   />
@@ -1244,6 +1336,60 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                   </tfoot>
                 </table>
               </div>
+
+              {/* Barre d'enregistrement définitif des notes de l'élève */}
+              {activeStudentForBulletin.id !== 'specimen-student' && (
+                <div className={`print:hidden my-2 px-3 py-2 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-[11px] ${
+                  areStudentGradesPermanentlySaved
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+                    : hasPendingUnsavedGrades
+                    ? 'bg-amber-50 border-amber-300 text-amber-950'
+                    : 'bg-slate-50 border-slate-300 text-slate-700'
+                }`}>
+                  <div className="flex items-center space-x-2 font-bold">
+                    {areStudentGradesPermanentlySaved ? (
+                      <>
+                        <Lock className="h-4 w-4 text-emerald-600 shrink-0" />
+                        <span>
+                          Sauvegarde définitive active ({activeStudentTrimesterGrades.length} note{activeStudentTrimesterGrades.length > 1 ? 's' : ''} protégée{activeStudentTrimesterGrades.length > 1 ? 's' : ''} contre toute mise à jour générale
+                          {latestPermanentSavedAt ? ` — ${new Date(latestPermanentSavedAt).toLocaleString('fr-FR')}` : ''}).
+                        </span>
+                      </>
+                    ) : hasPendingUnsavedGrades ? (
+                      <>
+                        <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0" />
+                        <span>
+                          Notes modifiées ou en attente : cliquez sur « Enregistrer définitivement les notes » pour verrouiller définitivement ces notes.
+                        </span>
+                      </>
+                    ) : (
+                      <span>
+                        Saisissez les notes ci-dessus puis cliquez sur « Enregistrer définitivement les notes » pour les verrouiller.
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveStudentGradesPermanently}
+                    disabled={!hasAnyGradesForStudent || isSavingPermanentGrades}
+                    className={`px-3.5 py-1.5 rounded-xl font-black text-xs flex items-center space-x-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
+                      areStudentGradesPermanentlySaved
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white hover:scale-[1.02] active:scale-95'
+                    }`}
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    <span>
+                      {isSavingPermanentGrades
+                        ? 'Enregistrement...'
+                        : areStudentGradesPermanentlySaved
+                        ? 'Re-valider la Sauvegarde Définitive'
+                        : 'Enregistrer définitivement les notes'}
+                    </span>
+                  </button>
+                </div>
+              )}
 
               {/* 5. BANDEAU DES STATISTIQUES OFFICIELLES (5 cases horizontales quadrillées) */}
               <div className="grid grid-cols-5 border border-slate-800 text-[10px] sm:text-[10.5px] font-bold text-center divide-x divide-slate-800 bg-slate-100 my-1.5">
@@ -2070,10 +2216,10 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
                       <div className="flex items-center space-x-2 shrink-0">
                         <InlineCoeffInput
                           variant="badge"
-                          value={sbj.coefficient}
+                          value={getEffectiveSubjectCoefficient(sbj, selectedClass)}
                           onChange={(newCoeff) => {
-                            updateSubject(sbj.id, { coefficient: newCoeff });
-                            setSubjectNotice(`Coefficient de "${sbj.name}" modifié à ${newCoeff} !`);
+                            updateSubject(sbj.id, buildClassCoefficientUpdate(sbj, newCoeff, selectedClass));
+                            setSubjectNotice(`Coefficient de "${sbj.name}" modifié à ${newCoeff} pour ${selectedClass?.name || 'cette classe'} !`);
                           }}
                           title={`Modifier directement le coefficient de ${sbj.name}`}
                         />

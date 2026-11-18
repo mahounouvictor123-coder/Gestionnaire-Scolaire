@@ -3,7 +3,11 @@ import { useApp } from '../lib/store';
 import { SchoolLevel, Subject } from '../types';
 import { OFFICIAL_PRIMARY_SUBJECTS, OFFICIAL_MATERNELLE_SUBJECTS } from '../data/initialData';
 import { getClassSection, isSubjectForClass } from '../lib/schoolUtils';
-import { sortSubjectsForCollege, deduplicateSubjectsForSection } from '../lib/gradingUtils';
+import {
+  sortSubjectsForCollege,
+  deduplicateSubjectsForSection,
+  getDefaultCollegeSubjectCoefficient
+} from '../lib/gradingUtils';
 import { 
   BookOpen, 
   Plus, 
@@ -549,9 +553,20 @@ export const SubjectsView: React.FC = () => {
                     </td>
 
                     <td className="p-3.5 text-center">
-                      <span className="inline-block px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 font-black text-slate-900 dark:text-white text-xs border border-slate-200 dark:border-slate-700">
-                        Coef. {sb.coefficient}
-                      </span>
+                      {activeCycleTab === 'COLLEGE' ? (
+                        <div className="inline-flex flex-col items-center gap-1">
+                          <span className="inline-block px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 font-black text-indigo-900 dark:text-indigo-200 text-[11px] border border-indigo-200 dark:border-indigo-800">
+                            6è / 5è : Coef. {getDefaultCollegeSubjectCoefficient(sb, '6EME')}
+                          </span>
+                          <span className="inline-block px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/60 font-black text-purple-900 dark:text-purple-200 text-[11px] border border-purple-200 dark:border-purple-800">
+                            4è / 3è : Coef. {getDefaultCollegeSubjectCoefficient(sb, '3EME')}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 font-black text-slate-900 dark:text-white text-xs border border-slate-200 dark:border-slate-700">
+                          Coef. {sb.coefficient}
+                        </span>
+                      )}
                     </td>
 
                     <td className="p-3.5 text-right space-x-1">

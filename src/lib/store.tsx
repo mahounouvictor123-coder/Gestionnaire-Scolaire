@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { getCleanStudentNames } from './schoolUtils';
 import {
+  loadPermanentGradeVault,
+  writePermanentGradeVault,
+  mergeVaultEntries,
+  mergeProtectedGrades,
+  lockStudentGradesInList,
+  removeGradeFromVault
+} from './gradeVault';
+import {
   User,
   School,
   SchoolSettings,
@@ -194,6 +202,7 @@ interface AppContextType {
   addBulkGrades: (grds: Omit<Grade, 'id'>[]) => void;
   updateGrade: (id: string, grd: Partial<Grade>) => void;
   deleteGrade: (id: string) => void;
+  saveStudentGradesPermanently: (studentId: string, trimester?: 1 | 2 | 3) => Promise<{ savedCount: number; savedAt: string }>;
 
   payments: Payment[];
   addPayment: (pym: Omit<Payment, 'id' | 'receiptNumber'>) => Payment;
@@ -1013,7 +1022,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [students, setStudents] = useState<Student[]>(() => loadScopedData('STUDENTS', initialStudents));
   const [teachers, setTeachers] = useState<Teacher[]>(() => loadScopedData('TEACHERS', initialTeachers));
   const [subjects, setSubjects] = useState<Subject[]>(() => ensurePrimaryAndMaternelleSubjects(loadScopedData('SUBJECTS', initialSubjects)));
-  const [grades, setGrades] = useState<Grade[]>(() => loadScopedData('GRADES', initialGrades));
+  const [grades, setGrades] = useState<Grade[]>(() =>
+    mergeProtectedGrades(
+      loadScopedData('GRADES', initialGrades),
+      loadPermanentGradeVault(currentSchoolId)
+    )
+  );
+  const gradesRef = useRef<Grade[]>(grades);
+  gradesRef.current = grades;
   const [payments, setPayments] = useState<Payment[]>(() => loadScopedData('PAYMENTS', initialPayments));
   const [expenses, setExpenses] = useState<Expense[]>(() => loadScopedData('EXPENSES', initialExpenses));
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => loadScopedData('ATTENDANCE', initialAttendance));
@@ -1804,7 +1820,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     handleCloudUpdate<Subject[]>('SUBJECTS', setSubjects, (cloudSubjs) =>
       ensurePrimaryAndMaternelleSubjects(cloudSubjs, currentSchoolId)
     );
-    handleCloudUpdate('GRADES', setGrades);
+    handleCloudUpdate<Grade[]>('GRADES', setGrades, (cloudGrades) =>
+      mergeProtectedGrades(
+        Array.isArray(cloudGrades) ? cloudGrades : [],
+        loadPermanentGradeVault(currentSchoolId)
+      )
+    );
+
+    const syncVaultIntoState = (remoteVault: any) => {
+      if (!Array.isArray(remoteVault) || remoteVault.length === 0) return;
+      const mergedVault = mergeVaultEntries(
+        loadPermanentGradeVault(currentSchoolId),
+        remoteVault as Grade[]
+      );
+      writePermanentGradeVault(currentSchoolId, mergedVault);
+      isRemoteUpdateRef.current['GRADES'] = true;
+      setGrades(prev => {
+        const next = mergeProtectedGrades(prev, mergedVault);
+        gradesRef.current = next;
+        try {
+          localStorage.setItem(`${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_GRADES`, JSON.stringify(next));
+        } catch {}
+        return next;
+      });
+    };
+
+    loadFromCloud(currentSchoolId, 'PERMANENT_GRADES_VAULT')
+      .then(syncVaultIntoState)
+      .catch(() => {});
+    unsubs.push(
+      subscribeToCloud(currentSchoolId, 'PERMANENT_GRADES_VAULT', (remoteVault) => {
+        if (Date.now() - (lastLocalMutationAtRef.current['GRADES'] || 0) < 3500) {
+          return;
+        }
+        syncVaultIntoState(remoteVault);
+      })
+    );
     handleCloudUpdate('PAYMENTS', setPayments);
     handleCloudUpdate('EXPENSES', setExpenses);
     handleCloudUpdate('ATTENDANCE', setAttendance);
@@ -2084,7 +2135,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStudents(getTargetScoped('STUDENTS', initialStudents));
     setTeachers(getTargetScoped('TEACHERS', initialTeachers));
     setSubjects(ensurePrimaryAndMaternelleSubjects(getTargetScoped('SUBJECTS', initialSubjects), targetSchoolId));
-    setGrades(getTargetScoped('GRADES', initialGrades));
+    const nextGrades = mergeProtectedGrades(
+      getTargetScoped('GRADES', initialGrades),
+      loadPermanentGradeVault(targetSchoolId)
+    );
+    gradesRef.current = nextGrades;
+    setGrades(nextGrades);
     setPayments(getTargetScoped('PAYMENTS', initialPayments));
     setExpenses(getTargetScoped('EXPENSES', initialExpenses));
     setAttendance(getTargetScoped('ATTENDANCE', initialAttendance));
@@ -3245,26 +3301,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     hasLoadedCloudRef.current['GRADES'] = true;
     isRemoteUpdateRef.current['GRADES'] = false;
     const nowIso = new Date().toISOString();
-    setGrades(prev => {
-      const existingIdx = prev.findIndex(ex => matchesGradeSlot(ex, grd));
-      let updated: Grade[];
-      if (existingIdx !== -1) {
-        updated = [...prev];
-        updated[existingIdx] = {
-          ...updated[existingIdx],
-          ...grd,
-          updatedAt: nowIso
-        };
-      } else {
-        const newGrade: Grade = {
-          ...grd,
-          id: `grd-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          createdAt: (grd as any).createdAt || nowIso
-        };
-        updated = [...prev, newGrade];
-      }
-      return updated;
-    });
+    const prev = gradesRef.current;
+    const existingIdx = prev.findIndex(ex => matchesGradeSlot(ex, grd));
+    let updated: Grade[];
+    if (existingIdx !== -1) {
+      updated = [...prev];
+      updated[existingIdx] = {
+        ...updated[existingIdx],
+        ...grd,
+        isPermanentlySaved: false,
+        updatedAt: nowIso
+      };
+    } else {
+      const newGrade: Grade = {
+        ...grd,
+        id: `grd-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        createdAt: (grd as any).createdAt || nowIso,
+        updatedAt: nowIso
+      };
+      updated = [...prev, newGrade];
+    }
+    gradesRef.current = updated;
+    setGrades(updated);
   };
 
   const addBulkGrades = (grds: Omit<Grade, 'id'>[]) => {
@@ -3272,40 +3330,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     hasLoadedCloudRef.current['GRADES'] = true;
     isRemoteUpdateRef.current['GRADES'] = false;
     const nowIso = new Date().toISOString();
-    setGrades(prev => {
-      const updated = [...prev];
-      grds.forEach((g, idx) => {
-        const existingIdx = updated.findIndex(ex => matchesGradeSlot(ex, g));
-        if (existingIdx !== -1) {
-          updated[existingIdx] = {
-            ...updated[existingIdx],
-            ...g,
-            updatedAt: nowIso
-          };
-        } else {
-          updated.push({
-            ...g,
-            id: `grd-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
-            createdAt: (g as any).createdAt || nowIso
-          });
-        }
-      });
-      return updated;
+    const updated = [...gradesRef.current];
+    grds.forEach((g, idx) => {
+      const existingIdx = updated.findIndex(ex => matchesGradeSlot(ex, g));
+      if (existingIdx !== -1) {
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          ...g,
+          isPermanentlySaved: false,
+          updatedAt: nowIso
+        };
+      } else {
+        updated.push({
+          ...g,
+          id: `grd-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`,
+          createdAt: (g as any).createdAt || nowIso,
+          updatedAt: nowIso
+        });
+      }
     });
+    gradesRef.current = updated;
+    setGrades(updated);
   };
 
   const updateGrade = (id: string, grd: Partial<Grade>) => {
     lastLocalMutationAtRef.current['GRADES'] = Date.now();
     hasLoadedCloudRef.current['GRADES'] = true;
     isRemoteUpdateRef.current['GRADES'] = false;
-    setGrades(prev => prev.map(g => g.id === id ? { ...g, ...grd, updatedAt: new Date().toISOString() } : g));
+    const nowIso = new Date().toISOString();
+    const updated = gradesRef.current.map(g =>
+      g.id === id ? { ...g, ...grd, isPermanentlySaved: false, updatedAt: nowIso } : g
+    );
+    gradesRef.current = updated;
+    setGrades(updated);
   };
 
   const deleteGrade = (id: string) => {
     lastLocalMutationAtRef.current['GRADES'] = Date.now();
     hasLoadedCloudRef.current['GRADES'] = true;
     isRemoteUpdateRef.current['GRADES'] = false;
-    setGrades(prev => prev.filter(g => g.id !== id));
+    const updated = gradesRef.current.filter(g => g.id !== id);
+    gradesRef.current = updated;
+    setGrades(updated);
+    const updatedVault = removeGradeFromVault(currentSchoolId, id);
+    syncToCloud(currentSchoolId, 'PERMANENT_GRADES_VAULT', updatedVault);
+    if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'PERMANENT_GRADES_VAULT', updatedVault);
+    if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'PERMANENT_GRADES_VAULT', updatedVault);
+  };
+
+  const saveStudentGradesPermanently = async (
+    studentId: string,
+    trimester?: 1 | 2 | 3
+  ): Promise<{ savedCount: number; savedAt: string }> => {
+    lastLocalMutationAtRef.current['GRADES'] = Date.now();
+    hasLoadedCloudRef.current['GRADES'] = true;
+    isRemoteUpdateRef.current['GRADES'] = false;
+
+    const nowIso = new Date().toISOString();
+    const { updatedGrades, studentSavedGrades, savedCount, savedAt } = lockStudentGradesInList(
+      gradesRef.current,
+      studentId,
+      trimester,
+      nowIso
+    );
+
+    gradesRef.current = updatedGrades;
+    setGrades(updatedGrades);
+
+    // Persistance locale immédiate et coffre permanent protégé
+    try {
+      localStorage.setItem(
+        `${LOCAL_STORAGE_KEY_PREFIX}_DATA_${currentSchoolId}_GRADES`,
+        JSON.stringify(updatedGrades)
+      );
+    } catch {}
+
+    const existingVault = loadPermanentGradeVault(currentSchoolId);
+    const mergedVault = mergeVaultEntries(existingVault, studentSavedGrades);
+    writePermanentGradeVault(currentSchoolId, mergedVault);
+
+    // Synchronisation Cloud Firestore immédiate des notes et du coffre permanent
+    await Promise.all([
+      syncToCloud(currentSchoolId, 'GRADES', updatedGrades),
+      syncToCloud(currentSchoolId, 'PERMANENT_GRADES_VAULT', mergedVault),
+      ...(currentSchoolId === 'sch-temple'
+        ? [
+            syncToCloud('sch-1786960279353', 'GRADES', updatedGrades),
+            syncToCloud('sch-1786960279353', 'PERMANENT_GRADES_VAULT', mergedVault)
+          ]
+        : currentSchoolId === 'sch-1786960279353'
+        ? [
+            syncToCloud('sch-temple', 'GRADES', updatedGrades),
+            syncToCloud('sch-temple', 'PERMANENT_GRADES_VAULT', mergedVault)
+          ]
+        : [])
+    ]);
+
+    return { savedCount, savedAt };
   };
 
   // Payment actions
@@ -4075,7 +4196,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetToDefaultData = () => {
+    // Préserver les coffres de notes sauvegardées définitivement même lors d'une réinitialisation générale
+    const preservedVaults: Array<[string, string]> = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('GESTIONNAIRE_LOCKED_GRADES_VAULT_')) {
+          const val = localStorage.getItem(k);
+          if (val) preservedVaults.push([k, val]);
+        }
+      }
+    } catch {}
+
     localStorage.clear();
+
+    try {
+      preservedVaults.forEach(([k, val]) => {
+        localStorage.setItem(k, val);
+      });
+    } catch {}
+
     setSchools(initialSchools);
     setCurrentSchoolId(initialSchools[0].id);
     setSettings(initialSettings);
@@ -4084,7 +4224,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStudents(initialStudents);
     setTeachers(initialTeachers);
     setSubjects(initialSubjects);
-    setGrades(initialGrades);
+    const protectedInitialGrades = mergeProtectedGrades(
+      initialGrades,
+      loadPermanentGradeVault(initialSchools[0].id)
+    );
+    gradesRef.current = protectedInitialGrades;
+    setGrades(protectedInitialGrades);
     setPayments(initialPayments);
     setExpenses(initialExpenses);
     setAttendance(initialAttendance);
@@ -4163,6 +4308,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addBulkGrades,
         updateGrade,
         deleteGrade,
+        saveStudentGradesPermanently,
 
         payments,
         addPayment,

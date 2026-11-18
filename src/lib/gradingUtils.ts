@@ -76,13 +76,151 @@ export function defaultBulletinTemplate(): BulletinTemplate {
   };
 }
 
+export type CollegeGradeTier = '6EME' | '5EME' | '4EME' | '3EME';
+
+function resolveClassIdFromTarget(
+  classOrStudent?: SchoolClass | Student | { level?: string; name?: string; stream?: string; className?: string; classId?: string; id?: string; firstName?: string } | null
+): string | undefined {
+  if (!classOrStudent) return undefined;
+  const isStudentObj = 'firstName' in classOrStudent && typeof (classOrStudent as any).firstName === 'string';
+  if (isStudentObj) {
+    return (classOrStudent as Student).classId || undefined;
+  }
+  return ('classId' in classOrStudent && classOrStudent.classId) || classOrStudent.id || undefined;
+}
+
+/**
+ * Détecte le niveau précis du Collège (6ème, 5ème, 4ème, 3ème) pour appliquer
+ * les coefficients officiels propres à chaque classe sur tous les bulletins.
+ */
+export function getCollegeGradeTier(
+  classOrStudent?: SchoolClass | Student | { level?: string; name?: string; stream?: string; className?: string; classId?: string; id?: string; firstName?: string } | null
+): CollegeGradeTier | null {
+  if (!classOrStudent) return null;
+  if (getClassSection(classOrStudent) !== 'COLLEGE') return null;
+
+  const isStudentObj = 'firstName' in classOrStudent && typeof (classOrStudent as any).firstName === 'string';
+  const rawName = normalizeSubjectLabel(
+    ('name' in classOrStudent && typeof classOrStudent.name === 'string' ? classOrStudent.name : '') ||
+    ('className' in classOrStudent && typeof (classOrStudent as any).className === 'string' ? (classOrStudent as any).className : '')
+  );
+  const classId = (
+    (isStudentObj ? (classOrStudent as Student).classId : classOrStudent.id) ||
+    ('classId' in classOrStudent && classOrStudent.classId) ||
+    ''
+  ).toLowerCase();
+
+  if (classId === 'cls-6' || /(?:^|[^0-9])6\s*e(?:me)?(?:[^a-z]|$)|sixieme/i.test(rawName)) {
+    return '6EME';
+  }
+  if (classId === 'cls-5' || /(?:^|[^0-9])5\s*e(?:me)?(?:[^a-z]|$)|cinquieme/i.test(rawName)) {
+    return '5EME';
+  }
+  if (classId === 'cls-4' || /(?:^|[^0-9])4\s*e(?:me)?(?:[^a-z]|$)|quatrieme/i.test(rawName)) {
+    return '4EME';
+  }
+  if (classId === 'cls-3' || /(?:^|[^0-9])3\s*e(?:me)?(?:[^a-z]|$)|troisieme/i.test(rawName)) {
+    return '3EME';
+  }
+  return null;
+}
+
+/**
+ * Règle officielle des coefficients au Collège :
+ * - 6ème & 5ème : coefficient 1 dans toutes les matières.
+ * - 4ème & 3ème : coefficient 2 dans toutes les matières, sauf :
+ *   Mathématiques = 3, Informatique = 1, EPS = 1, Conduite = 1.
+ */
+export function getDefaultCollegeSubjectCoefficient(
+  subject: Pick<Subject, 'code' | 'name'>,
+  tier: CollegeGradeTier
+): number {
+  if (tier === '6EME' || tier === '5EME') {
+    return 1;
+  }
+
+  const c = normalizeSubjectLabel(subject.code);
+  const n = normalizeSubjectLabel(subject.name);
+
+  if (c === 'math' || n.includes('math')) return 3;
+  if (c === 'info' || n.includes('informatique') || n.includes('algo')) return 1;
+  if (c === 'eps' || n.includes('eps') || n.includes('education physique') || n.includes('sport')) return 1;
+  if (c === 'cond' || n.includes('conduite')) return 1;
+
+  return 2;
+}
+
+/**
+ * Retourne le coefficient effectif d'une matière pour une classe donnée,
+ * en respectant d'abord les éventuelles personnalisations par classe,
+ * puis les règles officielles du Collège (6è/5è vs 4è/3è), sinon le coefficient par défaut de la matière.
+ */
+export function getEffectiveSubjectCoefficient(
+  subject: Subject,
+  classOrStudent?: SchoolClass | Student | { level?: string; name?: string; stream?: string; className?: string; classId?: string; id?: string; firstName?: string } | null
+): number {
+  const classId = resolveClassIdFromTarget(classOrStudent);
+  if (classId && subject.classCoefficients) {
+    const clsOverride = subject.classCoefficients[classId];
+    if (typeof clsOverride === 'number' && clsOverride > 0) {
+      return clsOverride;
+    }
+  }
+
+  const tier = getCollegeGradeTier(classOrStudent);
+  if (tier && subject.classCoefficients) {
+    const tierOverride = subject.classCoefficients[tier];
+    if (typeof tierOverride === 'number' && tierOverride > 0) {
+      return tierOverride;
+    }
+  }
+
+  if (tier) {
+    return getDefaultCollegeSubjectCoefficient(subject, tier);
+  }
+
+  return subject.coefficient || 1;
+}
+
+/**
+ * Construit le patch à passer à updateSubject lors d'une modification de coefficient
+ * sur le bulletin d'une classe sans écraser les autres niveaux (ex: 6è vs 3è vs Lycée).
+ */
+export function buildClassCoefficientUpdate(
+  subject: Subject,
+  newCoeff: number,
+  classOrStudent?: SchoolClass | Student | { level?: string; name?: string; stream?: string; className?: string; classId?: string; id?: string; firstName?: string } | null
+): Partial<Subject> {
+  const safeCoeff = Math.max(1, Math.round(newCoeff) || 1);
+  const classId = resolveClassIdFromTarget(classOrStudent);
+  const tier = getCollegeGradeTier(classOrStudent);
+
+  if (classId || tier) {
+    const nextClassCoeffs: Record<string, number> = {
+      ...(subject.classCoefficients || {})
+    };
+    if (classId) {
+      nextClassCoeffs[classId] = safeCoeff;
+    } else if (tier) {
+      nextClassCoeffs[tier] = safeCoeff;
+    }
+    return {
+      classCoefficients: nextClassCoeffs,
+      ...(!tier && subject.level !== 'COLLEGE' ? { coefficient: safeCoeff } : {})
+    };
+  }
+
+  return { coefficient: safeCoeff };
+}
+
 export function calculateSubjectAverage(
   subject: Subject,
   studentGrades: Grade[],
-  bulletinTemplate?: BulletinTemplate
+  bulletinTemplate?: BulletinTemplate,
+  classOrStudent?: SchoolClass | Student | { level?: string; name?: string; stream?: string; className?: string; classId?: string; id?: string; firstName?: string } | null
 ): SubjectResult {
   const template = bulletinTemplate || defaultBulletinTemplate();
-  const coeff = subject.coefficient || 1;
+  const coeff = getEffectiveSubjectCoefficient(subject, classOrStudent);
 
   if (!studentGrades || studentGrades.length === 0) {
     return {
@@ -301,13 +439,13 @@ export function calculateClassRanks(
           (g.subjectName && alias.name && (g.subjectName.toLowerCase().includes(alias.name.toLowerCase()) || alias.name.toLowerCase().includes(g.subjectName.toLowerCase())))
         )
       );
-      const res = calculateSubjectAverage(sbj, sbjGrades, tmpl);
+      const res = calculateSubjectAverage(sbj, sbjGrades, tmpl, classRef);
 
       // If no grades exist for this student in this subject
       if (sbjGrades.length === 0) {
         return {
           ...res,
-          coefficient: sbj.coefficient || 1,
+          coefficient: getEffectiveSubjectCoefficient(sbj, classRef),
           average: 0,
           weightedAverage: 0,
           appreciation: 'Non évalué'
@@ -850,6 +988,11 @@ export function applyInlineBulletinGrade(params: {
   };
 
   const today = new Date().toISOString().split('T')[0];
+  const effectiveCoeff = getEffectiveSubjectCoefficient(subject, {
+    id: classId,
+    name: className,
+    level: student.level
+  });
 
   if (slot === 'INT1' || slot === 'INT2') {
     const interros = subjectGrades
@@ -872,7 +1015,7 @@ export function applyInlineBulletinGrade(params: {
     }
 
     if (target) {
-      updateGrade(target.id, { mark: newMark, maxMark: 20, evaluationNumber: evalNum });
+      updateGrade(target.id, { mark: newMark, maxMark: 20, evaluationNumber: evalNum, coefficient: effectiveCoeff });
     } else {
       addGrade({
         studentId: student.id,
@@ -886,7 +1029,7 @@ export function applyInlineBulletinGrade(params: {
         mark: newMark,
         maxMark: 20,
         date: today,
-        coefficient: subject.coefficient || 1,
+        coefficient: effectiveCoeff,
         comment: `[Interro ${evalNum}]`
       });
     }
@@ -900,7 +1043,7 @@ export function applyInlineBulletinGrade(params: {
       return;
     }
     if (devoirs.length > 0) {
-      updateGrade(devoirs[0].id, { mark: newMark, maxMark: 20 });
+      updateGrade(devoirs[0].id, { mark: newMark, maxMark: 20, coefficient: effectiveCoeff });
       devoirs.slice(1).forEach(extra => deleteGrade(extra.id));
     } else {
       addGrade({
@@ -914,7 +1057,7 @@ export function applyInlineBulletinGrade(params: {
         mark: newMark,
         maxMark: 20,
         date: today,
-        coefficient: subject.coefficient || 1,
+        coefficient: effectiveCoeff,
         comment: '[Devoir]'
       });
     }
@@ -928,7 +1071,7 @@ export function applyInlineBulletinGrade(params: {
     return;
   }
   if (compos.length > 0) {
-    updateGrade(compos[0].id, { mark: newMark, maxMark: 20 });
+    updateGrade(compos[0].id, { mark: newMark, maxMark: 20, coefficient: effectiveCoeff });
     compos.slice(1).forEach(extra => deleteGrade(extra.id));
   } else {
     addGrade({
@@ -942,7 +1085,7 @@ export function applyInlineBulletinGrade(params: {
       mark: newMark,
       maxMark: 20,
       date: today,
-      coefficient: subject.coefficient || 1,
+      coefficient: effectiveCoeff,
       comment: '[Composition]'
     });
   }
