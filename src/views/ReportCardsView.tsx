@@ -14,6 +14,7 @@ import {
   defaultBulletinTemplate,
   groupSubjectResults,
   sortSubjectsForCollege,
+  deduplicateSubjectsForSection,
   getCouncilDecisionMentions,
   mergeCouncilDecision,
   getNextClassName,
@@ -254,7 +255,9 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
   const definedClassSubjects = useMemo(() => {
     const filtered = subjects.filter(s => isSubjectForClass(s, selectedClass, subjects));
     const list = filtered.length > 0 ? filtered : subjects;
-    return getClassSection(selectedClass) === 'COLLEGE' ? sortSubjectsForCollege(list) : list;
+    const isCollege = getClassSection(selectedClass) === 'COLLEGE';
+    const deduped = deduplicateSubjectsForSection(list, isCollege);
+    return isCollege ? sortSubjectsForCollege(deduped) : deduped;
   }, [subjects, selectedClass]);
 
   const currentBulletinRankData = useMemo(() => {

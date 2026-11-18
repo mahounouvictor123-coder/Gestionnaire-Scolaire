@@ -3,7 +3,7 @@ import { useApp } from '../lib/store';
 import { SchoolLevel, Subject } from '../types';
 import { OFFICIAL_PRIMARY_SUBJECTS, OFFICIAL_MATERNELLE_SUBJECTS } from '../data/initialData';
 import { getClassSection, isSubjectForClass } from '../lib/schoolUtils';
-import { sortSubjectsForCollege } from '../lib/gradingUtils';
+import { sortSubjectsForCollege, deduplicateSubjectsForSection } from '../lib/gradingUtils';
 import { 
   BookOpen, 
   Plus, 
@@ -119,7 +119,7 @@ export const SubjectsView: React.FC = () => {
     });
 
   const displayedSubjects = activeCycleTab === 'COLLEGE'
-    ? sortSubjectsForCollege(filteredSubjects)
+    ? sortSubjectsForCollege(deduplicateSubjectsForSection(filteredSubjects, true))
     : filteredSubjects;
 
   const handleCreate = (e: React.FormEvent) => {

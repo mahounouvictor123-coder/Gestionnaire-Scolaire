@@ -275,9 +275,14 @@ export function calculateClassRanks(
   const extraGradedSubjects = subjects.filter(s => gradedSubjectIds.has(s.id) && !relevantSubjects.some(rs => rs.id === s.id));
   const activeSubjectsRaw = (relevantSubjects.length > 0 ? relevantSubjects : subjects).concat(extraGradedSubjects);
   const isCollegeClass = getClassSection(classRef) === 'COLLEGE';
+  const { subjects: deduplicatedSubjects, aliasesByKeptId } = deduplicateSubjectsWithAliases(
+    activeSubjectsRaw,
+    isCollegeClass,
+    gradedSubjectIds
+  );
   const activeSubjects = isCollegeClass
-    ? sortSubjectsForCollege(activeSubjectsRaw)
-    : activeSubjectsRaw;
+    ? sortSubjectsForCollege(deduplicatedSubjects)
+    : deduplicatedSubjects;
 
   // 1. Calculate for each student
   const rawResults = students.map(student => {
@@ -285,13 +290,16 @@ export function calculateClassRanks(
     
     // Evaluate for each subject relevant to student - KEEP ALL subjects defined by the school
     const subjectResults = activeSubjects.map(sbj => {
-      const sbjGrades = studentGrades.filter(g => 
-        g.subjectId === sbj.id || 
-        g.subjectId === sbj.name || 
-        (sbj.code && g.subjectId === sbj.code) ||
-        (g.subjectName && g.subjectName.trim().toLowerCase() === sbj.name.trim().toLowerCase()) ||
-        (g.subjectId && g.subjectId.trim().toLowerCase() === sbj.name.trim().toLowerCase()) ||
-        (g.subjectName && sbj.name && (g.subjectName.toLowerCase().includes(sbj.name.toLowerCase()) || sbj.name.toLowerCase().includes(g.subjectName.toLowerCase())))
+      const aliases = aliasesByKeptId.get(sbj.id) || [sbj];
+      const sbjGrades = studentGrades.filter(g =>
+        aliases.some(alias =>
+          g.subjectId === alias.id ||
+          g.subjectId === alias.name ||
+          (alias.code && g.subjectId === alias.code) ||
+          (g.subjectName && g.subjectName.trim().toLowerCase() === alias.name.trim().toLowerCase()) ||
+          (g.subjectId && g.subjectId.trim().toLowerCase() === alias.name.trim().toLowerCase()) ||
+          (g.subjectName && alias.name && (g.subjectName.toLowerCase().includes(alias.name.toLowerCase()) || alias.name.toLowerCase().includes(g.subjectName.toLowerCase())))
+        )
       );
       const res = calculateSubjectAverage(sbj, sbjGrades, tmpl);
 
@@ -418,8 +426,8 @@ function normalizeSubjectLabel(str: string = ''): string {
 
 /**
  * Ordre officiel demandé sur les bulletins de la 6ème à la 3ème :
- * 1. Communication écrite
- * 2. Lecture
+ * 1. Lecture
+ * 2. Communication écrite
  * 3. Anglais
  * 4. Espagnol
  * 5. Histoire-Géographie
@@ -434,8 +442,8 @@ export function getCollegeSubjectSortOrder(s: Subject): number {
   const n = normalizeSubjectLabel(s.name);
   const c = normalizeSubjectLabel(s.code);
 
-  if (c === 'ce' || n.includes('communication') || n.includes('expression ecrite')) return 1;
-  if (c === 'lect' || n.includes('lecture')) return 2;
+  if (c === 'lect' || n.includes('lecture')) return 1;
+  if (c === 'ce' || n.includes('communication') || n.includes('expression ecrite')) return 2;
   if (c === 'ang' || n.includes('anglais') || n.includes('english')) return 3;
   if (c === 'esp' || n.includes('espagnol') || n.includes('spanish')) return 4;
   if (c === 'hist' || c === 'hg' || n.includes('histoire') || n.includes('geograph') || n === 'hist-geo') return 5;
@@ -449,6 +457,70 @@ export function getCollegeSubjectSortOrder(s: Subject): number {
   return 99;
 }
 
+function getCanonicalSubjectKey(s: Subject, isCollege: boolean): string {
+  if (isCollege) {
+    const order = getCollegeSubjectSortOrder(s);
+    if (order >= 1 && order <= 11) {
+      return `college-slot:${order}`;
+    }
+  }
+  const n = normalizeSubjectLabel(s.name);
+  const c = normalizeSubjectLabel(s.code);
+  if (c === 'pct' || c === 'pc' || c === 'spct' || n.includes('pct') || n.includes('spct') || n === 'physique chimie' || n.includes('physique - chimie') || n.includes('physique-chimie')) {
+    return 'canonical:pct';
+  }
+  return `name:${n || c || s.id}`;
+}
+
+export function deduplicateSubjectsWithAliases(
+  list: Subject[],
+  isCollege: boolean,
+  gradedSubjectIds: Set<string> = new Set()
+): { subjects: Subject[]; aliasesByKeptId: Map<string, Subject[]> } {
+  const buckets = new Map<string, Subject[]>();
+  const orderKeys: string[] = [];
+
+  list.forEach(s => {
+    const key = getCanonicalSubjectKey(s, isCollege);
+    const existing = buckets.get(key);
+    if (existing) {
+      if (!existing.some(e => e.id === s.id)) {
+        existing.push(s);
+      }
+    } else {
+      buckets.set(key, [s]);
+      orderKeys.push(key);
+    }
+  });
+
+  const result: Subject[] = [];
+  const aliasesByKeptId = new Map<string, Subject[]>();
+
+  orderKeys.forEach(key => {
+    const group = buckets.get(key)!;
+    // Préférer une matière ayant déjà des notes saisies, puis la matière officielle (sbj-3 / sbj-col-*), puis la première
+    const sortedCandidates = [...group].sort((a, b) => {
+      const aGraded = gradedSubjectIds.has(a.id) ? 1 : 0;
+      const bGraded = gradedSubjectIds.has(b.id) ? 1 : 0;
+      if (aGraded !== bGraded) return bGraded - aGraded;
+
+      const aOfficial = a.id === 'sbj-3' || a.id.startsWith('sbj-col-') || /^sbj-\d+$/.test(a.id) ? 1 : 0;
+      const bOfficial = b.id === 'sbj-3' || b.id.startsWith('sbj-col-') || /^sbj-\d+$/.test(b.id) ? 1 : 0;
+      return bOfficial - aOfficial;
+    });
+
+    const kept = sortedCandidates[0];
+    result.push(kept);
+    aliasesByKeptId.set(kept.id, group);
+  });
+
+  return { subjects: result, aliasesByKeptId };
+}
+
+export function deduplicateSubjectsForSection(list: Subject[], isCollege: boolean): Subject[] {
+  return deduplicateSubjectsWithAliases(list, isCollege).subjects;
+}
+
 export function sortSubjectsForCollege(list: Subject[]): Subject[] {
   return list
     .map((subj, idx) => ({ subj, idx, rank: getCollegeSubjectSortOrder(subj) }))
@@ -459,7 +531,7 @@ export function sortSubjectsForCollege(list: Subject[]): Subject[] {
 /**
  * Group subjects into official Beninese secondary education clusters:
  * - Collège (6ème à 3ème) :
- *   1. Matières Littéraires (Communication écrite, Lecture, Anglais, Espagnol, Histoire-Géo)
+ *   1. Matières Littéraires (Lecture, Communication écrite, Anglais, Espagnol, Histoire-Géo)
  *   2. Matières Scientifiques (SVT, Mathématiques, PCT)
  *   3. Autres Matières (Informatique, EPS, Conduite, etc.)
  * - Lycée (2nde à Terminale) :

@@ -909,33 +909,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let list = [...subjs];
     const deletedSet = new Set(getDeletedOfficialSubjectIds(schoolId));
 
-    // Guarantee PCT subject presence and SCIENTIFIQUE category for secondary
-    const hasPCT = list.some(s => s.code === 'PCT' || s.name.toUpperCase().includes('PCT'));
-    if (!hasPCT && !deletedSet.has('sbj-3')) {
-      const pcIdx = list.findIndex(s => s.code === 'PC' || s.name.toLowerCase().includes('physique'));
-      if (pcIdx !== -1) {
-        list[pcIdx] = {
-          ...list[pcIdx],
-          code: 'PCT',
-          name: 'PCT (Physique - Chimie - Technologie)',
-          category: 'SCIENTIFIQUE'
-        };
-      } else {
-        list.push({
-          id: 'sbj-3',
-          code: 'PCT',
-          name: 'PCT (Physique - Chimie - Technologie)',
-          category: 'SCIENTIFIQUE',
-          coefficient: 3,
-          level: 'COLLEGE'
-        });
-      }
-    } else {
-      list = list.map(s => (s.code === 'PCT' || s.name.toUpperCase().includes('PCT')) ? { ...s, category: 'SCIENTIFIQUE' } : s);
+    // Guarantee single PCT subject presence and SCIENTIFIQUE category for secondary (deduplicating any duplicate PCT)
+    const normSubj = (v: string = '') => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const isPctEntry = (s: Subject) => {
+      const sc = normSubj(s.code);
+      const sn = normSubj(s.name);
+      return (
+        sc === 'pct' ||
+        sc === 'pc' ||
+        sc === 'spct' ||
+        sn === 'pct' ||
+        sn.startsWith('pct ') ||
+        sn.startsWith('pct(') ||
+        sn.includes('physique - chimie - technologie') ||
+        sn.includes('physique-chimie-technologie') ||
+        sn === 'physique chimie' ||
+        sn === 'physique-chimie' ||
+        sn === 'sciences physiques'
+      );
+    };
+
+    const secondaryPctEntries = list.filter(
+      s => isPctEntry(s) && s.level !== 'PRIMAIRE' && s.level !== 'MATERNELLE'
+    );
+
+    if (secondaryPctEntries.length === 0 && !deletedSet.has('sbj-3')) {
+      list.push({
+        id: 'sbj-3',
+        code: 'PCT',
+        name: 'PCT (Physique - Chimie - Technologie)',
+        category: 'SCIENTIFIQUE',
+        coefficient: 3,
+        level: 'COLLEGE'
+      });
+    } else if (secondaryPctEntries.length > 0) {
+      const canonicalPct =
+        secondaryPctEntries.find(s => s.id === 'sbj-3') ||
+        secondaryPctEntries.find(s => s.level === 'COLLEGE') ||
+        secondaryPctEntries[0];
+      const customizedPct = secondaryPctEntries.find(s => s.coefficient && s.coefficient !== 3);
+      const duplicatePctIds = new Set(
+        secondaryPctEntries.filter(s => s.id !== canonicalPct.id).map(s => s.id)
+      );
+
+      list = list
+        .filter(s => !duplicatePctIds.has(s.id))
+        .map(s =>
+          s.id === canonicalPct.id
+            ? {
+                ...s,
+                code: 'PCT',
+                category: 'SCIENTIFIQUE',
+                level: s.level || 'COLLEGE',
+                coefficient:
+                  canonicalPct.coefficient === 3 && customizedPct
+                    ? customizedPct.coefficient
+                    : s.coefficient || 3
+              }
+            : s
+        );
     }
 
     // Guarantee Collège (6ème à 3ème) official subjects without duplicating user-created equivalents
-    const normSubj = (v: string = '') => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
     const collegeSubjs = list.filter(s => s.level === 'COLLEGE' || s.id.startsWith('sbj-col-'));
     const hasCollegeEquivalent = (official: Subject): boolean => {
       if (list.some(s => s.id === official.id)) return true;

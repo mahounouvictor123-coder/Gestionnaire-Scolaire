@@ -283,8 +283,8 @@ export const OFFICIAL_MATERNELLE_SUBJECTS: Subject[] = [
 ];
 
 export const OFFICIAL_COLLEGE_SUBJECTS: Subject[] = [
-  { id: "sbj-col-ce", code: "CE", name: "Communication Écrite", category: "LITTERAIRE", coefficient: 2, level: "COLLEGE" },
   { id: "sbj-col-lect", code: "LECT", name: "Lecture", category: "LITTERAIRE", coefficient: 2, level: "COLLEGE" },
+  { id: "sbj-col-ce", code: "CE", name: "Communication Écrite", category: "LITTERAIRE", coefficient: 2, level: "COLLEGE" },
   { id: "sbj-6", code: "ANG", name: "Anglais", category: "LANGUE", coefficient: 2, level: "COLLEGE" },
   { id: "sbj-col-esp", code: "ESP", name: "Espagnol", category: "LANGUE", coefficient: 2, level: "COLLEGE" },
   { id: "sbj-5", code: "HIST", name: "Histoire - Géographie", category: "LITTERAIRE", coefficient: 2, level: "COLLEGE" },
