@@ -322,9 +322,9 @@ export function calculateSubjectAverage(
     }
   }
 
-  // Teacher comment from entered grades
+  // Teacher comment from entered grades (ignoring synthetic slot markers like [Interro 1], [Devoir], [Composition])
   const teacherComments = studentGrades
-    .map(g => g.comment?.trim())
+    .map(g => sanitizeGradeComment(g.comment))
     .filter((c): c is string => Boolean(c && c.length > 0));
   const teacherComment = teacherComments.length > 0 ? teacherComments[teacherComments.length - 1] : '';
   const devoir1 = devoirs[0] ? toScale20(devoirs[0]) : undefined;
@@ -346,14 +346,37 @@ export function calculateSubjectAverage(
   };
 }
 
+const SYNTHETIC_GRADE_COMMENT_PATTERNS = [
+  /^\s*interro(?:gation)?\s*(?:n[°o]?\s*)?[12]?\s*$/i,
+  /^\s*int(?:erro)?\s*[12]?\s*$/i,
+  /^\s*devoir(?:\s*(?:n[°o]?\s*)?[12])?\s*$/i,
+  /^\s*compo(?:sition)?(?:\s*(?:n[°o]?\s*)?[123])?\s*$/i,
+  /^\s*d[eé]tect[eé]\s+par\s+ocr\s*$/i,
+  /^\s*reconnaissance\s+ocr\s*$/i,
+  /^\s*(?:ras|r\.a\.s\.?|-+)\s*$/i
+];
+
+export function sanitizeGradeComment(raw?: string | null): string {
+  if (!raw) return '';
+  const stripped = String(raw)
+    .replace(/\[(?:interro(?:\s*[12])?|int\s*[12]|devoir(?:\s*[12])?|compo(?:sition)?)\]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!stripped) return '';
+  if (SYNTHETIC_GRADE_COMMENT_PATTERNS.some(pattern => pattern.test(stripped))) {
+    return '';
+  }
+  return stripped;
+}
+
 export function getSubjectAppreciation(avg: number): string {
-  if (avg >= 18) return 'Travail exceptionnel. Félicitations !';
-  if (avg >= 16) return 'Excellent trimestre. Continuez ainsi.';
-  if (avg >= 14) return 'Très bon travail. Résultats très satisfaisants.';
-  if (avg >= 12) return 'Bon trimestre. Peut encore progresser.';
-  if (avg >= 10) return 'Résultats passables. Effort soutenu requis.';
-  if (avg >= 8) return 'Insuffisant. Doit se concentrer davantage.';
-  return 'Très insuffisant. Alerte rouge, travail à renforcer.';
+  if (avg >= 18) return 'Excellente';
+  if (avg >= 16) return 'Très Bien';
+  if (avg >= 14) return 'Bien';
+  if (avg >= 12) return 'Assez Bien';
+  if (avg >= 10) return 'Passable';
+  if (avg >= 8) return 'Insuffisant';
+  return 'Faible';
 }
 
 export function getMention(avg: number, template?: BulletinTemplate): string {
@@ -682,43 +705,48 @@ export function groupSubjectResults(
   classOrStudent?: SchoolClass | Student | { level?: string; name?: string; stream?: string } | null
 ): SubjectGroup[] {
   const isScientific = (s: Subject) => {
-    const n = (s.name || '').toUpperCase();
-    const c = (s.code || '').toUpperCase();
+    const nNorm = normalizeSubjectLabel(s.name);
+    const cNorm = normalizeSubjectLabel(s.code);
+    const nCompact = nNorm.replace(/[^a-z0-9]/g, '');
+    const cCompact = cNorm.replace(/[^a-z0-9]/g, '');
+
     if (
-      n.includes('INFORMATIQUE') ||
-      c === 'INFO' ||
-      c === 'EPS' ||
-      n.includes('EPS') ||
-      n.includes('EDUCATION PHYSIQUE') ||
-      n.includes('ÉDUCATION PHYSIQUE') ||
-      n.includes('SPORT') ||
-      c === 'COND' ||
-      n.includes('CONDUITE')
+      nNorm.includes('informatique') ||
+      cCompact === 'info' ||
+      cCompact === 'eps' ||
+      nNorm.includes('eps') ||
+      nNorm.includes('education physique') ||
+      nNorm.includes('sport') ||
+      cCompact === 'cond' ||
+      nNorm.includes('conduite')
     ) {
       return false;
     }
+
+    if (
+      cCompact === 'pct' ||
+      cCompact === 'pc' ||
+      cCompact === 'spct' ||
+      nCompact.includes('pct') ||
+      nCompact.includes('spct') ||
+      nNorm.includes('physique') ||
+      nNorm.includes('chimie') ||
+      nNorm.includes('technologie') ||
+      nNorm.includes('techno') ||
+      nNorm.includes('math') ||
+      cCompact.includes('math') ||
+      nNorm.includes('svt') ||
+      cCompact.includes('svt') ||
+      nNorm.includes('biologie') ||
+      nNorm.includes('science') ||
+      nNorm.includes('est') ||
+      cCompact === 'est'
+    ) {
+      return true;
+    }
+
     const cat = (s.category || '').toUpperCase();
-    if (cat === 'SCIENTIFIQUE') return true;
-    return (
-      n.includes('PCT') ||
-      c.includes('PCT') ||
-      c === 'PC' ||
-      c === 'PCT' ||
-      n.includes('PHYSIQUE') ||
-      n.includes('CHIMIE') ||
-      n.includes('TECHNOLOGIE') ||
-      n.includes('TECHNO') ||
-      n.includes('SPCT') ||
-      c.includes('SPCT') ||
-      n.includes('MATH') ||
-      c.includes('MATH') ||
-      n.includes('SVT') ||
-      c.includes('SVT') ||
-      n.includes('BIOLOGIE') ||
-      n.includes('SCIENCE') ||
-      n.includes('EST') ||
-      c.includes('EST')
-    );
+    return cat === 'SCIENTIFIQUE';
   };
 
   const isLiterary = (s: Subject) => {
@@ -1030,7 +1058,7 @@ export function applyInlineBulletinGrade(params: {
         maxMark: 20,
         date: today,
         coefficient: effectiveCoeff,
-        comment: `[Interro ${evalNum}]`
+        comment: ''
       });
     }
     return;
@@ -1058,7 +1086,7 @@ export function applyInlineBulletinGrade(params: {
         maxMark: 20,
         date: today,
         coefficient: effectiveCoeff,
-        comment: '[Devoir]'
+        comment: ''
       });
     }
     return;
@@ -1086,7 +1114,7 @@ export function applyInlineBulletinGrade(params: {
       maxMark: 20,
       date: today,
       coefficient: effectiveCoeff,
-      comment: '[Composition]'
+      comment: ''
     });
   }
 }

@@ -164,12 +164,23 @@ export const ReportCardsView: React.FC<ReportCardsViewProps> = ({ onNavigate }) 
     e.preventDefault();
     if (!newSubjectName.trim()) return;
 
+    const normalizedNew = newSubjectName.trim().toLowerCase();
+    const inferredCategory =
+      normalizedNew.includes('pct') ||
+      normalizedNew.includes('physique') ||
+      normalizedNew.includes('chimie') ||
+      normalizedNew.includes('math') ||
+      normalizedNew.includes('svt') ||
+      normalizedNew.includes('science')
+        ? 'SCIENTIFIQUE'
+        : 'DIVERS';
+
     addSubject({
       name: newSubjectName.trim(),
       code: newSubjectName.trim().substring(0, 4).toUpperCase(),
       coefficient: Math.max(1, parseInt(newSubjectCoeff) || 1),
       level: selectedClass?.level || 'COLLEGE',
-      category: 'DIVERS'
+      category: inferredCategory
     });
 
     setSubjectNotice(`Matière "${newSubjectName.trim()}" ajoutée avec succès au bulletin !`);

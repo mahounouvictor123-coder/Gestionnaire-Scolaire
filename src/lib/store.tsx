@@ -916,13 +916,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const ensurePrimaryAndMaternelleSubjects = (subjs: Subject[], schoolId: string = currentSchoolId): Subject[] => {
     if (!Array.isArray(subjs) || subjs.length === 0) return initialSubjects;
     let list = [...subjs];
-    const deletedSet = new Set(getDeletedOfficialSubjectIds(schoolId));
+    let deletedIds = getDeletedOfficialSubjectIds(schoolId);
+    const pctRestoreFlagKey = `${LOCAL_STORAGE_KEY_PREFIX}_PCT_RESTORED_V1_${schoolId}`;
+    try {
+      if (!localStorage.getItem(pctRestoreFlagKey)) {
+        if (deletedIds.includes('sbj-3')) {
+          deletedIds = deletedIds.filter(id => id !== 'sbj-3');
+          localStorage.setItem(
+            `${LOCAL_STORAGE_KEY_PREFIX}_DELETED_SBJ_${schoolId}`,
+            JSON.stringify(deletedIds)
+          );
+        }
+        localStorage.setItem(pctRestoreFlagKey, '1');
+      }
+    } catch {}
+    const deletedSet = new Set(deletedIds);
 
     // Guarantee single PCT subject presence and SCIENTIFIQUE category for secondary (deduplicating any duplicate PCT)
     const normSubj = (v: string = '') => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
     const isPctEntry = (s: Subject) => {
-      const sc = normSubj(s.code);
+      const sc = normSubj(s.code).replace(/[^a-z0-9]/g, '');
       const sn = normSubj(s.name);
+      const snCompact = sn.replace(/[^a-z0-9]/g, '');
       return (
         sc === 'pct' ||
         sc === 'pc' ||
@@ -930,8 +945,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         sn === 'pct' ||
         sn.startsWith('pct ') ||
         sn.startsWith('pct(') ||
+        snCompact.startsWith('pct') ||
+        snCompact.includes('spct') ||
         sn.includes('physique - chimie - technologie') ||
         sn.includes('physique-chimie-technologie') ||
+        sn.includes('physique chimie technologie') ||
+        sn.includes('physique-chimie et technologie') ||
         sn === 'physique chimie' ||
         sn === 'physique-chimie' ||
         sn === 'sciences physiques'
@@ -994,7 +1013,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (offCode === 'ang' && (sn.includes('anglais') || sn.includes('english'))) return true;
         if (offCode === 'esp' && (sn.includes('espagnol') || sn.includes('spanish'))) return true;
         if (offCode === 'hist' && (sn.includes('histoire') || sn.includes('geograph'))) return true;
-        if (offCode === 'pct' && (sn.includes('pct') || sn.includes('physique'))) return true;
+        if (offCode === 'pct' && (isPctEntry(s) || sn.includes('physique'))) return true;
         if (offCode === 'cond' && sn.includes('conduite')) return true;
         return sn === offName;
       });

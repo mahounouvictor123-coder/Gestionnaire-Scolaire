@@ -2,7 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../lib/store';
 import { Student, SchoolClass, Subject, Grade } from '../../types';
 import { getCleanStudentNames } from '../../lib/schoolUtils';
-import { getEffectiveSubjectCoefficient, buildClassCoefficientUpdate } from '../../lib/gradingUtils';
+import {
+  getEffectiveSubjectCoefficient,
+  buildClassCoefficientUpdate,
+  getSubjectAppreciation,
+  sanitizeGradeComment
+} from '../../lib/gradingUtils';
 import { InlineCoeffInput } from '../InlineCoeffInput';
 import {
   X,
@@ -161,7 +166,9 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
 
       const devoirGrade = sbjGrades.find(g => isDevoir(g.examType));
       const compoGrade = sbjGrades.find(g => isCompo(g.examType));
-      const comment = sbjGrades.find(g => g.comment && g.comment.trim().length > 0)?.comment || '';
+      const comment = sbjGrades
+        .map(g => sanitizeGradeComment(g.comment))
+        .find(c => c.length > 0) || '';
       const teacherName = sbjGrades.find(g => g.teacherName)?.teacherName || '';
 
       initial[sbj.id] = {
@@ -212,7 +219,9 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
 
       const devoirGrade = studentGrades.find(g => isDevoir(g.examType));
       const compoGrade = studentGrades.find(g => isCompo(g.examType));
-      const comment = studentGrades.find(g => g.comment && g.comment.trim().length > 0)?.comment || '';
+      const comment = studentGrades
+        .map(g => sanitizeGradeComment(g.comment))
+        .find(c => c.length > 0) || '';
 
       initial[st.id] = {
         interro1: int1 ? String(int1.mark) : '',
@@ -293,7 +302,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
           ...baseGrade,
           examType: 'INTERRO',
           evaluationNumber: 1,
-          comment: entry.comment ? `${entry.comment} [Interro 1]` : '[Interro 1]',
+          comment: entry.comment.trim(),
           mark: Math.min(20, Math.max(0, parseFloat(entry.interro1)))
         });
       }
@@ -303,7 +312,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
           ...baseGrade,
           examType: 'INTERRO',
           evaluationNumber: 2,
-          comment: entry.comment ? `${entry.comment} [Interro 2]` : '[Interro 2]',
+          comment: entry.comment.trim(),
           mark: Math.min(20, Math.max(0, parseFloat(entry.interro2)))
         });
       }
@@ -374,7 +383,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
           ...baseGrade,
           examType: 'INTERRO',
           evaluationNumber: 1,
-          comment: entry.comment ? `${entry.comment} [Interro 1]` : '[Interro 1]',
+          comment: entry.comment.trim(),
           mark: Math.min(20, Math.max(0, parseFloat(entry.interro1)))
         });
       }
@@ -384,7 +393,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
           ...baseGrade,
           examType: 'INTERRO',
           evaluationNumber: 2,
-          comment: entry.comment ? `${entry.comment} [Interro 2]` : '[Interro 2]',
+          comment: entry.comment.trim(),
           mark: Math.min(20, Math.max(0, parseFloat(entry.interro2)))
         });
       }
@@ -774,7 +783,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                           <td className="p-2">
                             <input
                               type="text"
-                              placeholder="Ex : Très bon travail, Régulier, En progrès..."
+                              placeholder={projectedAvg !== null ? `Auto : ${getSubjectAppreciation(projectedAvg)}` : 'Auto (Faible à Excellente)'}
                               value={entry.comment}
                               onChange={e => handleStudentEntryChange(sbj.id, 'comment', e.target.value)}
                               className="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 text-xs"
@@ -992,7 +1001,7 @@ export const InsertBulletinGradesModal: React.FC<InsertBulletinGradesModalProps>
                           <td className="p-2">
                             <input
                               type="text"
-                              placeholder="Ex : Bon niveau, Participation active..."
+                              placeholder={projectedAvg !== null ? `Auto : ${getSubjectAppreciation(projectedAvg)}` : 'Auto (Faible à Excellente)'}
                               value={entry.comment}
                               onChange={e => handleClassEntryChange(st.id, 'comment', e.target.value)}
                               className="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-purple-500 text-xs"

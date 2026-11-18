@@ -111,7 +111,7 @@ export const SubjectsView: React.FC = () => {
       } else if (activeCycleTab === 'COLLEGE') {
         matchesCycle = isSubjectForClass(sb, { level: 'COLLEGE', name: '6ème' }, subjects);
       } else if (activeCycleTab === 'LYCEE') {
-        matchesCycle = sb.level === 'LYCEE' || sb.level === 'FORMATION' || (sb.level === 'COLLEGE' && ['PCT', 'HIST', 'ANG'].includes((sb.code || '').toUpperCase()));
+        matchesCycle = isSubjectForClass(sb, { level: 'LYCEE', name: '2nde' }, subjects);
       }
 
       const matchesCategory = selectedCategory === 'ALL' || sb.category === selectedCategory;
@@ -171,7 +171,7 @@ export const SubjectsView: React.FC = () => {
   const primarySubjectsCount = subjects.filter(s => s.level === 'PRIMAIRE' || s.id.startsWith('sbj-prim-')).length;
   const maternelleSubjectsCount = subjects.filter(s => s.level === 'MATERNELLE' || s.id.startsWith('sbj-mat-')).length;
   const collegeSubjectsCount = subjects.filter(s => isSubjectForClass(s, { level: 'COLLEGE', name: '6ème' }, subjects)).length;
-  const lyceeSubjectsCount = subjects.filter(s => s.level === 'LYCEE' || s.level === 'FORMATION' || (s.level === 'COLLEGE' && ['PCT', 'HIST', 'ANG'].includes((s.code || '').toUpperCase()))).length;
+  const lyceeSubjectsCount = subjects.filter(s => isSubjectForClass(s, { level: 'LYCEE', name: '2nde' }, subjects)).length;
 
   return (
     <div className="space-y-6">

@@ -132,8 +132,8 @@ export function isSubjectForClass(
 
     // Matières de base du secondaire partagées entre Collège et Lycée (initialData hérité)
     const sharedSecondaryCodes = hasCollegeFrenchSplit
-      ? ['MATH', 'SVT', 'INFO', 'EPS']
-      : ['MATH', 'FRAN', 'SVT', 'INFO', 'EPS'];
+      ? ['MATH', 'PCT', 'PC', 'SPCT', 'SVT', 'INFO', 'EPS']
+      : ['MATH', 'PCT', 'PC', 'SPCT', 'FRAN', 'SVT', 'INFO', 'EPS'];
     if (sbj.level === 'LYCEE' && sharedSecondaryCodes.includes((sbj.code || '').toUpperCase())) {
       return true;
     }
@@ -148,7 +148,7 @@ export function isSubjectForClass(
     if (sbj.level === 'LYCEE' || sbj.level === 'FORMATION') return true;
 
     // Matières de base du secondaire partagées entre Collège et Lycée (initialData hérité)
-    const sharedSecondaryCodes = ['PCT', 'HIST', 'ANG'];
+    const sharedSecondaryCodes = ['PCT', 'PC', 'SPCT', 'HIST', 'ANG'];
     if (sbj.level === 'COLLEGE' && sharedSecondaryCodes.includes((sbj.code || '').toUpperCase())) {
       return true;
     }

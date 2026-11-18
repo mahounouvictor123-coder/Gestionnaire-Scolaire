@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../lib/store';
 import { PrintBulletinModal } from '../components/modals/PrintBulletinModal';
 import { ParentExamPapersTab } from '../components/ParentExamPapersTab';
+import { getSubjectAppreciation } from '../lib/gradingUtils';
 import {
   GraduationCap,
   Award,
@@ -482,10 +483,7 @@ export const StudentPortalView: React.FC = () => {
 
                     {/* Appreciation */}
                     <td className="p-3.5 text-xs italic text-slate-600 dark:text-slate-300">
-                      {item.average >= 16 ? "Bravo ! Résultat brillant, excellente régularité." :
-                       item.average >= 14 ? "Très bon travail. Maîtrise solide du programme." :
-                       item.average >= 10 ? "Résultats satisfaisants. Travail régulier." :
-                       "Insuffisant. Nécessite plus de rigueur et d'exercices."}
+                      {getSubjectAppreciation(item.average)}
                     </td>
 
                   </tr>
