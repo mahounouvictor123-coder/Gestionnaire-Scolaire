@@ -523,6 +523,41 @@ export interface School {
   promoterNotes?: string;
   monthlyActivatedParentsCount?: number;
   totalActivatedParentsCount?: number;
+  educMaster?: EducMasterConfig;
+}
+
+export interface EducMasterCycleConfig {
+  portalUrl: string;
+  schoolCode?: string;
+  accountEmail?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface EducMasterCustomLink {
+  id: string;
+  label: string;
+  cycle: 'PRIMAIRE' | 'COLLEGE' | 'AUTRE';
+  url: string;
+  createdAt: string;
+}
+
+export interface EducMasterTransmissionLog {
+  id: string;
+  cycle: 'PRIMAIRE' | 'COLLEGE';
+  reportType: 'LISTE_ELEVES' | 'NOTES_TRIMESTRE' | 'SYNTHESE_EFFECTIFS';
+  trimester?: 1 | 2 | 3;
+  className?: string;
+  recordCount: number;
+  exportedAt: string;
+  exportedBy: string;
+}
+
+export interface EducMasterConfig {
+  primaire: EducMasterCycleConfig;
+  college: EducMasterCycleConfig;
+  customLinks?: EducMasterCustomLink[];
+  transmissionLogs?: EducMasterTransmissionLog[];
 }
 
 export interface RegistrationCampaign {
@@ -586,6 +621,7 @@ export interface SchoolSettings {
   mobileMoneyNumber?: string;
   activePaymentGateway?: 'FEDAPAY' | 'KKIAPAY' | 'MOMO_DIRECT';
   enableOnlineTransactions?: boolean;
+  educMaster?: EducMasterConfig;
 }
 
 export interface ExamPaper {

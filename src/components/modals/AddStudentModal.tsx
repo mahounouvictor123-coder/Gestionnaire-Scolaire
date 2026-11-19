@@ -8,6 +8,7 @@ import {
   cleanTitleCase,
   extractRosterTextFromFile
 } from '../../lib/rosterParser';
+import { findMatchingExistingStudent } from '../../lib/schoolUtils';
 import { 
   X, 
   UserPlus, 
@@ -37,6 +38,7 @@ interface AddStudentModalProps {
   onClose: () => void;
   initialClassId?: string;
   initialMode?: 'SINGLE' | 'BULK_PASTE';
+  onBulkSaved?: (summary: { replacedCount: number; createdCount: number }) => void;
 }
 
 interface ParsedRow {
@@ -82,9 +84,10 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
   isOpen, 
   onClose, 
   initialClassId,
-  initialMode = 'SINGLE'
+  initialMode = 'SINGLE',
+  onBulkSaved
 }) => {
-  const { classes, addStudent, addBulkStudents } = useApp();
+  const { classes, students, addStudent, addBulkStudents } = useApp();
 
   const [mode, setMode] = useState<'SINGLE' | 'BULK_PASTE'>(initialMode);
   const bulkFileInputRef = useRef<HTMLInputElement>(null);
@@ -472,7 +475,27 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
       bloodGroup: s.bloodGroup || 'O+'
     }));
 
+    let replacedCount = 0;
+    let createdCount = 0;
+    const seenMatchedIds = new Set<string>();
+    sortedToInsert.forEach(s => {
+      const matched = findMatchingExistingStudent(
+        { lastName: s.lastName, firstName: s.firstName, classId },
+        students,
+        classId
+      );
+      if (matched) {
+        if (s.registrationNumber.trim() && !seenMatchedIds.has(matched.id)) {
+          seenMatchedIds.add(matched.id);
+          replacedCount += 1;
+        }
+      } else {
+        createdCount += 1;
+      }
+    });
+
     addBulkStudents(formattedList);
+    onBulkSaved?.({ replacedCount, createdCount });
     setPastedText('');
     setParsedStudents([]);
     setAiSuccessMessage(null);
@@ -480,6 +503,18 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
   };
 
   const selectedCount = parsedStudents.filter(p => p.selected).length;
+  const rowMatches = parsedStudents.map(row => ({
+    row,
+    existingMatch: findMatchingExistingStudent(
+      { lastName: row.lastName, firstName: row.firstName, classId },
+      students,
+      classId
+    )
+  }));
+  const selectedReplacedCount = rowMatches.filter(
+    m => m.row.selected && m.existingMatch && m.row.registrationNumber.trim().length > 0
+  ).length;
+  const selectedNewCount = rowMatches.filter(m => m.row.selected && !m.existingMatch).length;
 
   return (
     <div 
@@ -837,7 +872,8 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                     Collez directement le texte copié depuis Excel, Word, un PDF, WhatsApp ou un registre manuscrit.
                   </p>
                   <p className="text-[11px] text-amber-800 dark:text-amber-300">
-                    L'algorithme IA sépare automatiquement les Noms et Prénoms, associe des photos d'identité correspondantes aux garçons et filles, puis <strong>trie l'intégralité de la classe par ordre alphabétique strict (A ➔ Z)</strong>.
+                    L'algorithme IA sépare automatiquement les Noms et Prénoms, puis <strong>trie la classe (A ➔ Z)</strong>.{' '}
+                    <strong>Correction de matricules :</strong> si vous collez de nouveaux numéros matricules devant des noms déjà inscrits, l'ancien matricule est automatiquement remplacé sans créer de doublon.
                   </p>
                 </div>
               </div>
@@ -952,13 +988,18 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
               {parsedStudents.length > 0 && (
                 <div className="space-y-2.5 border-t border-slate-200 dark:border-slate-800 pt-3">
                   <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center space-x-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="font-black text-slate-900 dark:text-white">
                         {parsedStudents.length} Élève(s) dans la liste ({selectedCount} sélectionné(s))
                       </span>
                       <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 font-extrabold text-[10px]">
                         Photos + Ordre Alphabétique A-Z
                       </span>
+                      {selectedReplacedCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/70 text-amber-800 dark:text-amber-200 font-extrabold text-[10px]">
+                          🔄 {selectedReplacedCount} matricule(s) existant(s) remplacé(s)
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center space-x-2">
@@ -1019,7 +1060,7 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
-                        {parsedStudents.map((row, idx) => (
+                        {rowMatches.map(({ row, existingMatch }, idx) => (
                           <tr key={row.id} className={row.selected ? 'hover:bg-slate-50 dark:hover:bg-slate-800/50' : 'opacity-40 bg-slate-50 dark:bg-slate-800/20'}>
                             <td className="p-2 text-center">
                               <input
@@ -1059,6 +1100,19 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                                 onChange={e => handleUpdateRow(row.id, 'registrationNumber', e.target.value.toUpperCase())}
                                 className="w-full px-2 py-1 rounded bg-indigo-50/70 dark:bg-indigo-950/40 font-mono font-bold text-[10px] text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 uppercase placeholder:text-slate-400"
                               />
+                              {existingMatch && (
+                                <span
+                                  className={`mt-1 inline-block px-1.5 py-0.5 rounded font-bold text-[9px] leading-tight ${
+                                    row.registrationNumber.trim()
+                                      ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                  }`}
+                                >
+                                  {row.registrationNumber.trim()
+                                    ? `Remplace ${existingMatch.registrationNumber}`
+                                    : `Déjà inscrit (${existingMatch.registrationNumber})`}
+                                </span>
+                              )}
                             </td>
                             <td className="p-2">
                               <input
@@ -1166,7 +1220,11 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
                 >
                   <Check className="h-4 w-4" />
                   <span>
-                    Inscrire les {selectedCount} élève(s) avec Photos (Ordre A ➔ Z)
+                    {selectedReplacedCount > 0 && selectedNewCount === 0
+                      ? `Remplacer le matricule de ${selectedReplacedCount} élève(s)`
+                      : selectedReplacedCount > 0 && selectedNewCount > 0
+                      ? `Valider (${selectedReplacedCount} matricule(s) remplacé(s), ${selectedNewCount} nouvel(aux) élève(s))`
+                      : `Inscrire les ${selectedCount} élève(s) avec Photos (Ordre A ➔ Z)`}
                   </span>
                 </button>
               </div>

@@ -34,7 +34,8 @@ import {
   Monitor,
   Download,
   Smartphone,
-  Camera
+  Camera,
+  Globe
 } from 'lucide-react';
 import { UserRole } from '../types';
 import { InstallPwaModal } from './InstallPwaModal';
@@ -90,6 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, setActiveView, onO
     { id: 'payments', label: 'Frais de Scolarité', icon: CreditCard, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'COMPTABLE', 'PARENT'], category: '🏢 ESPACE DIRECTION' },
     { id: 'subscriptions', label: "Plans d'Abonnement", icon: Zap, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'COMPTABLE'], badge: 'SaaS Pro', category: '🏢 ESPACE DIRECTION' },
     { id: 'teachers', label: 'Maîtres & Professeurs', icon: GraduationCap, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'CENSEUR', 'SECRETAIRE'], category: '🏢 ESPACE DIRECTION' },
+    { id: 'educmaster', label: 'Espace EducMaster', icon: Globe, roles: ['SUPER_ADMIN', 'DIRECTEUR', 'CENSEUR', 'SECRETAIRE'], badge: 'Bénin', category: '🏢 ESPACE DIRECTION' },
     { id: 'settings', label: 'Paramètres Établissement', icon: Settings, roles: ['SUPER_ADMIN', 'DIRECTEUR'], category: '🏢 ESPACE DIRECTION' },
 
     // 📝 ESPACE SECRÉTARIAT & PÉDAGOGIE

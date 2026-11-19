@@ -37,7 +37,8 @@ import {
   Share2,
   Mic,
   X,
-  Search
+  Search,
+  Globe
 } from 'lucide-react';
 import { SubAppsShareModal } from '../components/modals/SubAppsShareModal';
 import { OfficialAnnouncementsBox } from '../components/OfficialAnnouncementsBox';
@@ -1005,6 +1006,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="flex items-center space-x-2 truncate">
                   <CheckCircle2 className="h-4 w-4 text-teal-400 shrink-0" />
                   <span className="font-extrabold text-white truncate">Espace Bulletins & Notes</span>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-emerald-400 group-hover/btn:translate-x-1 transition-transform shrink-0" />
+              </button>
+
+              <button
+                onClick={() => onNavigate('educmaster')}
+                className="p-2.5 rounded-xl bg-emerald-900/60 hover:bg-emerald-800 border border-emerald-700/50 text-left transition-all flex items-center justify-between group/btn cursor-pointer"
+              >
+                <div className="flex items-center space-x-2 truncate">
+                  <Globe className="h-4 w-4 text-amber-300 shrink-0" />
+                  <span className="font-extrabold text-white truncate">Espace EducMaster</span>
                 </div>
                 <ArrowRight className="h-3.5 w-3.5 text-emerald-400 group-hover/btn:translate-x-1 transition-transform shrink-0" />
               </button>

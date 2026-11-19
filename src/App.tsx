@@ -50,6 +50,7 @@ import { ParentComplaintsInboxView } from './views/ParentComplaintsInboxView';
 import { PromoterSchoolsControlBoxModal } from './components/modals/PromoterSchoolsControlBoxModal';
 import { SuperPromoteurControlBoxView } from './views/SuperPromoteurControlBoxView';
 import { DirectorQuizWeekSupervisionView } from './views/DirectorQuizWeekSupervisionView';
+import { EducMasterView } from './views/EducMasterView';
 import { SchoolAccessBarrierScreen } from './components/SchoolAccessBarrierScreen';
 
 const isSuperPromoteurRoute = (): boolean => {
@@ -548,6 +549,8 @@ function MainApp() {
           return <DashboardView onNavigate={setActiveView} onOpenAiModal={handleOpenAiModal} />;
         }
         return <SuperPromoteurControlBoxView onReturnToPlatform={() => setActiveView('dashboard')} />;
+      case 'educmaster':
+        return <EducMasterView onNavigate={setActiveView} />;
       case 'settings':
         return <SettingsView />;
       default:

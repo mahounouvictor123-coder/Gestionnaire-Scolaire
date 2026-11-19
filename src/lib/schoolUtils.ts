@@ -82,10 +82,59 @@ export function isPrimaryClass(c?: SchoolClass | Student | { level?: string; nam
   return section === 'PRIMAIRE' || section === 'MATERNELLE';
 }
 
+export function isEspagnolSubject(sbj: Pick<Subject, 'code' | 'name'>): boolean {
+  const code = (sbj.code || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+  const name = (sbj.name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+  return code === 'esp' || name.includes('espagnol') || name.includes('spanish');
+}
+
+/**
+ * Détermine si une classe (ou un élève) est en 6ème ou 5ème (premier sous-cycle du Collège).
+ */
+export function isSixthOrFifthClass(
+  c?: SchoolClass | Student | { level?: string; name?: string; stream?: string; className?: string; classId?: string; id?: string; firstName?: string } | null
+): boolean {
+  if (!c) return false;
+  if (getClassSection(c) !== 'COLLEGE') return false;
+
+  const isStudentObj = 'firstName' in c && typeof (c as any).firstName === 'string';
+  const classId = (
+    (isStudentObj ? (c as Student).classId : ('id' in c ? c.id : '')) ||
+    ('classId' in c && typeof c.classId === 'string' ? c.classId : '') ||
+    ''
+  ).trim().toLowerCase();
+
+  if (classId === 'cls-6' || classId === 'cls-5') return true;
+
+  const rawName = (
+    ('name' in c && typeof c.name === 'string' ? c.name : '') ||
+    ('className' in c && typeof (c as any).className === 'string' ? (c as any).className : '')
+  )
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+  if (!rawName) return false;
+  return (
+    /(?:^|[^0-9])6\s*e(?:me)?(?:[^a-z]|$)|sixieme/i.test(rawName) ||
+    /(?:^|[^0-9])5\s*e(?:me)?(?:[^a-z]|$)|cinquieme/i.test(rawName)
+  );
+}
+
 /**
  * Détermine si une matière appartient au bulletin d'une classe donnée.
  * Règle d'or : Toute matière ajoutée dans une section (Maternelle, Primaire, Collège, Lycée)
- * s'ajoute directement et automatiquement sur les bulletins de toutes les classes de cette section.
+ * s'ajoute directement et automatiquement sur les bulletins de toutes les classes de cette section,
+ * à l'exception d'Espagnol qui ne figure pas sur les bulletins de 6ème et 5ème.
  */
 export function isSubjectForClass(
   sbj: Subject,
@@ -96,6 +145,11 @@ export function isSubjectForClass(
 
   const targetSection = getClassSection(clsOrStudent);
   const classId = ('id' in clsOrStudent ? clsOrStudent.id : ('classId' in clsOrStudent ? clsOrStudent.classId : '')) || '';
+
+  // Espagnol n'est pas enseigné en 6ème ni en 5ème (uniquement à partir de la 4ème / 3ème / Lycée)
+  if (targetSection === 'COLLEGE' && isSixthOrFifthClass(clsOrStudent) && isEspagnolSubject(sbj)) {
+    return false;
+  }
 
   // 1. Si la matière a été ciblée sur des classes spécifiques
   if (sbj.classIds && Array.isArray(sbj.classIds) && sbj.classIds.length > 0) {
@@ -208,6 +262,100 @@ export function getCleanStudentNames(
   return { lastName: last, firstName: first, fullName };
 }
 
+function normalizeNameForMatch(value?: string | null): string {
+  return (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/['’`_.,\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getNormalizedNameParts(student?: { lastName?: string | null; firstName?: string | null } | null) {
+  const clean = getCleanStudentNames(student);
+  const last = normalizeNameForMatch(clean.lastName);
+  const first = normalizeNameForMatch(clean.firstName);
+  const full = [last, first].filter(Boolean).join(' ').trim();
+  const swapped = [first, last].filter(Boolean).join(' ').trim();
+  const tokens = full.split(' ').filter(Boolean);
+  const sorted = [...tokens].sort().join(' ');
+  return { last, first, full, swapped, tokens, sorted };
+}
+
+/**
+ * Recherche un élève existant correspondant au nom/prénom fourni
+ * (insensible aux accents, tirets, casse et ordre Nom/Prénom),
+ * afin de remplacer automatiquement son ancien numéro matricule sans créer de doublon.
+ */
+export function findMatchingExistingStudent(
+  candidate: { lastName?: string | null; firstName?: string | null; classId?: string | null },
+  existingStudents: Student[],
+  preferredClassId?: string
+): Student | undefined {
+  if (!existingStudents || existingStudents.length === 0) return undefined;
+  const cand = getNormalizedNameParts(candidate);
+  if (!cand.full) return undefined;
+
+  const targetClassId = preferredClassId || candidate.classId || undefined;
+
+  const findExactInPool = (pool: Student[]): Student | undefined => {
+    const exactFullMatches: Student[] = [];
+    const exactVariantMatches: Student[] = [];
+
+    for (const s of pool) {
+      const ex = getNormalizedNameParts(s);
+      if (!ex.full) continue;
+      if (cand.full === ex.full) {
+        exactFullMatches.push(s);
+      } else if (
+        cand.full === ex.swapped ||
+        (cand.tokens.length >= 2 && ex.tokens.length === cand.tokens.length && cand.sorted === ex.sorted)
+      ) {
+        exactVariantMatches.push(s);
+      }
+    }
+
+    if (exactFullMatches.length === 1) return exactFullMatches[0];
+    if (exactFullMatches.length === 0 && exactVariantMatches.length === 1) return exactVariantMatches[0];
+    return undefined;
+  };
+
+  if (targetClassId) {
+    const classPool = existingStudents.filter(s => s.classId === targetClassId);
+    const exactClassMatch = findExactInPool(classPool);
+    if (exactClassMatch) return exactClassMatch;
+
+    // Correspondance souple dans la même classe uniquement (ex: prénom composé partiel ou nom seul si unique)
+    const softMatches: Student[] = [];
+    for (const s of classPool) {
+      const ex = getNormalizedNameParts(s);
+      if (!ex.full) continue;
+
+      if (!cand.first && cand.last && ex.last === cand.last) {
+        softMatches.push(s);
+        continue;
+      }
+
+      if (cand.tokens.length >= 2 && ex.tokens.length >= 2) {
+        const candInEx = cand.tokens.every(ct =>
+          ex.tokens.some(et => et === ct || (ct.length >= 3 && et.startsWith(ct)))
+        );
+        const exInCand = ex.tokens.every(et =>
+          cand.tokens.some(ct => ct === et || (et.length >= 3 && ct.startsWith(et)))
+        );
+        if ((candInEx || exInCand) && (ex.last === cand.last || ex.tokens[0] === cand.tokens[0])) {
+          softMatches.push(s);
+        }
+      }
+    }
+    if (softMatches.length === 1) return softMatches[0];
+  }
+
+  // Recherche sur tout l'établissement uniquement si correspondance exacte et strictement unique
+  return findExactInPool(existingStudents);
+}
+
 /**
  * Détermine si l'élève est redoublant (priorité au choix explicite coché sur le bulletin).
  */
@@ -218,4 +366,5 @@ export function getStudentRepeaterStatus(student?: Student | null): boolean {
   }
   return student.status === 'TRANSFERE' || Boolean(student.medicalNotes && student.medicalNotes.toLowerCase().includes('redoubl'));
 }
+
 

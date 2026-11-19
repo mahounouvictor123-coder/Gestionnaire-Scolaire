@@ -7,6 +7,7 @@ import {
   cleanTitleCase,
   extractRosterTextFromFile
 } from '../lib/rosterParser';
+import { findMatchingExistingStudent } from '../lib/schoolUtils';
 import {
   ScanLine,
   Upload,
@@ -57,7 +58,7 @@ export const ScanRosterView: React.FC<ScanRosterViewProps> = ({
   initialClassId,
   onNavigateToStudents
 }) => {
-  const { classes, addBulkStudents, settings, currentSchool } = useApp();
+  const { classes, students, addBulkStudents, settings, currentSchool } = useApp();
 
   const [selectedClassId, setSelectedClassId] = useState<string>(
     initialClassId || classes[0]?.id || ''
@@ -78,6 +79,7 @@ export const ScanRosterView: React.FC<ScanRosterViewProps> = ({
   const [scanErrorMessage, setScanErrorMessage] = useState<string | null>(null);
   const [isRegisteredSuccess, setIsRegisteredSuccess] = useState(false);
   const [registeredCount, setRegisteredCount] = useState(0);
+  const [replacedMatriculeCount, setReplacedMatriculeCount] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -346,8 +348,28 @@ export const ScanRosterView: React.FC<ScanRosterViewProps> = ({
       bloodGroup: s.bloodGroup
     }));
 
+    let replaced = 0;
+    let created = 0;
+    const seenMatched = new Set<string>();
+    selectedToRegister.forEach(s => {
+      const matched = findMatchingExistingStudent(
+        { lastName: s.lastName, firstName: s.firstName, classId: currentClass.id },
+        students,
+        currentClass.id
+      );
+      if (matched) {
+        if (s.registrationNumber.trim() && !seenMatched.has(matched.id)) {
+          seenMatched.add(matched.id);
+          replaced += 1;
+        }
+      } else {
+        created += 1;
+      }
+    });
+
     addBulkStudents(formattedForStore);
-    setRegisteredCount(selectedToRegister.length);
+    setReplacedMatriculeCount(replaced);
+    setRegisteredCount(created);
     setIsRegisteredSuccess(true);
   };
 
@@ -775,7 +797,13 @@ export const ScanRosterView: React.FC<ScanRosterViewProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {extractedStudents.map((std) => (
+                      {extractedStudents.map((std) => {
+                        const existingMatch = findMatchingExistingStudent(
+                          { lastName: std.lastName, firstName: std.firstName, classId: currentClass?.id },
+                          students,
+                          currentClass?.id
+                        );
+                        return (
                         <tr
                           key={std.id}
                           className={`transition-colors ${
@@ -802,6 +830,19 @@ export const ScanRosterView: React.FC<ScanRosterViewProps> = ({
                               onChange={(e) => updateExtractedField(std.id, 'registrationNumber', e.target.value.toUpperCase())}
                               className="w-24 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 font-mono text-[11px] font-bold text-indigo-700 dark:text-indigo-300 uppercase placeholder:text-slate-400"
                             />
+                            {existingMatch && (
+                              <span
+                                className={`mt-1 block w-fit px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                  std.registrationNumber.trim()
+                                    ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                }`}
+                              >
+                                {std.registrationNumber.trim()
+                                  ? `Remplace ${existingMatch.registrationNumber}`
+                                  : `Déjà inscrit (${existingMatch.registrationNumber})`}
+                              </span>
+                            )}
                           </td>
 
                           {/* Editable Name */}
@@ -872,7 +913,8 @@ export const ScanRosterView: React.FC<ScanRosterViewProps> = ({
                             </button>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -927,10 +969,17 @@ export const ScanRosterView: React.FC<ScanRosterViewProps> = ({
                 INSCRIPTION AUTOMATIQUE RÉUSSIE !
               </span>
               <h3 className="text-xl font-black text-slate-900 dark:text-white mt-2">
-                {registeredCount} élèves enregistrés !
+                {replacedMatriculeCount > 0 && registeredCount === 0
+                  ? `${replacedMatriculeCount} matricule(s) remplacé(s) !`
+                  : replacedMatriculeCount > 0 && registeredCount > 0
+                  ? `${replacedMatriculeCount} matricule(s) remplacé(s), ${registeredCount} inscrit(s) !`
+                  : `${registeredCount} élèves enregistrés !`}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Les dossiers scolaires, les numéros matricules et les rattachements à la classe <strong>{currentClass?.name}</strong> ont été générés sur la plate-forme.
+                {replacedMatriculeCount > 0
+                  ? `Les anciens numéros matricules devant les noms correspondants ont été mis à jour dans la classe `
+                  : `Les dossiers scolaires, les numéros matricules et les rattachements à la classe `}
+                <strong>{currentClass?.name}</strong> ont été enregistrés sur la plate-forme.
               </p>
             </div>
 

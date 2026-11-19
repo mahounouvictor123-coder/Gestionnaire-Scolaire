@@ -327,6 +327,17 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ onNavigateToScanRost
             <span>📋 Inscription Copier-Coller (IA A-Z)</span>
           </button>
 
+          <button
+            onClick={() => {
+              setAddModalMode('BULK_PASTE');
+              setIsAddModalOpen(true);
+            }}
+            title="Coller une liste de nouveaux matricules devant les noms pour remplacer automatiquement les anciens numéros matricules"
+            className="px-3.5 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 font-extrabold text-xs sm:text-sm flex items-center space-x-1.5 transition-all cursor-pointer shadow-sm"
+          >
+            <span>🔢 Coller / Corriger Matricules</span>
+          </button>
+
           {onNavigateToScanRoster && (
             <button
               onClick={() => onNavigateToScanRoster(selectedClassFilter !== 'ALL' ? selectedClassFilter : undefined)}
@@ -991,6 +1002,25 @@ export const StudentsView: React.FC<StudentsViewProps> = ({ onNavigateToScanRost
         onClose={() => setIsAddModalOpen(false)}
         initialMode={addModalMode}
         initialClassId={selectedClassFilter !== 'ALL' ? selectedClassFilter : undefined}
+        onBulkSaved={({ replacedCount, createdCount }) => {
+          if (replacedCount > 0 && createdCount > 0) {
+            setFeedbackToast({
+              type: 'success',
+              message: `✓ ${replacedCount} numéro(s) matricule(s) remplacé(s) automatiquement et ${createdCount} nouvel(aux) élève(s) inscrit(s) !`
+            });
+          } else if (replacedCount > 0) {
+            setFeedbackToast({
+              type: 'success',
+              message: `✓ ${replacedCount} ancien(s) numéro(s) matricule(s) remplacé(s) automatiquement devant les noms correspondants !`
+            });
+          } else if (createdCount > 0) {
+            setFeedbackToast({
+              type: 'success',
+              message: `✓ ${createdCount} élève(s) inscrit(s) avec succès !`
+            });
+          }
+          setTimeout(() => setFeedbackToast(null), 6000);
+        }}
       />
 
       {selectedStudentForEdit && (

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { getCleanStudentNames } from './schoolUtils';
+import { getCleanStudentNames, findMatchingExistingStudent } from './schoolUtils';
 import {
   loadPermanentGradeVault,
   writePermanentGradeVault,
@@ -987,6 +987,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? {
                 ...s,
                 code: 'PCT',
+                name: !normSubj(s.name).includes('technolog')
+                  ? 'PCT (Physique - Chimie - Technologie)'
+                  : s.name,
                 category: 'SCIENTIFIQUE',
                 level: s.level || 'COLLEGE',
                 coefficient:
@@ -1039,6 +1042,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [classes, setClasses] = useState<SchoolClass[]>(() => loadScopedData('CLASSES', initialClasses));
   const [students, setStudents] = useState<Student[]>(() => loadScopedData('STUDENTS', initialStudents));
+  const studentsRef = useRef<Student[]>(students);
+  studentsRef.current = students;
   const [teachers, setTeachers] = useState<Teacher[]>(() => loadScopedData('TEACHERS', initialTeachers));
   const [subjects, setSubjects] = useState<Subject[]>(() => ensurePrimaryAndMaternelleSubjects(loadScopedData('SUBJECTS', initialSubjects)));
   const [grades, setGrades] = useState<Grade[]>(() =>
@@ -2151,7 +2156,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
 
     setClasses(getTargetScoped('CLASSES', initialClasses));
-    setStudents(getTargetScoped('STUDENTS', initialStudents));
+    const nextStudents = getTargetScoped('STUDENTS', initialStudents);
+    studentsRef.current = nextStudents;
+    setStudents(nextStudents);
     setTeachers(getTargetScoped('TEACHERS', initialTeachers));
     setSubjects(ensurePrimaryAndMaternelleSubjects(getTargetScoped('SUBJECTS', initialSubjects), targetSchoolId));
     const nextGrades = mergeProtectedGrades(
@@ -2928,7 +2935,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               motto: newSet.motto || sch.motto,
               logoUrl: targetLogo || sch.logoUrl,
               signatureUrl: newSet.signatureUrl || sch.signatureUrl,
-              staffRolePermissions: newSet.staffRolePermissions || sch.staffRolePermissions
+              staffRolePermissions: newSet.staffRolePermissions || sch.staffRolePermissions,
+              educMaster: newSet.educMaster ?? sch.educMaster
             };
           }
           return sch;
@@ -3013,20 +3021,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addBulkStudents = (stdsData: (Omit<Student, 'id' | 'registrationNumber'> & { registrationNumber?: string })[]): Student[] => {
     const year = settings.academicYear.split('-')[0];
+    const existingList = studentsRef.current;
+    const replacedMap = new Map<string, string>();
     const created: Student[] = [];
     const classCountAdditions: Record<string, number> = {};
 
-    let currentTotal = students.length;
+    let currentTotal = existingList.length;
 
     stdsData.forEach((stdData, idx) => {
+      const cleanNames = getCleanStudentNames(stdData);
+      const rawProvidedRegNum = stdData.registrationNumber && stdData.registrationNumber.trim().length > 0
+        ? stdData.registrationNumber.trim().toUpperCase()
+        : '';
+
+      const matchedExisting = findMatchingExistingStudent(
+        {
+          lastName: cleanNames.lastName || stdData.lastName,
+          firstName: cleanNames.firstName || stdData.firstName,
+          classId: stdData.classId
+        },
+        existingList,
+        stdData.classId
+      );
+
+      if (matchedExisting) {
+        if (rawProvidedRegNum) {
+          replacedMap.set(matchedExisting.id, rawProvidedRegNum);
+        }
+        return;
+      }
+
       currentTotal += 1;
       const prefix = (stdData.level || 'COLLEGE').substring(0, 3).toUpperCase();
       const autoRegNum = `${year}-${prefix}-${currentTotal.toString().padStart(3, '0')}`;
-      const providedRegNum = stdData.registrationNumber && stdData.registrationNumber.trim().length > 0
-        ? stdData.registrationNumber.trim().toUpperCase()
-        : autoRegNum;
+      const providedRegNum = rawProvidedRegNum || autoRegNum;
 
-      const cleanNames = getCleanStudentNames(stdData);
       const newStudent: Student = {
         ...stdData,
         lastName: (cleanNames.lastName || stdData.lastName || '').trim().toUpperCase(),
@@ -3041,8 +3070,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
+    const updatedExisting = existingList
+      .filter(s => replacedMap.has(s.id))
+      .map(s => ({ ...s, registrationNumber: replacedMap.get(s.id)! }));
+
+    if (replacedMap.size === 0 && created.length === 0) {
+      return [];
+    }
+
     setStudents(prev => {
-      const updated = [...prev, ...created];
+      const updated = prev
+        .map(s => (replacedMap.has(s.id) ? { ...s, registrationNumber: replacedMap.get(s.id)! } : s))
+        .concat(created);
+      studentsRef.current = updated;
       syncToCloud(currentSchoolId, 'STUDENTS', updated);
       if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'STUDENTS', updated);
       if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'STUDENTS', updated);
@@ -3055,21 +3095,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    setClasses(prev => {
-      const updated = prev.map(c => {
-        const add = classCountAdditions[c.id] || 0;
-        if (add > 0) {
-          return { ...c, studentCount: c.studentCount + add };
-        }
-        return c;
+    if (created.length > 0) {
+      setClasses(prev => {
+        const updated = prev.map(c => {
+          const add = classCountAdditions[c.id] || 0;
+          if (add > 0) {
+            return { ...c, studentCount: c.studentCount + add };
+          }
+          return c;
+        });
+        syncToCloud(currentSchoolId, 'CLASSES', updated);
+        if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'CLASSES', updated);
+        if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'CLASSES', updated);
+        return updated;
       });
-      syncToCloud(currentSchoolId, 'CLASSES', updated);
-      if (currentSchoolId === 'sch-temple') syncToCloud('sch-1786960279353', 'CLASSES', updated);
-      if (currentSchoolId === 'sch-1786960279353') syncToCloud('sch-temple', 'CLASSES', updated);
-      return updated;
-    });
+    }
 
-    return created;
+    return [...updatedExisting, ...created];
   };
 
   const updateStudent = (id: string, std: Partial<Student>) => {
@@ -4240,6 +4282,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSettings(initialSettings);
     setCurrentUser(demoUsers[1]);
     setClasses(initialClasses);
+    studentsRef.current = initialStudents;
     setStudents(initialStudents);
     setTeachers(initialTeachers);
     setSubjects(initialSubjects);

@@ -658,7 +658,10 @@ export function parseStudentRosterText(rawText: string): ParsedRosterStudent[] {
           let cell = (cells[c] || '').trim();
           if (!cell) continue;
 
-          if (c === 0 && firstColIsOrderIndex) {
+          if (
+            c === 0 &&
+            (firstColIsOrderIndex || (/^\d{1,3}[\.\)\-:]?$/.test(cell) && cells.length >= 2))
+          ) {
             continue;
           }
 
@@ -941,6 +944,10 @@ export function parseStudentRosterText(rawText: string): ParsedRosterStudent[] {
     for (let t = 0; t < remainingTokens.length; t++) {
       const tok = remainingTokens[t].replace(/^[,;|]+|[,;|]+$/g, '');
       if (!tok || /^[-–—|/]$/.test(tok)) continue;
+
+      if (t === 0 && /^\d{1,3}[\.\)\-:]?$/.test(tok) && remainingTokens.length >= 2) {
+        continue;
+      }
 
       if (!registrationNumber && isMatriculeValue(tok)) {
         registrationNumber = cleanMatricule(tok);

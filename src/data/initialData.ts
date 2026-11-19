@@ -58,6 +58,7 @@ export const defaultStaffRolePermissions: StaffRoleConfig[] = [
       'teachers',
       'documents',
       'communication',
+      'educmaster',
       'ai-studio'
     ],
     isEnabled: true,
@@ -119,7 +120,8 @@ export const defaultStaffRolePermissions: StaffRoleConfig[] = [
       'attendance',
       'canteen',
       'transport',
-      'communication'
+      'communication',
+      'educmaster'
     ],
     isEnabled: true,
     assignedTo: 'Mme Honorine TCHIBOZO (Secrétaire)',

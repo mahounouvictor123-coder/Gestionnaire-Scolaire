@@ -327,7 +327,7 @@ export const TeacherAuthGate: React.FC<TeacherAuthGateProps> = ({
                     ))}
                     <option value="Mathématiques">Mathématiques</option>
                     <option value="Français">Français / Lettres</option>
-                    <option value="Sciences Physiques et Chimie (PCT)">Sciences Physiques et Chimie (PCT)</option>
+                    <option value="PCT (Physique - Chimie - Technologie)">PCT (Physique - Chimie - Technologie)</option>
                     <option value="Sciences de la Vie et de la Terre (SVT)">Sciences de la Vie et de la Terre (SVT)</option>
                     <option value="Anglais">Anglais</option>
                     <option value="Histoire-Géographie">Histoire-Géographie</option>

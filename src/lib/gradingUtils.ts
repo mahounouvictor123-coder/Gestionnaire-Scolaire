@@ -1,5 +1,5 @@
 import { Student, Grade, Subject, BulletinTemplate, SchoolClass, CouncilDecisionData } from '../types';
-import { getClassSection, isPrimaryClass, isSubjectForClass } from './schoolUtils';
+import { getClassSection, isEspagnolSubject, isPrimaryClass, isSixthOrFifthClass, isSubjectForClass } from './schoolUtils';
 
 export interface SubjectResult {
   subject: Subject;
@@ -422,19 +422,23 @@ export function calculateClassRanks(
   // Référence de la classe pour déterminer la section (schoolClass ou premier élève)
   const classRef = schoolClass || students[0];
 
+  const isExcludedInClass = (s: Subject) => isSixthOrFifthClass(classRef) && isEspagnolSubject(s);
+
   // Filtrage strict par section : Toute matière ajoutée dans une section
   // (Maternelle, Primaire, Collège, Lycée) s'ajoute directement sur les bulletins de la section.
-  const relevantSubjects = subjects.filter(sbj => isSubjectForClass(sbj, classRef, subjects));
+  const relevantSubjects = subjects.filter(sbj => isSubjectForClass(sbj, classRef, subjects) && !isExcludedInClass(sbj));
 
-  // Always include any subjects that have registered grades for these students
+  // Always include any subjects that have registered grades for these students (except excluded subjects like Espagnol in 6e/5e)
   const studentIdsSet = new Set(students.map(s => s.id));
   const gradedSubjectIds = new Set(
     grades
       .filter(g => studentIdsSet.has(g.studentId) && Number(g.trimester) === Number(trimester))
       .map(g => g.subjectId)
   );
-  const extraGradedSubjects = subjects.filter(s => gradedSubjectIds.has(s.id) && !relevantSubjects.some(rs => rs.id === s.id));
-  const activeSubjectsRaw = (relevantSubjects.length > 0 ? relevantSubjects : subjects).concat(extraGradedSubjects);
+  const extraGradedSubjects = subjects.filter(
+    s => gradedSubjectIds.has(s.id) && !relevantSubjects.some(rs => rs.id === s.id) && !isExcludedInClass(s)
+  );
+  const activeSubjectsRaw = (relevantSubjects.length > 0 ? relevantSubjects : subjects.filter(s => !isExcludedInClass(s))).concat(extraGradedSubjects);
   const isCollegeClass = getClassSection(classRef) === 'COLLEGE';
   const { subjects: deduplicatedSubjects, aliasesByKeptId } = deduplicateSubjectsWithAliases(
     activeSubjectsRaw,
